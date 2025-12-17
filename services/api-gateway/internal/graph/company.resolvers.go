@@ -1,0 +1,85 @@
+package graph
+
+// This file contains resolvers for Company type fields that require additional data loading
+
+import (
+	"context"
+
+	"github.com/egrul-system/services/api-gateway/internal/graph/model"
+	"go.uber.org/zap"
+)
+
+// Founders is the resolver for the founders field on Company.
+func (r *companyResolver) Founders(ctx context.Context, obj *model.Company, limit *int, offset *int) ([]*model.Founder, error) {
+	l := 100
+	if limit != nil {
+		l = *limit
+	}
+	o := 0
+	if offset != nil {
+		o = *offset
+	}
+
+	// Сначала пробуем использовать DataLoader (per-request cache)
+	if loader := foundersLoaderFromContext(ctx); loader != nil {
+		founders, err := loader.Load(ctx, obj.Ogrn, l, o)
+		if err != nil {
+			r.Logger.Error("failed to get founders via dataloader", zap.String("ogrn", obj.Ogrn), zap.Error(err))
+			return nil, err
+		}
+		return founders, nil
+	}
+
+	// Fallback к прямому вызову сервиса
+	founders, err := r.CompanyService.GetFounders(ctx, obj.Ogrn, l, o)
+	if err != nil {
+		r.Logger.Error("failed to get founders", zap.String("ogrn", obj.Ogrn), zap.Error(err))
+		return nil, err
+	}
+	return founders, nil
+}
+
+// Licenses is the resolver for the licenses field on Company.
+func (r *companyResolver) Licenses(ctx context.Context, obj *model.Company) ([]*model.License, error) {
+	licenses, err := r.CompanyService.GetLicenses(ctx, obj.Ogrn)
+	if err != nil {
+		r.Logger.Error("failed to get licenses", zap.String("ogrn", obj.Ogrn), zap.Error(err))
+		return nil, err
+	}
+	return licenses, nil
+}
+
+// Branches is the resolver for the branches field on Company.
+func (r *companyResolver) Branches(ctx context.Context, obj *model.Company) ([]*model.Branch, error) {
+	branches, err := r.CompanyService.GetBranches(ctx, obj.Ogrn)
+	if err != nil {
+		r.Logger.Error("failed to get branches", zap.String("ogrn", obj.Ogrn), zap.Error(err))
+		return nil, err
+	}
+	return branches, nil
+}
+
+// History is the resolver for the history field on Company.
+func (r *companyResolver) History(ctx context.Context, obj *model.Company, limit *int, offset *int) ([]*model.HistoryRecord, error) {
+	l := 50
+	if limit != nil {
+		l = *limit
+	}
+	o := 0
+	if offset != nil {
+		o = *offset
+	}
+
+	history, err := r.CompanyService.GetHistory(ctx, obj.Ogrn, l, o)
+	if err != nil {
+		r.Logger.Error("failed to get history", zap.String("ogrn", obj.Ogrn), zap.Error(err))
+		return nil, err
+	}
+	return history, nil
+}
+
+// Company returns CompanyResolver implementation.
+func (r *Resolver) Company() CompanyResolver { return &companyResolver{r} }
+
+type companyResolver struct{ *Resolver }
+

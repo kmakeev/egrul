@@ -1,0 +1,599 @@
+# ==============================================================================
+# ЕГРЮЛ/ЕГРИП GraphQL Schema
+# ==============================================================================
+
+# Скалярные типы
+scalar Date
+scalar DateTime
+
+# ==============================================================================
+# ENUM типы
+# ==============================================================================
+
+"""
+Статус юридического лица или ИП
+"""
+enum EntityStatus {
+  ACTIVE
+  LIQUIDATED
+  LIQUIDATING
+  REORGANIZING
+  BANKRUPT
+  UNKNOWN
+}
+
+"""
+Тип учредителя
+"""
+enum FounderType {
+  PERSON
+  RUSSIAN_COMPANY
+  FOREIGN_COMPANY
+  PUBLIC_ENTITY
+  FUND
+}
+
+"""
+Тип филиала
+"""
+enum BranchType {
+  BRANCH
+  REPRESENTATIVE
+}
+
+"""
+Тип сущности
+"""
+enum EntityType {
+  COMPANY
+  ENTREPRENEUR
+}
+
+"""
+Порядок сортировки
+"""
+enum SortOrder {
+  ASC
+  DESC
+}
+
+"""
+Поле для сортировки компаний
+"""
+enum CompanySortField {
+  OGRN
+  INN
+  FULL_NAME
+  REGISTRATION_DATE
+  CAPITAL_AMOUNT
+  UPDATED_AT
+}
+
+# ==============================================================================
+# Базовые типы данных
+# ==============================================================================
+
+"""
+Адрес
+"""
+type Address {
+  postalCode: String
+  regionCode: String
+  region: String
+  district: String
+  city: String
+  locality: String
+  street: String
+  house: String
+  building: String
+  flat: String
+  fullAddress: String
+  fiasId: String
+}
+
+"""
+Организационно-правовая форма
+"""
+type LegalForm {
+  code: String
+  name: String
+}
+
+"""
+Денежная сумма
+"""
+type Money {
+  amount: Float!
+  currency: String!
+}
+
+"""
+Физическое лицо
+"""
+type Person {
+  lastName: String!
+  firstName: String!
+  middleName: String
+  inn: String
+  position: String
+  positionCode: String
+}
+
+"""
+Вид деятельности (ОКВЭД)
+"""
+type Activity {
+  code: String!
+  name: String
+  isMain: Boolean!
+}
+
+"""
+Регистрирующий/налоговый орган
+"""
+type Authority {
+  code: String
+  name: String
+}
+
+"""
+Учредитель
+"""
+type Founder {
+  type: FounderType!
+  ogrn: String
+  inn: String
+  name: String!
+  lastName: String
+  firstName: String
+  middleName: String
+  country: String
+  citizenship: String
+  shareNominalValue: Float
+  sharePercent: Float
+}
+
+"""
+Лицензия
+"""
+type License {
+  id: ID!
+  number: String!
+  series: String
+  activity: String
+  startDate: Date
+  endDate: Date
+  authority: String
+  status: String
+}
+
+"""
+Филиал/Представительство
+"""
+type Branch {
+  id: ID!
+  type: BranchType!
+  name: String
+  kpp: String
+  address: Address
+}
+
+"""
+Запись истории изменений (ГРН)
+"""
+type HistoryRecord {
+  id: ID!
+  grn: String!
+  date: Date!
+  reasonCode: String
+  reasonDescription: String
+  authority: Authority
+  certificateSeries: String
+  certificateNumber: String
+  certificateDate: Date
+  snapshotFullName: String
+  snapshotStatus: String
+  snapshotAddress: String
+}
+
+# ==============================================================================
+# Основные типы данных
+# ==============================================================================
+
+"""
+Юридическое лицо (ЕГРЮЛ)
+"""
+type Company {
+  # Идентификаторы
+  ogrn: ID!
+  ogrnDate: Date
+  inn: String!
+  kpp: String
+  
+  # Наименование
+  fullName: String!
+  shortName: String
+  brandName: String
+  
+  # ОПФ и статус
+  legalForm: LegalForm
+  status: EntityStatus!
+  statusCode: String
+  terminationMethod: String
+  
+  # Даты
+  registrationDate: Date
+  terminationDate: Date
+  extractDate: Date
+  
+  # Адрес и контакты
+  address: Address!
+  email: String
+  
+  # Уставный капитал
+  capital: Money
+  
+  # Руководитель
+  director: Person
+  
+  # Виды деятельности
+  mainActivity: Activity
+  activities: [Activity!]!
+  
+  # Регистрация
+  regAuthority: Authority
+  taxAuthority: Authority
+  
+  # ПФР/ФСС
+  pfrRegNumber: String
+  fssRegNumber: String
+  
+  # Связанные данные
+  founders(limit: Int, offset: Int): [Founder!]!
+  foundersCount: Int!
+  licenses: [License!]!
+  licensesCount: Int!
+  branches: [Branch!]!
+  branchesCount: Int!
+  
+  # Специальные статусы
+  isBankrupt: Boolean!
+  bankruptcyStage: String
+  isLiquidating: Boolean!
+  isReorganizing: Boolean!
+  
+  # История
+  lastGrn: String
+  lastGrnDate: Date
+  history(limit: Int, offset: Int): [HistoryRecord!]!
+  
+  # Метаданные
+  sourceFile: String
+  versionDate: Date!
+  createdAt: DateTime!
+  updatedAt: DateTime!
+}
+
+"""
+Индивидуальный предприниматель (ЕГРИП)
+"""
+type Entrepreneur {
+  # Идентификаторы
+  ogrnip: ID!
+  ogrnipDate: Date
+  inn: String!
+  
+  # ФИО
+  lastName: String!
+  firstName: String!
+  middleName: String
+  gender: String
+  
+  # Гражданство
+  citizenshipType: String
+  citizenshipCountryCode: String
+  citizenshipCountryName: String
+  
+  # Статус
+  status: EntityStatus!
+  statusCode: String
+  terminationMethod: String
+  
+  # Даты
+  registrationDate: Date
+  terminationDate: Date
+  extractDate: Date
+  
+  # Адрес и контакты
+  address: Address
+  email: String
+  
+  # Виды деятельности
+  mainActivity: Activity
+  activities: [Activity!]!
+  
+  # Регистрация
+  regAuthority: Authority
+  taxAuthority: Authority
+  
+  # ПФР/ФСС
+  pfrRegNumber: String
+  fssRegNumber: String
+  
+  # Лицензии
+  licenses: [License!]!
+  licensesCount: Int!
+  
+  # Банкротство
+  isBankrupt: Boolean!
+  bankruptcyDate: Date
+  bankruptcyCaseNumber: String
+  
+  # История
+  lastGrn: String
+  lastGrnDate: Date
+  history(limit: Int, offset: Int): [HistoryRecord!]!
+  
+  # Метаданные
+  sourceFile: String
+  versionDate: Date!
+  createdAt: DateTime!
+  updatedAt: DateTime!
+}
+
+# ==============================================================================
+# Типы для статистики
+# ==============================================================================
+
+"""
+Статистика по регионам
+"""
+type RegionStatistics {
+  regionCode: String!
+  regionName: String!
+  companiesCount: Int!
+  entrepreneursCount: Int!
+  activeCount: Int!
+  liquidatedCount: Int!
+}
+
+"""
+Статистика по видам деятельности
+"""
+type ActivityStatistics {
+  okvedCode: String!
+  okvedName: String!
+  companiesCount: Int!
+  entrepreneursCount: Int!
+}
+
+"""
+Общая статистика
+"""
+type Statistics {
+  totalCompanies: Int!
+  totalEntrepreneurs: Int!
+  activeCompanies: Int!
+  activeEntrepreneurs: Int!
+  liquidatedCompanies: Int!
+  liquidatedEntrepreneurs: Int!
+  registeredToday: Int!
+  registeredThisMonth: Int!
+  registeredThisYear: Int!
+  byRegion: [RegionStatistics!]!
+  byActivity(limit: Int): [ActivityStatistics!]!
+}
+
+# ==============================================================================
+# Типы для пагинации и соединений
+# ==============================================================================
+
+"""
+Информация о странице
+"""
+type PageInfo {
+  hasNextPage: Boolean!
+  hasPreviousPage: Boolean!
+  startCursor: String
+  endCursor: String
+  totalCount: Int!
+}
+
+"""
+Ребро компании (для cursor-based pagination)
+"""
+type CompanyEdge {
+  node: Company!
+  cursor: String!
+}
+
+"""
+Соединение компаний
+"""
+type CompanyConnection {
+  edges: [CompanyEdge!]!
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+"""
+Ребро ИП
+"""
+type EntrepreneurEdge {
+  node: Entrepreneur!
+  cursor: String!
+}
+
+"""
+Соединение ИП
+"""
+type EntrepreneurConnection {
+  edges: [EntrepreneurEdge!]!
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+"""
+Результат универсального поиска
+"""
+type SearchResult {
+  companies: [Company!]!
+  entrepreneurs: [Entrepreneur!]!
+  totalCompanies: Int!
+  totalEntrepreneurs: Int!
+}
+
+# ==============================================================================
+# Входные типы (Input)
+# ==============================================================================
+
+"""
+Пагинация
+"""
+input Pagination {
+  limit: Int = 20
+  offset: Int = 0
+  first: Int
+  after: String
+  last: Int
+  before: String
+}
+
+"""
+Сортировка компаний
+"""
+input CompanySort {
+  field: CompanySortField!
+  order: SortOrder = ASC
+}
+
+"""
+Фильтр компаний
+"""
+input CompanyFilter {
+  inn: String
+  ogrn: String
+  name: String
+  regionCode: String
+  region: String
+  okved: String
+  status: EntityStatus
+  statusIn: [EntityStatus!]
+  registeredAfter: Date
+  registeredBefore: Date
+  terminatedAfter: Date
+  terminatedBefore: Date
+  capitalMin: Float
+  capitalMax: Float
+  isBankrupt: Boolean
+  isLiquidating: Boolean
+  hasDirector: Boolean
+}
+
+"""
+Фильтр ИП
+"""
+input EntrepreneurFilter {
+  inn: String
+  ogrnip: String
+  name: String
+  lastName: String
+  firstName: String
+  regionCode: String
+  region: String
+  okved: String
+  status: EntityStatus
+  statusIn: [EntityStatus!]
+  registeredAfter: Date
+  registeredBefore: Date
+  terminatedAfter: Date
+  terminatedBefore: Date
+  isBankrupt: Boolean
+}
+
+"""
+Фильтр статистики
+"""
+input StatsFilter {
+  regionCode: String
+  okved: String
+  dateFrom: Date
+  dateTo: Date
+}
+
+# ==============================================================================
+# Корневые типы запросов
+# ==============================================================================
+
+type Query {
+  # Получение компании по ОГРН
+  company(ogrn: ID!): Company
+  
+  # Получение компании по ИНН
+  companyByInn(inn: String!): Company
+  
+  # Список компаний с фильтрацией и пагинацией
+  companies(
+    filter: CompanyFilter
+    pagination: Pagination
+    sort: CompanySort
+  ): CompanyConnection!
+  
+  # Поиск компаний по текстовому запросу
+  searchCompanies(
+    query: String!
+    limit: Int = 20
+    offset: Int = 0
+  ): [Company!]!
+  
+  # Получение ИП по ОГРНИП
+  entrepreneur(ogrnip: ID!): Entrepreneur
+  
+  # Получение ИП по ИНН
+  entrepreneurByInn(inn: String!): Entrepreneur
+  
+  # Список ИП с фильтрацией и пагинацией
+  entrepreneurs(
+    filter: EntrepreneurFilter
+    pagination: Pagination
+  ): EntrepreneurConnection!
+  
+  # Поиск ИП по текстовому запросу
+  searchEntrepreneurs(
+    query: String!
+    limit: Int = 20
+    offset: Int = 0
+  ): [Entrepreneur!]!
+  
+  # Универсальный поиск (компании + ИП)
+  search(
+    query: String!
+    limit: Int = 10
+  ): SearchResult!
+  
+  # Статистика
+  statistics(filter: StatsFilter): Statistics!
+  
+  # История изменений сущности
+  entityHistory(
+    entityType: EntityType!
+    entityId: ID!
+    limit: Int = 50
+    offset: Int = 0
+  ): [HistoryRecord!]!
+  
+  # Учредители компании
+  companyFounders(
+    ogrn: ID!
+    limit: Int = 100
+    offset: Int = 0
+  ): [Founder!]!
+  
+  # Связанные компании (где данное лицо учредитель)
+  relatedCompanies(
+    inn: String!
+    limit: Int = 50
+    offset: Int = 0
+  ): [Company!]!
+}
+

@@ -1,0 +1,46 @@
+# API Gateway Configuration
+# Все значения могут быть переопределены через переменные окружения
+
+server:
+  host: "0.0.0.0"
+  port: 8080
+  read_timeout: 30s
+  write_timeout: 30s
+  shutdown_timeout: 10s
+
+clickhouse:
+  host: "localhost"
+  port: 9000
+  http_port: 8123
+  database: "egrul"
+  username: "default"
+  password: ""
+  max_open_conns: 10
+  max_idle_conns: 5
+  dial_timeout: 10s
+  debug: false
+
+elasticsearch:
+  addresses:
+    - "http://localhost:9200"
+  username: ""
+  password: ""
+
+redis:
+  host: "localhost"
+  port: 6379
+  password: ""
+  db: 0
+
+log:
+  level: "info"
+  format: "json"  # json или text
+  output: "stdout"
+  time_format: "2006-01-02T15:04:05.000Z07:00"
+
+graphql:
+  playground_enabled: true
+  introspection_enabled: true
+  max_depth: 15
+  max_complexity: 1000
+

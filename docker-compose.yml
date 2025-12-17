@@ -1,0 +1,285 @@
+services:
+  # ==================== Базы данных ====================
+  
+  postgres:
+    image: postgres:16-alpine
+    container_name: egrul-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: egrul
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./infrastructure/docker/init-db.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - egrul-network
+
+  # ClickHouse - основное аналитическое хранилище
+  clickhouse:
+    build:
+      context: ./infrastructure/docker/clickhouse
+      dockerfile: Dockerfile
+    container_name: egrul-clickhouse
+    ports:
+      - "8123:8123"    # HTTP интерфейс
+      - "9000:9000"    # Native TCP интерфейс
+      - "9009:9009"    # Межкластерный порт
+    volumes:
+      - clickhouse_data:/var/lib/clickhouse
+      - clickhouse_logs:/var/log/clickhouse-server
+      - ./infrastructure/migrations/clickhouse:/docker-entrypoint-initdb.d:ro
+    environment:
+      CLICKHOUSE_DB: egrul
+      CLICKHOUSE_USER: admin
+      CLICKHOUSE_PASSWORD: admin
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    healthcheck:
+      test: ["CMD-SHELL", "clickhouse-client --query 'SELECT 1' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks:
+      - egrul-network
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+        reservations:
+          memory: 2G
+
+  # ClickHouse Client для администрирования
+  clickhouse-client:
+    image: clickhouse/clickhouse-server:24.11-alpine
+    container_name: egrul-clickhouse-client
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+    entrypoint: ["tail", "-f", "/dev/null"]
+    networks:
+      - egrul-network
+    profiles:
+      - tools
+
+  elasticsearch:
+    image: elasticsearch:8.16.1
+    container_name: egrul-elasticsearch
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+    ports:
+      - "9200:9200"
+      - "9300:9300"
+    volumes:
+      - elasticsearch_data:/usr/share/elasticsearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:9200/_cluster/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - egrul-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: egrul-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - egrul-network
+
+  # ==================== Сервисы ====================
+
+  api-gateway:
+    build:
+      context: .
+      dockerfile: services/api-gateway/Dockerfile
+    container_name: egrul-api-gateway
+    ports:
+      - "8080:8080"
+    environment:
+      # Server
+      - PORT=8080
+      # ClickHouse
+      - CLICKHOUSE_HOST=clickhouse
+      - CLICKHOUSE_PORT=9000
+      - CLICKHOUSE_HTTP_PORT=8123
+      - CLICKHOUSE_USER=admin
+      - CLICKHOUSE_PASSWORD=admin
+      - CLICKHOUSE_DATABASE=egrul
+      # Elasticsearch
+      - ELASTICSEARCH_URL=http://elasticsearch:9200
+      # Redis
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      # Logging
+      - LOG_LEVEL=info
+      - LOG_FORMAT=json
+      # GraphQL
+      - GRAPHQL_PLAYGROUND_ENABLED=true
+      - GRAPHQL_INTROSPECTION_ENABLED=true
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+      elasticsearch:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - egrul-network
+
+  search-service:
+    build:
+      context: .
+      dockerfile: services/search-service/Dockerfile
+    container_name: egrul-search-service
+    ports:
+      - "8081:8081"
+    environment:
+      - PORT=8081
+      - ELASTICSEARCH_URL=http://elasticsearch:9200
+      - CLICKHOUSE_HOST=clickhouse
+      - CLICKHOUSE_PORT=9000
+      - CLICKHOUSE_USER=egrul_reader
+      - CLICKHOUSE_PASSWORD=password
+      - CLICKHOUSE_DATABASE=egrul
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+      clickhouse:
+        condition: service_healthy
+    networks:
+      - egrul-network
+
+  # ==================== Frontend ====================
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: egrul-frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:8080/api/v1
+      - NEXT_PUBLIC_GRAPHQL_URL=http://localhost:8080/graphql
+    depends_on:
+      - api-gateway
+    networks:
+      - egrul-network
+
+  # ==================== Вспомогательные сервисы ====================
+
+  # ClickHouse миграции - запускается один раз для применения миграций
+  clickhouse-migrations:
+    image: clickhouse/clickhouse-server:24.11-alpine
+    container_name: egrul-clickhouse-migrations
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+    volumes:
+      - ./infrastructure/migrations/clickhouse:/migrations:ro
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        echo "Waiting for ClickHouse to be ready..."
+        sleep 5
+        echo "Running migrations..."
+        
+        for file in /migrations/*.sql; do
+          if [ -f "$$file" ]; then
+            echo "Applying migration: $$file"
+            clickhouse-client --host clickhouse --user admin --password admin --multiquery < "$$file"
+            if [ $$? -eq 0 ]; then
+              echo "Migration $$file applied successfully"
+            else
+              echo "Error applying migration $$file"
+              exit 1
+            fi
+          fi
+        done
+        
+        echo "All migrations completed successfully!"
+    networks:
+      - egrul-network
+    profiles:
+      - setup
+
+  # Импорт данных из Parquet в ClickHouse
+  data-import:
+    image: curlimages/curl:8.11.0
+    container_name: egrul-data-import
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+    volumes:
+      - ./output:/data:ro
+      - ./infrastructure/scripts:/scripts:ro
+    environment:
+      - CLICKHOUSE_HOST=clickhouse
+      - CLICKHOUSE_PORT=8123
+      - CLICKHOUSE_USER=admin
+      - CLICKHOUSE_PASSWORD=admin
+      - CLICKHOUSE_DATABASE=egrul
+      - DATA_DIR=/data
+    entrypoint: ["/bin/sh", "/scripts/import-data.sh"]
+    networks:
+      - egrul-network
+    profiles:
+      - import
+
+  # Grafana для мониторинга (опционально)
+  grafana:
+    image: grafana/grafana:11.3.0
+    container_name: egrul-grafana
+    ports:
+      - "3001:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_INSTALL_PLUGINS=grafana-clickhouse-datasource
+    volumes:
+      - grafana_data:/var/lib/grafana
+    depends_on:
+      - clickhouse
+    networks:
+      - egrul-network
+    profiles:
+      - monitoring
+
+volumes:
+  postgres_data:
+  clickhouse_data:
+  clickhouse_logs:
+  elasticsearch_data:
+  redis_data:
+  grafana_data:
+
+networks:
+  egrul-network:
+    driver: bridge

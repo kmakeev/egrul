@@ -1,0 +1,141 @@
+<?xml version="1.0"?>
+<!-- 
+    ClickHouse Server Configuration для ЕГРЮЛ/ЕГРИП
+    Оптимизирован для single-node MVP конфигурации
+-->
+<clickhouse>
+    <!-- Логирование -->
+    <logger>
+        <level>information</level>
+        <log>/var/log/clickhouse-server/clickhouse-server.log</log>
+        <errorlog>/var/log/clickhouse-server/clickhouse-server.err.log</errorlog>
+        <size>100M</size>
+        <count>5</count>
+    </logger>
+
+    <!-- Сетевые интерфейсы -->
+    <listen_host>0.0.0.0</listen_host>
+    <http_port>8123</http_port>
+    <tcp_port>9000</tcp_port>
+    <interserver_http_port>9009</interserver_http_port>
+
+    <!-- Пути к данным -->
+    <path>/var/lib/clickhouse/</path>
+    <tmp_path>/var/lib/clickhouse/tmp/</tmp_path>
+    <user_files_path>/var/lib/clickhouse/user_files/</user_files_path>
+
+    <!-- Настройки памяти и производительности -->
+    <max_server_memory_usage_to_ram_ratio>0.9</max_server_memory_usage_to_ram_ratio>
+    <max_concurrent_queries>100</max_concurrent_queries>
+    
+    <!-- Настройки для импорта больших данных -->
+    <max_partition_size_to_drop>50000000000</max_partition_size_to_drop>
+    <max_table_size_to_drop>50000000000</max_table_size_to_drop>
+
+    <!-- Mark cache - кэш меток для быстрого поиска -->
+    <mark_cache_size>5368709120</mark_cache_size>
+    
+    <!-- Uncompressed cache - для часто читаемых данных -->
+    <uncompressed_cache_size>8589934592</uncompressed_cache_size>
+
+    <!-- Настройки сжатия -->
+    <compression>
+        <case>
+            <method>lz4</method>
+        </case>
+    </compression>
+
+    <!-- Настройки MergeTree -->
+    <merge_tree>
+        <max_suspicious_broken_parts>5</max_suspicious_broken_parts>
+        <parts_to_delay_insert>150</parts_to_delay_insert>
+        <parts_to_throw_insert>300</parts_to_throw_insert>
+        <max_delay_to_insert>1</max_delay_to_insert>
+        <replicated_deduplication_window>100</replicated_deduplication_window>
+        
+        <!-- Оптимизация для частых чтений -->
+        <min_bytes_for_wide_part>10485760</min_bytes_for_wide_part>
+        <min_rows_for_wide_part>0</min_rows_for_wide_part>
+    </merge_tree>
+
+    <!-- Distributed DDL -->
+    <distributed_ddl>
+        <path>/clickhouse/task_queue/ddl</path>
+    </distributed_ddl>
+
+    <!-- Настройки форматов -->
+    <format_schema_path>/var/lib/clickhouse/format_schemas/</format_schema_path>
+
+    <!-- Асинхронная вставка для высокой производительности -->
+    <async_insert_log>
+        <database>system</database>
+        <table>asynchronous_insert_log</table>
+        <flush_interval_milliseconds>7500</flush_interval_milliseconds>
+    </async_insert_log>
+
+    <!-- Query cache для повторяющихся запросов -->
+    <query_cache>
+        <max_size_in_bytes>1073741824</max_size_in_bytes>
+        <max_entries>1024</max_entries>
+        <max_entry_size_in_bytes>1048576</max_entry_size_in_bytes>
+        <max_entry_size_in_rows>30000000</max_entry_size_in_rows>
+    </query_cache>
+
+    <!-- Профили (определены в users.xml) -->
+    <profiles/>
+
+    <!-- Пользователи (определены в users.xml) -->
+    <users/>
+
+    <!-- Квоты (определены в users.xml) -->
+    <quotas/>
+
+    <!-- Макросы для идентификации инстанса -->
+    <macros>
+        <shard>01</shard>
+        <replica>replica01</replica>
+        <cluster>egrul_cluster</cluster>
+    </macros>
+
+    <!-- Встроенные словари -->
+    <dictionaries_config>*_dictionary.xml</dictionaries_config>
+
+    <!-- Метрики -->
+    <metric_log>
+        <database>system</database>
+        <table>metric_log</table>
+        <flush_interval_milliseconds>7500</flush_interval_milliseconds>
+        <collect_interval_milliseconds>1000</collect_interval_milliseconds>
+    </metric_log>
+
+    <!-- Лог запросов -->
+    <query_log>
+        <database>system</database>
+        <table>query_log</table>
+        <partition_by>toYYYYMM(event_date)</partition_by>
+        <flush_interval_milliseconds>7500</flush_interval_milliseconds>
+    </query_log>
+
+    <!-- Лог трассировки запросов -->
+    <query_thread_log>
+        <database>system</database>
+        <table>query_thread_log</table>
+        <partition_by>toYYYYMM(event_date)</partition_by>
+        <flush_interval_milliseconds>7500</flush_interval_milliseconds>
+    </query_thread_log>
+
+    <!-- Part log для отслеживания операций с партициями -->
+    <part_log>
+        <database>system</database>
+        <table>part_log</table>
+        <partition_by>toYYYYMM(event_date)</partition_by>
+        <flush_interval_milliseconds>7500</flush_interval_milliseconds>
+    </part_log>
+
+    <!-- Timezone -->
+    <timezone>Europe/Moscow</timezone>
+
+    <!-- Locale -->
+    <default_database>default</default_database>
+</clickhouse>
+

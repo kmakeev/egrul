@@ -1,0 +1,27 @@
+{
+  "name": "egrul-system",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Система обработки данных ЕГРЮЛ/ЕГРИП",
+  "scripts": {
+    "dev": "pnpm --filter frontend dev",
+    "build": "pnpm --filter frontend build",
+    "lint": "pnpm -r lint",
+    "test": "pnpm -r test",
+    "clean": "pnpm -r clean"
+  },
+  "keywords": [
+    "egrul",
+    "egrip",
+    "parser",
+    "registry"
+  ],
+  "author": "",
+  "license": "MIT",
+  "engines": {
+    "node": ">=20.0.0",
+    "pnpm": ">=9.0.0"
+  },
+  "packageManager": "pnpm@9.14.2"
+}
+
