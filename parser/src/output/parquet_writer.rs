@@ -42,9 +42,12 @@ impl ParquetOutputWriter {
             Field::new("full_name", DataType::Utf8, false),
             Field::new("short_name", DataType::Utf8, true),
             Field::new("status", DataType::Utf8, true),
+            Field::new("status_code", DataType::Utf8, true),
             Field::new("registration_date", DataType::Utf8, true),
             Field::new("termination_date", DataType::Utf8, true),
             Field::new("address", DataType::Utf8, true),
+            Field::new("region_code", DataType::Utf8, true),
+            Field::new("region", DataType::Utf8, true),
             Field::new("capital_amount", DataType::Float64, true),
             Field::new("capital_currency", DataType::Utf8, true),
             Field::new("head_name", DataType::Utf8, true),
@@ -71,6 +74,7 @@ impl ParquetOutputWriter {
             Field::new("gender", DataType::Utf8, true),
             Field::new("citizenship", DataType::Utf8, true),
             Field::new("status", DataType::Utf8, true),
+            Field::new("status_code", DataType::Utf8, true),
             Field::new("registration_date", DataType::Utf8, true),
             Field::new("termination_date", DataType::Utf8, true),
             Field::new("region_code", DataType::Utf8, true),
@@ -105,7 +109,10 @@ impl ParquetOutputWriter {
             .map(|r| r.short_name.as_deref())
             .collect();
         let status: StringArray = records.iter()
-            .map(|r| Some(r.status.to_string()))
+            .map(|r| Some(r.status.as_code()))
+            .collect();
+        let status_code: StringArray = records.iter()
+            .map(|r| r.status_code.as_deref())
             .collect();
         let registration_date: StringArray = records.iter()
             .map(|r| r.registration_date.map(|d| d.to_string()))
@@ -115,6 +122,12 @@ impl ParquetOutputWriter {
             .collect();
         let address: StringArray = records.iter()
             .map(|r| r.address.as_ref().and_then(|a| a.full_address.as_deref()))
+            .collect();
+        let region_code: StringArray = records.iter()
+            .map(|r| r.address.as_ref().and_then(|a| a.region_code.as_deref()))
+            .collect();
+        let region: StringArray = records.iter()
+            .map(|r| r.address.as_ref().and_then(|a| a.region.as_deref()))
             .collect();
         let capital_amount: Float64Array = records.iter()
             .map(|r| r.capital.as_ref().map(|c| c.amount))
@@ -163,9 +176,12 @@ impl ParquetOutputWriter {
                 Arc::new(full_name),
                 Arc::new(short_name),
                 Arc::new(status),
+                Arc::new(status_code),
                 Arc::new(registration_date),
                 Arc::new(termination_date),
                 Arc::new(address),
+                Arc::new(region_code),
+                Arc::new(region),
                 Arc::new(capital_amount),
                 Arc::new(capital_currency),
                 Arc::new(head_name),
@@ -216,7 +232,10 @@ impl ParquetOutputWriter {
             .map(|r| r.citizenship.as_ref().and_then(|c| c.country_name.as_deref()))
             .collect();
         let status: StringArray = records.iter()
-            .map(|r| Some(r.status.to_string()))
+            .map(|r| Some(r.status.as_code()))
+            .collect();
+        let status_code: StringArray = records.iter()
+            .map(|r| r.status_code.as_deref())
             .collect();
         let registration_date: StringArray = records.iter()
             .map(|r| r.registration_date.map(|d| d.to_string()))
@@ -265,6 +284,7 @@ impl ParquetOutputWriter {
                 Arc::new(gender),
                 Arc::new(citizenship),
                 Arc::new(status),
+                Arc::new(status_code),
                 Arc::new(registration_date),
                 Arc::new(termination_date),
                  Arc::new(region_code),

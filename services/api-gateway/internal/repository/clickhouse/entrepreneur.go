@@ -283,6 +283,125 @@ func (r *EntrepreneurRepository) GetByINN(ctx context.Context, inn string) (*mod
 
 // List возвращает список ИП с фильтрацией и пагинацией
 func (r *EntrepreneurRepository) List(ctx context.Context, filter *model.EntrepreneurFilter, pagination *model.Pagination) ([]*model.Entrepreneur, int, error) {
+	// #region agent log - проверка существующих region_code в базе
+	if filter != nil && filter.RegionCode != nil && *filter.RegionCode != "" {
+		// Проверяем общее количество записей
+		totalCountQuery := `SELECT count() FROM egrul.entrepreneurs FINAL`
+		var totalCount uint64
+		if err := r.client.conn.QueryRow(ctx, totalCountQuery).Scan(&totalCount); err == nil {
+			agentLog("run-filters", "entrepreneur.go:List:totalCount", "total entrepreneurs in DB", map[string]interface{}{
+				"totalCount": totalCount,
+			})
+		}
+
+		// Проверяем количество записей с заполненным region_code
+		regionCountQuery := `SELECT count() FROM egrul.entrepreneurs FINAL WHERE region_code IS NOT NULL AND region_code != ''`
+		var regionCount uint64
+		if err := r.client.conn.QueryRow(ctx, regionCountQuery).Scan(&regionCount); err == nil {
+			agentLog("run-filters", "entrepreneur.go:List:regionCount", "entrepreneurs with region_code", map[string]interface{}{
+				"regionCount": regionCount,
+			})
+		}
+
+		// Проверяем количество записей с заполненным region (название региона)
+		regionNameCountQuery := `SELECT count() FROM egrul.entrepreneurs FINAL WHERE region IS NOT NULL AND region != ''`
+		var regionNameCount uint64
+		if err := r.client.conn.QueryRow(ctx, regionNameCountQuery).Scan(&regionNameCount); err == nil {
+			agentLog("run-filters", "entrepreneur.go:List:regionNameCount", "entrepreneurs with region name", map[string]interface{}{
+				"regionNameCount": regionNameCount,
+			})
+		}
+
+		// Проверяем количество записей с заполненным full_address (может содержать информацию о регионе)
+		fullAddressCountQuery := `SELECT count() FROM egrul.entrepreneurs FINAL WHERE full_address IS NOT NULL AND full_address != ''`
+		var fullAddressCount uint64
+		if err := r.client.conn.QueryRow(ctx, fullAddressCountQuery).Scan(&fullAddressCount); err == nil {
+			agentLog("run-filters", "entrepreneur.go:List:fullAddressCount", "entrepreneurs with full_address", map[string]interface{}{
+				"fullAddressCount": fullAddressCount,
+			})
+		}
+
+		// Проверяем, есть ли в full_address упоминания "Московская" или "Москва"
+		checkAddressQuery := `SELECT count() FROM egrul.entrepreneurs FINAL WHERE full_address ILIKE ?`
+		var moscowAddressCount uint64
+		if err := r.client.conn.QueryRow(ctx, checkAddressQuery, "%Московск%").Scan(&moscowAddressCount); err == nil {
+			agentLog("run-filters", "entrepreneur.go:List:moscowAddressCount", "entrepreneurs with Moscow in full_address", map[string]interface{}{
+				"moscowAddressCount": moscowAddressCount,
+			})
+		}
+
+		// Получаем примеры названий регионов
+		sampleRegionNamesQuery := `
+			SELECT DISTINCT region, count() as cnt
+			FROM egrul.entrepreneurs FINAL
+			WHERE region IS NOT NULL AND region != ''
+			GROUP BY region
+			ORDER BY cnt DESC
+			LIMIT 10
+		`
+		rows2, err2 := r.client.conn.Query(ctx, sampleRegionNamesQuery)
+		if err2 != nil {
+			agentLog("run-filters", "entrepreneur.go:List:sampleRegionNames:error", "error querying sample region names", map[string]interface{}{
+				"error": err2.Error(),
+			})
+		} else {
+			var sampleRegionNames []string
+			for rows2.Next() {
+				var rn string
+				var cnt uint64
+				if err := rows2.Scan(&rn, &cnt); err == nil {
+					sampleRegionNames = append(sampleRegionNames, fmt.Sprintf("%s:%d", rn, cnt))
+				}
+			}
+			rows2.Close()
+			agentLog("run-filters", "entrepreneur.go:List:sampleRegionNames", "sample region names from DB", map[string]interface{}{
+				"sampleRegionNames": sampleRegionNames,
+				"requestedRegionName": getRegionNameByCode(*filter.RegionCode),
+			})
+		}
+
+		// Получаем примеры region_code
+		sampleQuery := `
+			SELECT DISTINCT region_code, count() as cnt
+			FROM egrul.entrepreneurs FINAL
+			WHERE region_code IS NOT NULL AND region_code != ''
+			GROUP BY region_code
+			ORDER BY cnt DESC
+			LIMIT 10
+		`
+		rows, err := r.client.conn.Query(ctx, sampleQuery)
+		if err != nil {
+			agentLog("run-filters", "entrepreneur.go:List:sampleRegionCodes:error", "error querying sample region codes", map[string]interface{}{
+				"error": err.Error(),
+			})
+		} else {
+			var sampleRegionCodes []string
+			for rows.Next() {
+				var rc string
+				var cnt uint64
+				if err := rows.Scan(&rc, &cnt); err == nil {
+					sampleRegionCodes = append(sampleRegionCodes, fmt.Sprintf("%s:%d", rc, cnt))
+				}
+			}
+			rows.Close()
+			agentLog("run-filters", "entrepreneur.go:List:sampleRegionCodes", "sample region codes from DB", map[string]interface{}{
+				"sampleRegionCodes": sampleRegionCodes,
+				"requestedRegionCode": *filter.RegionCode,
+			})
+		}
+
+		// Проверяем, есть ли записи с запрошенным region_code (без FINAL для быстрой проверки)
+		checkQuery := `SELECT count() FROM egrul.entrepreneurs WHERE region_code = ?`
+		var checkCount uint64
+		if err := r.client.conn.QueryRow(ctx, checkQuery, *filter.RegionCode).Scan(&checkCount); err == nil {
+			agentLog("run-filters", "entrepreneur.go:List:checkRegionCode", "check region_code without FINAL", map[string]interface{}{
+				"requestedRegionCode": *filter.RegionCode,
+				"checkCount": checkCount,
+			})
+		}
+	}
+	// #endregion
+
 	whereClause, args := r.buildWhereClause(filter)
 
 	limit := pagination.GetLimit()
@@ -294,11 +413,34 @@ func (r *EntrepreneurRepository) List(ctx context.Context, filter *model.Entrepr
 		%s
 	`, whereClause)
 
+	// #region agent log
+	agentLog("run-filters", "entrepreneur.go:List:countQuery", "executing count query", map[string]interface{}{
+		"countQuery": countQuery,
+		"args":       args,
+		"argsCount":  len(args),
+		"hasRegionCode": filter != nil && filter.RegionCode != nil && *filter.RegionCode != "",
+		"regionCode": func() string {
+			if filter != nil && filter.RegionCode != nil {
+				return *filter.RegionCode
+			}
+			return ""
+		}(),
+	})
+	// #endregion
+
 	var totalCount uint64
 	countRow := r.client.conn.QueryRow(ctx, countQuery, args...)
 	if err := countRow.Scan(&totalCount); err != nil {
 		return nil, 0, fmt.Errorf("count entrepreneurs: %w", err)
 	}
+
+	// #region agent log
+	agentLog("run-filters", "entrepreneur.go:List:countResult", "count query result", map[string]interface{}{
+		"totalCount": totalCount,
+		"countQuery": countQuery,
+		"args":       args,
+	})
+	// #endregion
 
 	// Data query
 	// Используем прямые значения для LIMIT/OFFSET, так как ClickHouse может не поддерживать параметризацию для них
@@ -308,6 +450,23 @@ func (r *EntrepreneurRepository) List(ctx context.Context, filter *model.Entrepr
 		ORDER BY updated_at DESC
 		LIMIT %d OFFSET %d
 	`, whereClause, limit, offset)
+
+	// #region agent log
+	agentLog("run-filters", "entrepreneur.go:List:dataQuery", "executing data query", map[string]interface{}{
+		"dataQuery":   dataQuery,
+		"args":        args,
+		"argsCount":   len(args),
+		"limit":       limit,
+		"offset":      offset,
+		"hasRegionCode": filter != nil && filter.RegionCode != nil && *filter.RegionCode != "",
+		"regionCode": func() string {
+			if filter != nil && filter.RegionCode != nil {
+				return *filter.RegionCode
+			}
+			return ""
+		}(),
+	})
+	// #endregion
 
 	rows, err := r.client.conn.Query(ctx, dataQuery, args...)
 	if err != nil {
@@ -405,8 +564,16 @@ func (r *EntrepreneurRepository) buildWhereClause(filter *model.EntrepreneurFilt
 		args = append(args, *filter.FirstName+"%")
 	}
 	if filter.RegionCode != nil && *filter.RegionCode != "" {
+		// Упрощаем фильтр по региону: используем только region_code.
+		// Это гарантирует корректное применение логического И с другими условиями (status_code и т.д.)
 		conditions = append(conditions, "region_code = ?")
 		args = append(args, *filter.RegionCode)
+		// #region agent log
+		agentLog("run-filters", "entrepreneur.go:buildWhereClause", "applying simple regionCode filter", map[string]interface{}{
+			"regionCode": *filter.RegionCode,
+			"condition":  "region_code = ?",
+		})
+		// #endregion
 	}
 	if filter.Region != nil && *filter.Region != "" {
 		conditions = append(conditions, "region ILIKE ?")
@@ -416,6 +583,7 @@ func (r *EntrepreneurRepository) buildWhereClause(filter *model.EntrepreneurFilt
 		conditions = append(conditions, "(okved_main_code = ? OR has(okved_additional, ?))")
 		args = append(args, *filter.Okved, *filter.Okved)
 	}
+	// Фильтрация по текстовому статусу (старый вариант, оставляем для обратной совместимости)
 	if filter.Status != nil {
 		conditions = append(conditions, "status = ?")
 		args = append(args, statusToDBValue(*filter.Status))
@@ -427,6 +595,19 @@ func (r *EntrepreneurRepository) buildWhereClause(filter *model.EntrepreneurFilt
 			args = append(args, statusToDBValue(s))
 		}
 		conditions = append(conditions, fmt.Sprintf("status IN (%s)", strings.Join(placeholders, ",")))
+	}
+	// Фильтрация по коду статуса (status_code)
+	if filter.StatusCode != nil && *filter.StatusCode != "" {
+		conditions = append(conditions, "status_code = ?")
+		args = append(args, *filter.StatusCode)
+	}
+	if len(filter.StatusCodeIn) > 0 {
+		placeholders := make([]string, len(filter.StatusCodeIn))
+		for i, code := range filter.StatusCodeIn {
+			placeholders[i] = "?"
+			args = append(args, code)
+		}
+		conditions = append(conditions, fmt.Sprintf("status_code IN (%s)", strings.Join(placeholders, ",")))
 	}
 	if filter.RegisteredAfter != nil {
 		conditions = append(conditions, "registration_date >= ?")

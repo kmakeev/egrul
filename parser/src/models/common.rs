@@ -382,13 +382,41 @@ impl EntityStatus {
 
     /// Статус из кода
     pub fn from_code(code: &str) -> Self {
-        match code {
+        let c = code.trim();
+        match c {
+            // Обобщённые строковые коды
             "актив" | "1" => EntityStatus::Active,
             "ликвид" | "2" => EntityStatus::Liquidated,
             "реорг" | "3" => EntityStatus::Reorganized,
             "исключ" | "4" => EntityStatus::Excluded,
             "банкрот" | "5" => EntityStatus::Bankrupt,
+
+            // Типичные числовые коды ФНС для ИП (ЕГРИП)
+            // 101, 102, 103... — активные/зарегистрированные
+            "101" | "102" | "103" | "104" => EntityStatus::Active,
+            // 201, 202, 203... — прекращение деятельности ИП
+            "201" | "202" | "203" | "211" | "212" | "221" => EntityStatus::Ceased,
+
+            // Часть кодов для ЮЛ (ЕГРЮЛ) по банкротству / ликвидации
+            // 114 — наблюдение в деле о банкротстве
+            "114" => EntityStatus::Bankrupt,
+
             _ => EntityStatus::Unknown,
+        }
+    }
+
+    /// Нормализованный код статуса для БД / Parquet (совпадает с GraphQL/ClickHouse)
+    pub fn as_code(self) -> &'static str {
+        match self {
+            EntityStatus::Active => "active",
+            EntityStatus::Liquidated => "liquidated",
+            EntityStatus::Liquidating => "liquidating",
+            EntityStatus::Reorganized => "reorganized",
+            EntityStatus::Reorganizing => "reorganizing",
+            EntityStatus::Excluded => "excluded",
+            EntityStatus::Bankrupt => "bankrupt",
+            EntityStatus::Ceased => "ceased",
+            EntityStatus::Unknown => "unknown",
         }
     }
 }

@@ -184,7 +184,23 @@ func (h *ManualHandler) handleCompaniesQuery(ctx context.Context, req *GraphQLRe
 	var pagination *model.Pagination
 
 	if filterVar, ok := req.Variables["filter"].(map[string]interface{}); ok {
+		agentLog("run-filters", "exec.go:handleCompaniesQuery", "received filter variables", map[string]interface{}{
+			"filterVar": filterVar,
+			"hasRegionCode": filterVar["regionCode"] != nil,
+			"regionCode": filterVar["regionCode"],
+		})
 		filter = parseCompanyFilter(filterVar)
+		if filter != nil {
+			agentLog("run-filters", "exec.go:handleCompaniesQuery", "parsed company filter", map[string]interface{}{
+				"hasRegionCode": filter.RegionCode != nil,
+				"regionCode": func() string {
+					if filter.RegionCode != nil {
+						return *filter.RegionCode
+					}
+					return ""
+				}(),
+			})
+		}
 	}
 	if paginationVar, ok := req.Variables["pagination"].(map[string]interface{}); ok {
 		pagination = parsePagination(paginationVar)
@@ -201,6 +217,18 @@ func (h *ManualHandler) handleCompaniesQuery(ctx context.Context, req *GraphQLRe
 	if err != nil {
 		return &GraphQLResponse{Errors: []GraphQLError{{Message: err.Error()}}}, nil
 	}
+
+	agentLog("run-filters", "exec.go:handleCompaniesQuery", "companies query result", map[string]interface{}{
+		"totalCount": companies.TotalCount,
+		"edgesCount": len(companies.Edges),
+		"hasRegionCode": filter != nil && filter.RegionCode != nil,
+		"regionCode": func() string {
+			if filter != nil && filter.RegionCode != nil {
+				return *filter.RegionCode
+			}
+			return ""
+		}(),
+	})
 
 	return &GraphQLResponse{Data: map[string]interface{}{"companies": companies}}, nil
 }
@@ -252,7 +280,23 @@ func (h *ManualHandler) handleEntrepreneursQuery(ctx context.Context, req *Graph
 	var pagination *model.Pagination
 
 	if filterVar, ok := req.Variables["filter"].(map[string]interface{}); ok {
+		agentLog("run-filters", "exec.go:handleEntrepreneursQuery", "received filter variables", map[string]interface{}{
+			"filterVar": filterVar,
+			"hasRegionCode": filterVar["regionCode"] != nil,
+			"regionCode": filterVar["regionCode"],
+		})
 		filter = parseEntrepreneurFilter(filterVar)
+		if filter != nil {
+			agentLog("run-filters", "exec.go:handleEntrepreneursQuery", "parsed entrepreneur filter", map[string]interface{}{
+				"hasRegionCode": filter.RegionCode != nil,
+				"regionCode": func() string {
+					if filter.RegionCode != nil {
+						return *filter.RegionCode
+					}
+					return ""
+				}(),
+			})
+		}
 	}
 	if paginationVar, ok := req.Variables["pagination"].(map[string]interface{}); ok {
 		pagination = parsePagination(paginationVar)
@@ -265,6 +309,18 @@ func (h *ManualHandler) handleEntrepreneursQuery(ctx context.Context, req *Graph
 	if err != nil {
 		return &GraphQLResponse{Errors: []GraphQLError{{Message: err.Error()}}}, nil
 	}
+
+	agentLog("run-filters", "exec.go:handleEntrepreneursQuery", "entrepreneurs query result", map[string]interface{}{
+		"totalCount": entrepreneurs.TotalCount,
+		"edgesCount": len(entrepreneurs.Edges),
+		"hasRegionCode": filter != nil && filter.RegionCode != nil,
+		"regionCode": func() string {
+			if filter != nil && filter.RegionCode != nil {
+				return *filter.RegionCode
+			}
+			return ""
+		}(),
+	})
 
 	return &GraphQLResponse{Data: map[string]interface{}{"entrepreneurs": entrepreneurs}}, nil
 }
@@ -351,8 +407,26 @@ func agentLog(runID, location, message string, data map[string]interface{}) {
 		"timestamp": time.Now().UnixMilli(),
 	}
 
-	f, err := os.OpenFile("/Users/konstantin/cursor/egrul/.cursor/debug.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	// Используем переменную окружения или путь по умолчанию
+	logPath := os.Getenv("DEBUG_LOG_PATH")
+	if logPath == "" {
+		logPath = "/Users/konstantin/cursor/egrul/.cursor/debug.log"
+	}
+
+	// Создаем директорию, если её нет
+	dir := logPath[:strings.LastIndex(logPath, "/")]
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		// Если не удалось создать директорию, логируем в stderr
+		enc := json.NewEncoder(os.Stderr)
+		_ = enc.Encode(entry)
+		return
+	}
+
+	f, err := os.OpenFile(logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
+		// Если не удалось записать в файл, логируем в stderr
+		enc := json.NewEncoder(os.Stderr)
+		_ = enc.Encode(entry)
 		return
 	}
 	defer f.Close()
@@ -374,10 +448,80 @@ func parseCompanyFilter(data map[string]interface{}) *model.CompanyFilter {
 	}
 	if v, ok := data["regionCode"].(string); ok {
 		filter.RegionCode = &v
+		agentLog("run-filters", "exec.go:parseCompanyFilter", "parsed regionCode for companies", map[string]interface{}{"regionCode": v})
 	}
 	if v, ok := data["okved"].(string); ok {
 		filter.Okved = &v
 	}
+	// Статус может приходить как GraphQL enum (\"ACTIVE\") или как строка в нижнем регистре (\"active\")
+	if v, ok := data["status"].(string); ok {
+		status := model.EntityStatus(strings.ToUpper(v))
+		if status.IsValid() {
+			filter.Status = &status
+		} else {
+			agentLog("run-filters", "exec.go:parseCompanyFilter", "invalid status value in company filter", map[string]interface{}{
+				"rawStatus": v,
+			})
+		}
+	}
+	// Множественный фильтр по статусу (на будущее)
+	if raw, ok := data["statusIn"].([]interface{}); ok {
+		for _, item := range raw {
+			if sv, ok := item.(string); ok {
+				s := model.EntityStatus(strings.ToUpper(sv))
+				if s.IsValid() {
+					filter.StatusIn = append(filter.StatusIn, s)
+				}
+			}
+		}
+	}
+	// Фильтрация по коду статуса (status_code) как строке
+	if v, ok := data["statusCode"].(string); ok {
+		if strings.TrimSpace(v) != "" {
+			filter.StatusCode = &v
+		}
+	}
+	if raw, ok := data["statusCodeIn"].([]interface{}); ok {
+		for _, item := range raw {
+			if sv, ok := item.(string); ok && strings.TrimSpace(sv) != "" {
+				filter.StatusCodeIn = append(filter.StatusCodeIn, sv)
+			}
+		}
+	}
+	// Фильтрация по дате регистрации (диапазон).
+	// Frontend отправляет поля registrationDateFrom / registrationDateTo в формате YYYY-MM-DD.
+	if v, ok := data["registrationDateFrom"].(string); ok && strings.TrimSpace(v) != "" {
+		if t, err := time.Parse("2006-01-02", v); err == nil {
+			filter.RegisteredAfter = model.NewDate(t)
+		} else {
+			agentLog("run-filters", "exec.go:parseCompanyFilter", "invalid registrationDateFrom value", map[string]interface{}{
+				"raw": v,
+				"err": err.Error(),
+			})
+		}
+	}
+	if v, ok := data["registrationDateTo"].(string); ok && strings.TrimSpace(v) != "" {
+		if t, err := time.Parse("2006-01-02", v); err == nil {
+			filter.RegisteredBefore = model.NewDate(t)
+		} else {
+			agentLog("run-filters", "exec.go:parseCompanyFilter", "invalid registrationDateTo value", map[string]interface{}{
+				"raw": v,
+				"err": err.Error(),
+			})
+		}
+	}
+	agentLog("run-filters", "exec.go:parseCompanyFilter", "parsed company filter", map[string]interface{}{
+		"hasRegionCode": filter.RegionCode != nil,
+		"regionCode": func() string {
+			if filter.RegionCode != nil {
+				return *filter.RegionCode
+			}
+			return ""
+		}(),
+		"hasOkved":   filter.Okved != nil,
+		"hasStatus":  filter.Status != nil,
+		"statusInLen": len(filter.StatusIn),
+	})
 	return filter
 }
 
@@ -395,6 +539,80 @@ func parseEntrepreneurFilter(data map[string]interface{}) *model.EntrepreneurFil
 	if v, ok := data["lastName"].(string); ok {
 		filter.LastName = &v
 	}
+	if v, ok := data["regionCode"].(string); ok {
+		filter.RegionCode = &v
+		agentLog("run-filters", "exec.go:parseEntrepreneurFilter", "parsed regionCode for entrepreneurs", map[string]interface{}{"regionCode": v})
+	}
+	if v, ok := data["okved"].(string); ok {
+		filter.Okved = &v
+	}
+	if v, ok := data["status"].(string); ok {
+		status := model.EntityStatus(strings.ToUpper(v))
+		if status.IsValid() {
+			filter.Status = &status
+		} else {
+			agentLog("run-filters", "exec.go:parseEntrepreneurFilter", "invalid status value in entrepreneur filter", map[string]interface{}{
+				"rawStatus": v,
+			})
+		}
+	}
+	if raw, ok := data["statusIn"].([]interface{}); ok {
+		for _, item := range raw {
+			if sv, ok := item.(string); ok {
+				s := model.EntityStatus(strings.ToUpper(sv))
+				if s.IsValid() {
+					filter.StatusIn = append(filter.StatusIn, s)
+				}
+			}
+		}
+	}
+	// Фильтрация по коду статуса (status_code) как строке
+	if v, ok := data["statusCode"].(string); ok {
+		if strings.TrimSpace(v) != "" {
+			filter.StatusCode = &v
+		}
+	}
+	if raw, ok := data["statusCodeIn"].([]interface{}); ok {
+		for _, item := range raw {
+			if sv, ok := item.(string); ok && strings.TrimSpace(sv) != "" {
+				filter.StatusCodeIn = append(filter.StatusCodeIn, sv)
+			}
+		}
+	}
+	// Фильтрация по дате регистрации (диапазон) для ИП.
+	// Используем те же ключи, что и для компаний: registrationDateFrom / registrationDateTo.
+	if v, ok := data["registrationDateFrom"].(string); ok && strings.TrimSpace(v) != "" {
+		if t, err := time.Parse("2006-01-02", v); err == nil {
+			filter.RegisteredAfter = model.NewDate(t)
+		} else {
+			agentLog("run-filters", "exec.go:parseEntrepreneurFilter", "invalid registrationDateFrom value", map[string]interface{}{
+				"raw": v,
+				"err": err.Error(),
+			})
+		}
+	}
+	if v, ok := data["registrationDateTo"].(string); ok && strings.TrimSpace(v) != "" {
+		if t, err := time.Parse("2006-01-02", v); err == nil {
+			filter.RegisteredBefore = model.NewDate(t)
+		} else {
+			agentLog("run-filters", "exec.go:parseEntrepreneurFilter", "invalid registrationDateTo value", map[string]interface{}{
+				"raw": v,
+				"err": err.Error(),
+			})
+		}
+	}
+	agentLog("run-filters", "exec.go:parseEntrepreneurFilter", "parsed entrepreneur filter", map[string]interface{}{
+		"hasRegionCode": filter.RegionCode != nil,
+		"regionCode": func() string {
+			if filter.RegionCode != nil {
+				return *filter.RegionCode
+			}
+			return ""
+		}(),
+		"hasOkved":   filter.Okved != nil,
+		"hasStatus":  filter.Status != nil,
+		"statusInLen": len(filter.StatusIn),
+	})
 	return filter
 }
 

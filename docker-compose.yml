@@ -55,9 +55,9 @@ services:
     deploy:
       resources:
         limits:
-          memory: 4G
+          memory: 16G
         reservations:
-          memory: 2G
+          memory: 8G
 
   # ClickHouse Client для администрирования
   clickhouse-client:
@@ -116,6 +116,8 @@ services:
     container_name: egrul-api-gateway
     ports:
       - "8080:8080"
+    volumes:
+      - ./.cursor:/app/.cursor:rw
     environment:
       # Server
       - PORT=8080
@@ -137,6 +139,8 @@ services:
       # GraphQL
       - GRAPHQL_PLAYGROUND_ENABLED=true
       - GRAPHQL_INTROSPECTION_ENABLED=true
+      # Debug logging
+      - DEBUG_LOG_PATH=/app/.cursor/debug.log
     depends_on:
       clickhouse:
         condition: service_healthy

@@ -488,6 +488,7 @@ input CompanyFilter {
   isBankrupt: Boolean
   isLiquidating: Boolean
   hasDirector: Boolean
+  founderName: String
 }
 
 """

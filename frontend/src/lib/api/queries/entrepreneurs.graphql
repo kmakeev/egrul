@@ -1,0 +1,73 @@
+query GetEntrepreneur($ogrnip: ID!) {
+  entrepreneur(ogrnip: $ogrnip) {
+    ogrnip
+    inn
+    lastName
+    firstName
+    middleName
+    gender
+    status
+    registrationDate
+    terminationDate
+    address {
+      fullAddress
+      regionCode
+      region
+      city
+      street
+      house
+      postalCode
+    }
+    mainActivity {
+      code
+      name
+      isMain
+    }
+    activities {
+      code
+      name
+      isMain
+    }
+    licenses {
+      id
+      number
+      activity
+      startDate
+      endDate
+      status
+    }
+  }
+}
+
+query SearchEntrepreneurs($filter: EntrepreneurFilter, $pagination: Pagination) {
+  entrepreneurs(filter: $filter, pagination: $pagination) {
+    edges {
+      cursor
+      node {
+        ogrnip
+        inn
+        lastName
+        firstName
+        middleName
+        status
+        registrationDate
+        mainActivity {
+          code
+          name
+          isMain
+        }
+        address {
+          region
+          city
+          fullAddress
+        }
+      }
+    }
+    pageInfo {
+      hasNextPage
+      endCursor
+      totalCount
+    }
+    totalCount
+  }
+}

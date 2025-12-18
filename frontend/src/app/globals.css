@@ -2,13 +2,47 @@
 @tailwind components;
 @tailwind utilities;
 
+@layer base {
 :root {
+    /* Тема: Синяя профессиональная */
+    --background: 222.2 47.4% 11.2%;
+    --foreground: 213 31.8% 91.4%;
+    --card: 222.2 47.4% 11.2%;
+    --card-foreground: 213 31.8% 91.4%;
+    --popover: 222.2 47.4% 11.2%;
+    --popover-foreground: 213 31.8% 91.4%;
+    --primary: 217.2 91.2% 59.8%;
+    --primary-foreground: 222.2 47.4% 11.2%;
+    --secondary: 217.2 32.6% 17.5%;
+    --secondary-foreground: 210 40% 98%;
+    --muted: 217.2 32.6% 17.5%;
+    --muted-foreground: 215 20.2% 65.1%;
+    --accent: 217.2 32.6% 17.5%;
+    --accent-foreground: 210 40% 98%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 217.2 32.6% 17.5%;
+    --input: 217.2 32.6% 17.5%;
+    --ring: 224.3 76.3% 48%;
+    --radius: 0.5rem;
   --font-onest: "Onest", system-ui, sans-serif;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-family: var(--font-onest);
+  }
 }
 
 body {
   font-family: var(--font-onest);
-  background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 50%, #0f172a 100%);
+  /* Синяя профессиональная тема */
+  background: linear-gradient(135deg, #0c1222 0%, #1e3a5f 50%, #0c1222 100%);
   background-attachment: fixed;
 }
 
@@ -23,12 +57,13 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  /* Синяя профессиональная тема */
+  background: linear-gradient(135deg, #3b82f6, #60a5fa);
   border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: linear-gradient(135deg, #818cf8, #a78bfa);
+  background: linear-gradient(135deg, #60a5fa, #93c5fd);
 }
 
 /* Анимации */

@@ -1,0 +1,27 @@
+query GetStatistics($filter: StatsFilter) {
+  statistics(filter: $filter) {
+    totalCompanies
+    totalEntrepreneurs
+    activeCompanies
+    activeEntrepreneurs
+    liquidatedCompanies
+    liquidatedEntrepreneurs
+    registeredToday
+    registeredThisMonth
+    registeredThisYear
+    byRegion {
+      regionCode
+      regionName
+      companiesCount
+      entrepreneursCount
+      activeCount
+      liquidatedCount
+    }
+    byActivity(limit: 20) {
+      okvedCode
+      okvedName
+      companiesCount
+      entrepreneursCount
+    }
+  }
+}

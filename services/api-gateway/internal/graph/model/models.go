@@ -365,6 +365,8 @@ type CompanyFilter struct {
 	Okved            *string         `json:"okved"`
 	Status           *EntityStatus   `json:"status"`
 	StatusIn         []EntityStatus  `json:"statusIn"`
+	StatusCode       *string         `json:"statusCode"`
+	StatusCodeIn     []string        `json:"statusCodeIn"`
 	RegisteredAfter  *Date           `json:"registeredAfter"`
 	RegisteredBefore *Date           `json:"registeredBefore"`
 	TerminatedAfter  *Date           `json:"terminatedAfter"`
@@ -374,6 +376,7 @@ type CompanyFilter struct {
 	IsBankrupt       *bool           `json:"isBankrupt"`
 	IsLiquidating    *bool           `json:"isLiquidating"`
 	HasDirector      *bool           `json:"hasDirector"`
+	FounderName      *string         `json:"founderName"`
 }
 
 // EntrepreneurFilter фильтр ИП
@@ -388,6 +391,8 @@ type EntrepreneurFilter struct {
 	Okved            *string        `json:"okved"`
 	Status           *EntityStatus  `json:"status"`
 	StatusIn         []EntityStatus `json:"statusIn"`
+	StatusCode       *string        `json:"statusCode"`
+	StatusCodeIn     []string       `json:"statusCodeIn"`
 	RegisteredAfter  *Date          `json:"registeredAfter"`
 	RegisteredBefore *Date          `json:"registeredBefore"`
 	TerminatedAfter  *Date          `json:"terminatedAfter"`

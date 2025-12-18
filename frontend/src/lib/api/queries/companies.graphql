@@ -1,0 +1,89 @@
+query GetCompany($ogrn: ID!) {
+  company(ogrn: $ogrn) {
+    ogrn
+    inn
+    kpp
+    fullName
+    shortName
+    status
+    registrationDate
+    legalForm {
+      code
+      name
+    }
+    address {
+      fullAddress
+      regionCode
+      region
+      city
+      street
+      house
+      postalCode
+    }
+    capital {
+      amount
+      currency
+    }
+    director {
+      lastName
+      firstName
+      middleName
+      inn
+      position
+    }
+    mainActivity {
+      code
+      name
+      isMain
+    }
+    activities {
+      code
+      name
+      isMain
+    }
+    founders(limit: 20, offset: 0) {
+      type
+      ogrn
+      inn
+      name
+      sharePercent
+    }
+  }
+}
+
+query SearchCompanies($filter: CompanyFilter, $pagination: Pagination) {
+  companies(filter: $filter, pagination: $pagination) {
+    edges {
+      cursor
+      node {
+        ogrn
+        inn
+        kpp
+        fullName
+        shortName
+        status
+        registrationDate
+        mainActivity {
+          code
+          name
+          isMain
+        }
+        address {
+          region
+          city
+          fullAddress
+        }
+        capital {
+          amount
+          currency
+        }
+      }
+    }
+    pageInfo {
+      hasNextPage
+      endCursor
+      totalCount
+    }
+    totalCount
+  }
+}

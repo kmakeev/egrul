@@ -81,12 +81,12 @@ impl EgrulXmlParser {
         record.extract_date = start.get_date_attr(attr_names::DATE_VYP)
             .or_else(|| start.get_date_attr("ДатаВып".as_bytes()));
         
-        // Статус
+        // Статус: на уровне парсера сохраняем только исходное значение из XML.
+        // Любая интерпретация (активно/ликвидировано и т.п.) должна выполняться выше по конвейеру.
         if let Some(status_str) = start.get_attr(attr_names::STATUS_UL)
             .or_else(|| start.get_attr("СтатусЮЛ".as_bytes()))
             .or_else(|| start.get_attr(attr_names::STATUS)) 
         {
-            record.status = EntityStatus::from_str(&status_str);
             record.status_code = Some(status_str);
         }
 
@@ -176,6 +176,15 @@ impl EgrulXmlParser {
                             .or_else(|| e.get_date_attr("Дата".as_bytes()));
                         record.termination_method = e.get_attr("СпосПрекращ".as_bytes());
                     }
+                    // Статус ЮЛ (вложенный блок СвСтатус / СвСтатусЮЛ)
+                    else if tag_matches(tag, "СвСтатус".as_bytes()) || tag_matches(tag, "СвСтатусЮЛ".as_bytes()) {
+                        let code = e.get_attr("КодСтатусЮЛ".as_bytes())
+                            .or_else(|| e.get_attr("КодСтатус".as_bytes()));
+
+                        if let Some(c) = code {
+                            record.status_code = Some(c);
+                        }
+                    }
                 }
                 Ok(Event::Empty(ref e)) => {
                     let name = e.name();
@@ -210,6 +219,15 @@ impl EgrulXmlParser {
                     else if tag_matches(tag, "СвКонт".as_bytes()) {
                         if let Some(email) = e.get_attr("E-mail".as_bytes()) {
                             record.email = Some(email);
+                        }
+                    }
+                    // Статус ЮЛ (СвСтатус / СвСтатусЮЛ как empty element)
+                    else if tag_matches(tag, "СвСтатус".as_bytes()) || tag_matches(tag, "СвСтатусЮЛ".as_bytes()) {
+                        let code = e.get_attr("КодСтатусЮЛ".as_bytes())
+                            .or_else(|| e.get_attr("КодСтатус".as_bytes()));
+
+                        if let Some(c) = code {
+                            record.status_code = Some(c);
                         }
                     }
                 }

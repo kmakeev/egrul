@@ -80,11 +80,11 @@ impl EgripXmlParser {
         record.extract_date = start.get_date_attr("ДатаВып".as_bytes())
             .or_else(|| start.get_date_attr(attr_names::DATE_VYP));
         
-        // Статус
+        // Статус: на уровне парсера сохраняем только исходный код/реквизиты из XML.
+        // Никаких попыток интерпретации кода или текста статуса здесь не делаем.
         if let Some(status_str) = start.get_attr("Статус".as_bytes())
-            .or_else(|| start.get_attr(attr_names::STATUS)) 
+            .or_else(|| start.get_attr(attr_names::STATUS))
         {
-            record.status = EntityStatus::from_str(&status_str);
             record.status_code = Some(status_str);
         }
 
@@ -133,6 +133,18 @@ impl EgripXmlParser {
                     // Гражданство
                     else if tag_matches(tag, "СвГражд".as_bytes()) || tag_matches(tag, "Гражданство".as_bytes()) {
                         record.citizenship = Some(self.parse_citizenship(e));
+                    }
+                    // Статус ИП (элемент СвСтатус)
+                    else if tag_matches(tag, "СвСтатус".as_bytes()) {
+                        let code = e.get_attr("КодСтатус".as_bytes());
+                        let term_date = e.get_date_attr("ДатаПрекращ".as_bytes());
+
+                        if let Some(c) = code {
+                            record.status_code = Some(c);
+                        }
+                        if let Some(d) = term_date {
+                            record.termination_date = Some(d);
+                        }
                     }
                     // Адрес (регион места жительства)
                     else if tag_matches(tag, "СвАдрМЖ".as_bytes()) || tag_matches(tag, "СвАдрес".as_bytes()) {
@@ -212,6 +224,18 @@ impl EgripXmlParser {
                     // Гражданство
                     else if tag_matches(tag, "СвГражд".as_bytes()) {
                         record.citizenship = Some(self.parse_citizenship(e));
+                    }
+                    // Статус ИП (СвСтатус как empty element)
+                    else if tag_matches(tag, "СвСтатус".as_bytes()) {
+                        let code = e.get_attr("КодСтатус".as_bytes());
+                        let term_date = e.get_date_attr("ДатаПрекращ".as_bytes());
+
+                        if let Some(c) = code {
+                            record.status_code = Some(c);
+                        }
+                        if let Some(d) = term_date {
+                            record.termination_date = Some(d);
+                        }
                     }
                     // ОКВЭД основной
                     else if tag_matches(tag, "СвОКВЭДОсн".as_bytes()) {

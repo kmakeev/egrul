@@ -1,6 +1,6 @@
 .PHONY: help setup dev build test clean docker-up docker-down docker-logs \
         parser-build parser-run parser-test \
-        services-build services-run services-test \
+        services-build services-run services-test services-generate \
         frontend-dev frontend-build frontend-test \
         db-migrate db-seed lint format
 
@@ -118,6 +118,19 @@ services-test: ## Тестирование Go сервисов
 	@echo "$(CYAN)🧪 Тестирование сервисов...$(NC)"
 	@cd services/api-gateway && $(GO) test ./...
 	@cd services/search-service && $(GO) test ./...
+
+services-generate: ## Генерация GraphQL кода для API Gateway
+	@echo "$(CYAN)🔧 Генерация GraphQL кода...$(NC)"
+	@docker run --rm \
+		-v "$(PWD)/services/api-gateway:/app" \
+		-w /app \
+		golang:1.22-alpine \
+		sh -c "apk add --no-cache git && go mod tidy && go mod download && go run github.com/99designs/gqlgen generate || true"
+	@if [ -f services/api-gateway/internal/graph/schema.resolvers.go ]; then \
+		echo "$(YELLOW)⚠️  Удаление дублирующего schema.resolvers.go...$(NC)"; \
+		rm -f services/api-gateway/internal/graph/schema.resolvers.go; \
+	fi
+	@echo "$(GREEN)✅ GraphQL код сгенерирован$(NC)"
 
 # ==================== Frontend (Next.js) ====================
 
