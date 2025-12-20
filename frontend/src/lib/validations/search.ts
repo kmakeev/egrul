@@ -26,15 +26,22 @@ export const searchFiltersSchema = z.object({
     .max(200, "Слишком длинное значение")
     .optional()
     .catch(undefined),
+  // Тип организации: "all" (все), "company" (ЮЛ), "entrepreneur" (ИП)
+  entityType: z
+    .enum(["all", "company", "entrepreneur"])
+    .default("all")
+    .catch("all"),
   dateFrom: z.string().optional().catch(undefined),
   dateTo: z.string().optional().catch(undefined),
   page: z.coerce.number().min(1).default(1),
   pageSize: z.coerce.number().min(1).max(100).default(20),
   sortBy: z
-    .enum(["name", "inn", "region", "status", "registrationDate"])
+    .enum(["name", "inn", "region", "ogrn", "registrationDate"])
     .optional()
     .catch(undefined),
   sortOrder: z.enum(["asc", "desc"]).default("asc"),
+  // Флаг применения расширенных фильтров
+  applied: z.boolean().default(false).catch(false),
 });
 
 export type SearchFiltersInput = z.infer<typeof searchFiltersSchema>;

@@ -16,7 +16,7 @@ type QueryResolver interface {
 	SearchCompanies(ctx context.Context, query string, limit *int, offset *int) ([]*model.Company, error)
 	Entrepreneur(ctx context.Context, ogrnip string) (*model.Entrepreneur, error)
 	EntrepreneurByInn(ctx context.Context, inn string) (*model.Entrepreneur, error)
-	Entrepreneurs(ctx context.Context, filter *model.EntrepreneurFilter, pagination *model.Pagination) (*model.EntrepreneurConnection, error)
+	Entrepreneurs(ctx context.Context, filter *model.EntrepreneurFilter, pagination *model.Pagination, sort *model.EntrepreneurSort) (*model.EntrepreneurConnection, error)
 	SearchEntrepreneurs(ctx context.Context, query string, limit *int, offset *int) ([]*model.Entrepreneur, error)
 	Search(ctx context.Context, query string, limit *int) (*model.SearchResult, error)
 	Statistics(ctx context.Context, filter *model.StatsFilter) (*model.Statistics, error)

@@ -75,6 +75,105 @@ import_parquet() {
     fi
 }
 
+# Функция для импорта учредителей из временной таблицы компаний
+import_founders_from_companies_import() {
+    log_info "Импорт учредителей из данных ЕГРЮЛ..."
+    
+    # Очищаем таблицу учредителей (для MVP - полная перезагрузка)
+    clickhouse_query "TRUNCATE TABLE ${CLICKHOUSE_DATABASE}.founders"
+    
+    # Сначала создаем временную таблицу для обработки JSON
+    clickhouse_query "
+    CREATE TABLE ${CLICKHOUSE_DATABASE}.founders_temp (
+        company_ogrn String,
+        company_inn String,
+        company_name String,
+        founders_json String
+    ) ENGINE = Memory
+    "
+    
+    # Заполняем временную таблицу только записями с учредителями
+    clickhouse_query "
+    INSERT INTO ${CLICKHOUSE_DATABASE}.founders_temp
+    SELECT 
+        ogrn,
+        inn,
+        full_name,
+        founders
+    FROM ${CLICKHOUSE_DATABASE}.companies_import
+    WHERE founders IS NOT NULL AND founders != '' AND founders != '[]'
+    "
+    
+    # Теперь импортируем учредителей из временной таблицы
+    clickhouse_query "
+    INSERT INTO ${CLICKHOUSE_DATABASE}.founders (
+        company_ogrn, company_inn, company_name,
+        founder_type, founder_ogrn, founder_inn, founder_name,
+        founder_last_name, founder_first_name, founder_middle_name,
+        founder_country, share_nominal_value, share_percent,
+        version_date
+    )
+    SELECT 
+        company_ogrn,
+        company_inn,
+        company_name,
+        -- Определяем тип учредителя по ключам в JSON
+        if(JSONHas(founder_json, 'Person'), 'person',
+           if(JSONHas(founder_json, 'RussianLegalEntity'), 'russian_company',
+              if(JSONHas(founder_json, 'ForeignLegalEntity'), 'foreign_company',
+                 if(JSONHas(founder_json, 'PublicEntity'), 'public_entity',
+                    if(JSONHas(founder_json, 'MutualFund'), 'fund', 'unknown'))))) as founder_type,
+        -- ОГРН учредителя (только для российских юр. лиц)
+        JSONExtractString(founder_json, 'RussianLegalEntity', 'ogrn') as founder_ogrn,
+        -- ИНН учредителя
+        if(JSONExtractString(founder_json, 'Person', 'person', 'inn') != '',
+           JSONExtractString(founder_json, 'Person', 'person', 'inn'),
+           JSONExtractString(founder_json, 'RussianLegalEntity', 'inn')) as founder_inn,
+        -- Имя учредителя
+        if(JSONHas(founder_json, 'Person'),
+           concat(JSONExtractString(founder_json, 'Person', 'person', 'last_name'), ' ',
+                  JSONExtractString(founder_json, 'Person', 'person', 'first_name'),
+                  if(JSONExtractString(founder_json, 'Person', 'person', 'middle_name') != '',
+                     concat(' ', JSONExtractString(founder_json, 'Person', 'person', 'middle_name')), '')),
+           if(JSONExtractString(founder_json, 'RussianLegalEntity', 'name') != '',
+              JSONExtractString(founder_json, 'RussianLegalEntity', 'name'),
+              if(JSONExtractString(founder_json, 'ForeignLegalEntity', 'name') != '',
+                 JSONExtractString(founder_json, 'ForeignLegalEntity', 'name'),
+                 if(JSONExtractString(founder_json, 'PublicEntity', 'name') != '',
+                    JSONExtractString(founder_json, 'PublicEntity', 'name'),
+                    JSONExtractString(founder_json, 'MutualFund', 'name'))))) as founder_name,
+        -- Фамилия (только для физических лиц)
+        JSONExtractString(founder_json, 'Person', 'person', 'last_name') as founder_last_name,
+        -- Имя (только для физических лиц)
+        JSONExtractString(founder_json, 'Person', 'person', 'first_name') as founder_first_name,
+        -- Отчество (только для физических лиц)
+        JSONExtractString(founder_json, 'Person', 'person', 'middle_name') as founder_middle_name,
+        -- Страна (для иностранных юр. лиц)
+        JSONExtractString(founder_json, 'ForeignLegalEntity', 'country') as founder_country,
+        -- Номинальная стоимость доли
+        if(JSONExtractFloat(founder_json, 'Person', 'share', 'nominal_value') != 0,
+           JSONExtractFloat(founder_json, 'Person', 'share', 'nominal_value'),
+           if(JSONExtractFloat(founder_json, 'RussianLegalEntity', 'share', 'nominal_value') != 0,
+              JSONExtractFloat(founder_json, 'RussianLegalEntity', 'share', 'nominal_value'),
+              JSONExtractFloat(founder_json, 'ForeignLegalEntity', 'share', 'nominal_value'))) as share_nominal_value,
+        -- Процент доли
+        if(JSONExtractFloat(founder_json, 'Person', 'share', 'percent') != 0,
+           JSONExtractFloat(founder_json, 'Person', 'share', 'percent'),
+           if(JSONExtractFloat(founder_json, 'RussianLegalEntity', 'share', 'percent') != 0,
+              JSONExtractFloat(founder_json, 'RussianLegalEntity', 'share', 'percent'),
+              JSONExtractFloat(founder_json, 'ForeignLegalEntity', 'share', 'percent'))) as share_percent,
+        today() as version_date
+    FROM ${CLICKHOUSE_DATABASE}.founders_temp
+    ARRAY JOIN JSONExtractArrayRaw(founders_json) as founder_json
+    "
+    
+    # Удаляем временную таблицу
+    clickhouse_query "DROP TABLE IF EXISTS ${CLICKHOUSE_DATABASE}.founders_temp"
+    
+    local founders_count=$(clickhouse_query "SELECT count() FROM ${CLICKHOUSE_DATABASE}.founders")
+    log_success "Импорт учредителей завершен. Всего записей: $founders_count"
+}
+
 # Функция для создания промежуточной таблицы и трансформации данных
 import_egrul_with_transform() {
     local file="$1"
@@ -114,6 +213,7 @@ import_egrul_with_transform() {
         additional_activities Nullable(String),
         email Nullable(String),
         founders_count Nullable(Int32),
+        founders Nullable(String),
         extract_date Nullable(String)
     ) ENGINE = Memory
     "
@@ -206,6 +306,9 @@ import_egrul_with_transform() {
         log_info "Выполнение принудительного слияния для удаления дублей..."
         clickhouse_query "OPTIMIZE TABLE ${CLICKHOUSE_DATABASE}.companies FINAL"
     fi
+    
+    # Импорт учредителей
+    import_founders_from_companies_import
     
     # Удаляем временную таблицу
     clickhouse_query "DROP TABLE IF EXISTS ${CLICKHOUSE_DATABASE}.companies_import"

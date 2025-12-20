@@ -51,8 +51,6 @@ pub struct Address {
     pub postal_code: Option<String>,
     /// Код региона
     pub region_code: Option<String>,
-    /// Наименование региона
-    pub region: Option<String>,
     /// Район
     pub district: Option<String>,
     /// Город
@@ -81,12 +79,6 @@ impl Address {
         if let Some(ref code) = self.postal_code {
             if !code.is_empty() {
                 parts.push(code.clone());
-            }
-        }
-
-        if let Some(ref region) = self.region {
-            if !region.is_empty() {
-                parts.push(region.clone());
             }
         }
 
@@ -137,7 +129,7 @@ impl Address {
 
     pub fn is_empty(&self) -> bool {
         self.postal_code.is_none()
-            && self.region.is_none()
+            && self.region_code.is_none()
             && self.city.is_none()
             && self.street.is_none()
             && self.full_address.is_none()

@@ -11,4 +11,5 @@ export * from "./accordion";
 export * from "./table";
 export * from "./label";
 export * from "./checkbox";
+export * from "./radio-group";
 

@@ -5,7 +5,7 @@ import { defaultGraphQLClient } from "@/lib/api/graphql-client";
 import type { LegalEntity, IndividualEntrepreneur } from "@/lib/api";
 
 // Временно отключаем логи фронтенда для просмотра логов бэкенда
-const ENABLE_FRONTEND_LOGS = false;
+const ENABLE_FRONTEND_LOGS = true;
 
 // ==================== Типы ответов GraphQL ====================
 
@@ -113,6 +113,8 @@ export function useSearchCompaniesQuery<
   variables: {
     filter?: Record<string, unknown>;
     pagination?: { limit?: number; offset?: number };
+    sort?: Record<string, unknown>;
+    searchType?: string;
   },
   options?: Omit<
     UseQueryOptions<
@@ -141,6 +143,7 @@ export function useSearchCompaniesQuery<
         variablesString: JSON.stringify(variables),
         filter: variables.filter,
         pagination: variables.pagination,
+        searchType: variables.searchType,
       },
       timestamp: Date.now(),
     }),
@@ -205,8 +208,8 @@ export function useSearchCompaniesQuery<
         typeof variables
       >(
         /* GraphQL */ `
-          query SearchCompanies($filter: CompanyFilter, $pagination: Pagination) {
-            companies(filter: $filter, pagination: $pagination) {
+          query SearchCompanies($filter: CompanyFilter, $pagination: Pagination, $sort: CompanySort) {
+            companies(filter: $filter, pagination: $pagination, sort: $sort) {
               edges {
                 cursor
                 node {
@@ -217,6 +220,9 @@ export function useSearchCompaniesQuery<
                   shortName
                   status
                   registrationDate
+                  address {
+                    regionCode
+                  }
                 }
               }
               pageInfo {
@@ -288,6 +294,8 @@ export function useSearchEntrepreneursQuery<
   variables: {
     filter?: Record<string, unknown>;
     pagination?: { limit?: number; offset?: number };
+    sort?: Record<string, unknown>;
+    searchType?: string;
   },
   options?: Omit<
     UseQueryOptions<
@@ -316,6 +324,7 @@ export function useSearchEntrepreneursQuery<
         variablesString: JSON.stringify(variables),
         filter: variables.filter,
         pagination: variables.pagination,
+        searchType: variables.searchType,
       },
       timestamp: Date.now(),
     }),
@@ -380,8 +389,8 @@ export function useSearchEntrepreneursQuery<
         typeof variables
       >(
         /* GraphQL */ `
-          query SearchEntrepreneurs($filter: EntrepreneurFilter, $pagination: Pagination) {
-            entrepreneurs(filter: $filter, pagination: $pagination) {
+          query SearchEntrepreneurs($filter: EntrepreneurFilter, $pagination: Pagination, $sort: EntrepreneurSort) {
+            entrepreneurs(filter: $filter, pagination: $pagination, sort: $sort) {
               edges {
                 cursor
                 node {
@@ -392,6 +401,9 @@ export function useSearchEntrepreneursQuery<
                   middleName
                   status
                   registrationDate
+                  address {
+                    regionCode
+                  }
                 }
               }
               pageInfo {

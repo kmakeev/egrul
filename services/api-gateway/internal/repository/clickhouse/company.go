@@ -868,6 +868,7 @@ func (r *CompanyRepository) buildWhereClause(filter *model.CompanyFilter) (strin
 
 func (r *CompanyRepository) buildOrderClause(sort *model.CompanySort) string {
 	if sort == nil {
+		r.logger.Info("buildOrderClause: sort is nil, using default ORDER BY updated_at DESC")
 		return "ORDER BY updated_at DESC"
 	}
 
@@ -890,11 +891,13 @@ func (r *CompanyRepository) buildOrderClause(sort *model.CompanySort) string {
 	}
 
 	order := "ASC"
-	if sort.Order == model.SortOrderDesc {
+	if sort.Order != nil && *sort.Order == model.SortOrderDesc {
 		order = "DESC"
 	}
 
-	return fmt.Sprintf("ORDER BY %s %s", field, order)
+	orderClause := fmt.Sprintf("ORDER BY %s %s", field, order)
+	r.logger.Info("buildOrderClause", zap.String("field", field), zap.String("order", order), zap.String("orderClause", orderClause))
+	return orderClause
 }
 
 func statusToDBValue(status model.EntityStatus) string {

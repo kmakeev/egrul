@@ -117,7 +117,7 @@ function SearchPageContent() {
 
       {!enabled && !isLoading && (
         <div className="text-center py-12 text-muted-foreground">
-          <p>Введите минимум 2 символа для начала поиска</p>
+          <p>Задайте параметры поиска и нажмите &quot;Найти&quot; для получения результатов</p>
         </div>
       )}
     </div>

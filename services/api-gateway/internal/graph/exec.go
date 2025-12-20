@@ -182,6 +182,7 @@ func (h *ManualHandler) handleCompanyByInnQuery(ctx context.Context, req *GraphQ
 func (h *ManualHandler) handleCompaniesQuery(ctx context.Context, req *GraphQLRequest) (*GraphQLResponse, error) {
 	var filter *model.CompanyFilter
 	var pagination *model.Pagination
+	var sort *model.CompanySort
 
 	if filterVar, ok := req.Variables["filter"].(map[string]interface{}); ok {
 		agentLog("run-filters", "exec.go:handleCompaniesQuery", "received filter variables", map[string]interface{}{
@@ -212,8 +213,11 @@ func (h *ManualHandler) handleCompaniesQuery(ctx context.Context, req *GraphQLRe
 	if pagination == nil {
 		pagination = &model.Pagination{}
 	}
+	if sortVar, ok := req.Variables["sort"].(map[string]interface{}); ok {
+		sort = parseCompanySort(sortVar)
+	}
 
-	companies, err := h.resolver.Query().Companies(ctx, filter, pagination, nil)
+	companies, err := h.resolver.Query().Companies(ctx, filter, pagination, sort)
 	if err != nil {
 		return &GraphQLResponse{Errors: []GraphQLError{{Message: err.Error()}}}, nil
 	}
@@ -278,6 +282,7 @@ func (h *ManualHandler) handleEntrepreneurQuery(ctx context.Context, req *GraphQ
 func (h *ManualHandler) handleEntrepreneursQuery(ctx context.Context, req *GraphQLRequest) (*GraphQLResponse, error) {
 	var filter *model.EntrepreneurFilter
 	var pagination *model.Pagination
+	var sort *model.EntrepreneurSort
 
 	if filterVar, ok := req.Variables["filter"].(map[string]interface{}); ok {
 		agentLog("run-filters", "exec.go:handleEntrepreneursQuery", "received filter variables", map[string]interface{}{
@@ -304,8 +309,11 @@ func (h *ManualHandler) handleEntrepreneursQuery(ctx context.Context, req *Graph
 	if pagination == nil {
 		pagination = &model.Pagination{}
 	}
+	if sortVar, ok := req.Variables["sort"].(map[string]interface{}); ok {
+		sort = parseEntrepreneurSort(sortVar)
+	}
 
-	entrepreneurs, err := h.resolver.Query().Entrepreneurs(ctx, filter, pagination)
+	entrepreneurs, err := h.resolver.Query().Entrepreneurs(ctx, filter, pagination, sort)
 	if err != nil {
 		return &GraphQLResponse{Errors: []GraphQLError{{Message: err.Error()}}}, nil
 	}
@@ -453,6 +461,12 @@ func parseCompanyFilter(data map[string]interface{}) *model.CompanyFilter {
 	if v, ok := data["okved"].(string); ok {
 		filter.Okved = &v
 	}
+	// Фильтр по ФИО учредителя
+	if v, ok := data["founderName"].(string); ok && strings.TrimSpace(v) != "" {
+		trimmed := strings.TrimSpace(v)
+		filter.FounderName = &trimmed
+		agentLog("run-filters", "exec.go:parseCompanyFilter", "parsed founderName for companies", map[string]interface{}{"founderName": trimmed})
+	}
 	// Статус может приходить как GraphQL enum (\"ACTIVE\") или как строка в нижнем регистре (\"active\")
 	if v, ok := data["status"].(string); ok {
 		status := model.EntityStatus(strings.ToUpper(v))
@@ -518,11 +532,30 @@ func parseCompanyFilter(data map[string]interface{}) *model.CompanyFilter {
 			}
 			return ""
 		}(),
-		"hasOkved":   filter.Okved != nil,
-		"hasStatus":  filter.Status != nil,
-		"statusInLen": len(filter.StatusIn),
+		"hasOkved":      filter.Okved != nil,
+		"hasStatus":     filter.Status != nil,
+		"statusInLen":   len(filter.StatusIn),
+		"hasFounderName": filter.FounderName != nil,
+		"founderName": func() string {
+			if filter.FounderName != nil {
+				return *filter.FounderName
+			}
+			return ""
+		}(),
 	})
 	return filter
+}
+
+func parseCompanySort(data map[string]interface{}) *model.CompanySort {
+	sort := &model.CompanySort{}
+	if v, ok := data["field"].(string); ok {
+		sort.Field = model.CompanySortField(v)
+	}
+	if v, ok := data["order"].(string); ok {
+		order := model.SortOrder(strings.ToUpper(v))
+		sort.Order = &order
+	}
+	return sort
 }
 
 func parseEntrepreneurFilter(data map[string]interface{}) *model.EntrepreneurFilter {
@@ -614,6 +647,21 @@ func parseEntrepreneurFilter(data map[string]interface{}) *model.EntrepreneurFil
 		"statusInLen": len(filter.StatusIn),
 	})
 	return filter
+}
+
+func parseEntrepreneurSort(data map[string]interface{}) *model.EntrepreneurSort {
+	sort := &model.EntrepreneurSort{}
+	if v, ok := data["field"].(string); ok {
+		field := model.EntrepreneurSortField(v)
+		if field.IsValid() {
+			sort.Field = field
+		}
+	}
+	if v, ok := data["order"].(string); ok {
+		order := model.SortOrder(strings.ToUpper(v))
+		sort.Order = &order
+	}
+	return sort
 }
 
 func parsePagination(data map[string]interface{}) *model.Pagination {

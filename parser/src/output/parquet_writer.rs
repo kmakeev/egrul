@@ -47,7 +47,6 @@ impl ParquetOutputWriter {
             Field::new("termination_date", DataType::Utf8, true),
             Field::new("address", DataType::Utf8, true),
             Field::new("region_code", DataType::Utf8, true),
-            Field::new("region", DataType::Utf8, true),
             Field::new("capital_amount", DataType::Float64, true),
             Field::new("capital_currency", DataType::Utf8, true),
             Field::new("head_name", DataType::Utf8, true),
@@ -57,6 +56,7 @@ impl ParquetOutputWriter {
             Field::new("additional_activities", DataType::Utf8, true), // JSON массив
             Field::new("email", DataType::Utf8, true),
             Field::new("founders_count", DataType::Int32, true),
+            Field::new("founders", DataType::Utf8, true), // JSON массив учредителей
             Field::new("extract_date", DataType::Utf8, true),
         ])
     }
@@ -78,7 +78,6 @@ impl ParquetOutputWriter {
             Field::new("registration_date", DataType::Utf8, true),
             Field::new("termination_date", DataType::Utf8, true),
             Field::new("region_code", DataType::Utf8, true),
-            Field::new("region", DataType::Utf8, true),
             Field::new("main_activity_code", DataType::Utf8, true),
             Field::new("main_activity_name", DataType::Utf8, true),
             Field::new("additional_activities", DataType::Utf8, true), // JSON массив
@@ -126,9 +125,6 @@ impl ParquetOutputWriter {
         let region_code: StringArray = records.iter()
             .map(|r| r.address.as_ref().and_then(|a| a.region_code.as_deref()))
             .collect();
-        let region: StringArray = records.iter()
-            .map(|r| r.address.as_ref().and_then(|a| a.region.as_deref()))
-            .collect();
         let capital_amount: Float64Array = records.iter()
             .map(|r| r.capital.as_ref().map(|c| c.amount))
             .collect();
@@ -162,6 +158,15 @@ impl ParquetOutputWriter {
         let founders_count: Int32Array = records.iter()
             .map(|r| Some(r.founders.len() as i32))
             .collect();
+        let founders: StringArray = records.iter()
+            .map(|r| {
+                if r.founders.is_empty() {
+                    None
+                } else {
+                    serde_json::to_string(&r.founders).ok()
+                }
+            })
+            .collect();
         let extract_date: StringArray = records.iter()
             .map(|r| r.extract_date.map(|d| d.to_string()))
             .collect();
@@ -181,7 +186,6 @@ impl ParquetOutputWriter {
                 Arc::new(termination_date),
                 Arc::new(address),
                 Arc::new(region_code),
-                Arc::new(region),
                 Arc::new(capital_amount),
                 Arc::new(capital_currency),
                 Arc::new(head_name),
@@ -191,6 +195,7 @@ impl ParquetOutputWriter {
                 Arc::new(additional_activities),
                 Arc::new(email),
                 Arc::new(founders_count),
+                Arc::new(founders),
                 Arc::new(extract_date),
             ],
         )?;
@@ -246,9 +251,6 @@ impl ParquetOutputWriter {
         let region_code: StringArray = records.iter()
             .map(|r| r.address.as_ref().and_then(|a| a.region_code.as_deref()))
             .collect();
-        let region: StringArray = records.iter()
-            .map(|r| r.address.as_ref().and_then(|a| a.region.as_deref()))
-            .collect();
         let main_activity_code: StringArray = records.iter()
             .map(|r| r.main_activity.as_ref().map(|a| a.code.as_str()))
             .collect();
@@ -288,7 +290,6 @@ impl ParquetOutputWriter {
                 Arc::new(registration_date),
                 Arc::new(termination_date),
                  Arc::new(region_code),
-                Arc::new(region),
                 Arc::new(main_activity_code),
                 Arc::new(main_activity_name),
                 Arc::new(additional_activities),

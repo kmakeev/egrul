@@ -69,6 +69,17 @@ enum CompanySortField {
   UPDATED_AT
 }
 
+"""
+Поле для сортировки предпринимателей
+"""
+enum EntrepreneurSortField {
+  OGRNIP
+  INN
+  FULL_NAME
+  REGISTRATION_DATE
+  UPDATED_AT
+}
+
 # ==============================================================================
 # Базовые типы данных
 # ==============================================================================
@@ -468,6 +479,14 @@ input CompanySort {
 }
 
 """
+Сортировка предпринимателей
+"""
+input EntrepreneurSort {
+  field: EntrepreneurSortField!
+  order: SortOrder = ASC
+}
+
+"""
 Фильтр компаний
 """
 input CompanyFilter {
@@ -557,6 +576,7 @@ type Query {
   entrepreneurs(
     filter: EntrepreneurFilter
     pagination: Pagination
+    sort: EntrepreneurSort
   ): EntrepreneurConnection!
   
   # Поиск ИП по текстовому запросу

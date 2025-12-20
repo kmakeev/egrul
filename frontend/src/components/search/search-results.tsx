@@ -21,9 +21,9 @@ import {
   FileText,
   ExternalLink,
 } from "lucide-react";
-import { cn } from "@/lib/utils";
 import type { SearchRow } from "@/hooks/use-search";
 import type { SearchFiltersInput } from "@/lib/validations";
+import { decodeHtmlEntities } from "@/lib/html-utils";
 
 interface SearchResultsProps {
   rows: SearchRow[];
@@ -33,13 +33,13 @@ interface SearchResultsProps {
   error: Error | null;
   filters: SearchFiltersInput;
   onSortChange: (
-    sortBy: "name" | "inn" | "region" | "status" | "registrationDate",
+    sortBy: "name" | "inn" | "ogrn" | "region" | "registrationDate",
     sortOrder: "asc" | "desc"
   ) => void;
   onExport?: (format: "csv" | "xlsx") => void;
 }
 
-type SortField = "name" | "inn" | "status" | "registrationDate";
+type SortField = "name" | "inn" | "ogrn" | "registrationDate";
 
 export function SearchResults({
   rows,
@@ -95,56 +95,6 @@ export function SearchResults({
     } catch {
       return date;
     }
-  };
-
-  const getStatusBadge = (status: string | null | undefined) => {
-    if (!status) return <span className="text-muted-foreground">-</span>;
-
-    const normalized = status.toLowerCase();
-    const statusMap: Record<string, { label: string; className: string }> = {
-      // GraphQL: ACTIVE
-      active: {
-        label: "Действующее",
-        className: "bg-green-500/20 text-green-300",
-      },
-      // GraphQL: LIQUIDATED
-      liquidated: {
-        label: "Ликвидировано",
-        className: "bg-red-500/20 text-red-300",
-      },
-      // GraphQL: LIQUIDATING
-      liquidating: {
-        label: "В ликвидации",
-        className: "bg-amber-500/20 text-amber-300",
-      },
-      // GraphQL: REORGANIZING
-      reorganizing: {
-        label: "В реорганизации",
-        className: "bg-yellow-500/20 text-yellow-300",
-      },
-      // GraphQL: BANKRUPT
-      bankrupt: {
-        label: "Банкрот",
-        className: "bg-orange-500/20 text-orange-300",
-      },
-      // GraphQL: UNKNOWN
-      unknown: { label: "Неизвестно", className: "bg-slate-500/20 text-slate-300" },
-    };
-
-    const config = statusMap[normalized] || {
-      label: status,
-      className: "bg-slate-500/20 text-slate-300",
-    };
-    return (
-      <span
-        className={cn(
-          "px-2 py-1 rounded-md text-xs font-medium",
-          config.className
-        )}
-      >
-        {config.label}
-      </span>
-    );
   };
 
   if (error) {
@@ -276,18 +226,18 @@ export function SearchResults({
                     {getSortIcon("inn")}
                   </Button>
                 </TableHead>
-                <TableHead>Регион</TableHead>
                 <TableHead>
                   <Button
                     variant="ghost"
                     size="sm"
                     className="h-8 -ml-3"
-                    onClick={() => handleSort("status")}
+                    onClick={() => handleSort("ogrn")}
                   >
-                    Статус
-                    {getSortIcon("status")}
+                    ОГРН/ОГРНИП
+                    {getSortIcon("ogrn")}
                   </Button>
                 </TableHead>
+                <TableHead>Регион</TableHead>
                 <TableHead>
                   <Button
                     variant="ghost"
@@ -313,10 +263,10 @@ export function SearchResults({
                       }
                     />
                   </TableCell>
-                  <TableCell className="font-medium">{row.name}</TableCell>
+                  <TableCell className="font-medium">{decodeHtmlEntities(row.name)}</TableCell>
                   <TableCell>{row.inn}</TableCell>
+                  <TableCell>{row.ogrn ?? "-"}</TableCell>
                   <TableCell>{row.region ?? "-"}</TableCell>
-                  <TableCell>{getStatusBadge(row.status)}</TableCell>
                   <TableCell>{formatDate(row.registrationDate)}</TableCell>
                   <TableCell>
                     <Link

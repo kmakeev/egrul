@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { RegionSelect } from "./region-select";
 import { OkvedSelect } from "./okved-select";
 import { DatePicker } from "./date-picker";
+import { EntityTypeSelect } from "./entity-type-select";
 import {
   Select,
   SelectContent,
@@ -76,6 +77,37 @@ export function SearchFilters({
       </CardHeader>
       {isExpanded && (
         <CardContent className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="entityType">Тип организации</Label>
+            <EntityTypeSelect
+              value={filters.entityType ?? "all"}
+              onChange={(value) => {
+                // #region agent log: EntityTypeSelect onChange
+                if (ENABLE_FRONTEND_LOGS) {
+                  fetch("http://127.0.0.1:7242/ingest/d909b3ca-a27d-43bc-a00e-99361eba3af1", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    sessionId: "debug-session",
+                    runId: "run-filters",
+                    hypothesisId: "H1",
+                    location: "search-filters.tsx:entityType:onChange",
+                    message: "Entity type filter changed in SearchFilters",
+                    data: { 
+                      currentEntityType: filters.entityType, 
+                      newEntityType: value,
+                      allFilters: filters,
+                    },
+                    timestamp: Date.now(),
+                  }),
+                }).catch(() => {});
+                }
+                // #endregion agent log: EntityTypeSelect onChange
+                onFiltersChange({ entityType: value });
+              }}
+            />
+          </div>
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="region">Регион</Label>
@@ -186,20 +218,23 @@ export function SearchFilters({
               </Select>
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="founderName">ФИО учредителя (ЮЛ)</Label>
-              <Input
-                id="founderName"
-                type="text"
-                placeholder="Введите ФИО учредителя..."
-                value={filters.founderName ?? ""}
-                onChange={(e) =>
-                  onFiltersChange({
-                    founderName: e.target.value || undefined,
-                  })
-                }
-              />
-            </div>
+            {/* Поле ФИО учредителя показываем только для ЮЛ */}
+            {(filters.entityType === "all" || filters.entityType === "company") && (
+              <div className="space-y-2">
+                <Label htmlFor="founderName">ФИО учредителя (ЮЛ)</Label>
+                <Input
+                  id="founderName"
+                  type="text"
+                  placeholder="Введите ФИО учредителя..."
+                  value={filters.founderName ?? ""}
+                  onChange={(e) =>
+                    onFiltersChange({
+                      founderName: e.target.value || undefined,
+                    })
+                  }
+                />
+              </div>
+            )}
 
             <div className="space-y-2 md:col-span-2">
               <Label htmlFor="dateFrom">Диапазон дат регистрации</Label>

@@ -7,7 +7,7 @@ use tracing::{debug, warn};
 use crate::error::{Error, Result};
 use crate::models::{
     EgripRecord, Address, Activity, Person,
-    EntityStatus, HistoryRecord, RegistrationAuthority, TaxAuthority,
+    HistoryRecord, RegistrationAuthority, TaxAuthority,
     PensionFund, SocialInsurance,
 };
 use crate::models::egrip::{Gender, CitizenshipInfo, CitizenshipType, IpRegistrationInfo};
@@ -19,6 +19,18 @@ pub struct EgripXmlParser;
 impl EgripXmlParser {
     pub fn new() -> Self {
         Self
+    }
+
+    /// Извлечение кода региона из кода налогового органа (первые 2 цифры)
+    fn extract_region_code_from_tax_code(tax_code: &str) -> Option<String> {
+        if tax_code.len() >= 2 {
+            let region_part = &tax_code[0..2];
+            // Проверяем, что это действительно цифры
+            if region_part.chars().all(|c| c.is_ascii_digit()) {
+                return Some(region_part.to_string());
+            }
+        }
+        None
     }
 
     /// Парсинг XML контента
@@ -158,6 +170,22 @@ impl EgripXmlParser {
                     }
                     // Регистрация
                     else if tag_matches(tag, "СвРегОрг".as_bytes()) || tag_matches(tag, "СвГосРег".as_bytes()) {
+                        // Извлекаем код региона из КодНО как fallback
+                        if let Some(tax_code) = e.get_attr("КодНО".as_bytes())
+                            .or_else(|| e.get_attr("КодОрг".as_bytes())) {
+                            if let Some(region_code) = Self::extract_region_code_from_tax_code(&tax_code) {
+                                // Устанавливаем код региона только если его нет в адресе
+                                if record.address.is_none() {
+                                    record.address = Some(Address::default());
+                                }
+                                if let Some(ref mut address) = record.address {
+                                    // Используем код из налогового органа только если в адресе нет кода региона
+                                    if address.region_code.is_none() {
+                                        address.region_code = Some(region_code);
+                                    }
+                                }
+                            }
+                        }
                         record.registration = Some(self.parse_registration(reader, e)?);
                         depth -= 1;
                     }
@@ -368,9 +396,7 @@ impl EgripXmlParser {
                     let tag = name.as_ref();
 
                     if tag_matches(tag, "Регион".as_bytes()) {
-                        address.region = e.get_attr("Наseriouslimenov".as_bytes())
-                            .or_else(|| e.get_attr(attr_names::NAIMENOV))
-                            .or_else(|| e.get_attr("Наименование".as_bytes()));
+                        // Парсим только код региона, название не сохраняем
                         address.region_code = address.region_code.or_else(|| e.get_attr("Код".as_bytes()));
                     }
                     else if tag_matches(tag, "Город".as_bytes()) {
@@ -492,10 +518,12 @@ impl EgripXmlParser {
     fn parse_registration(&self, reader: &mut Reader<&[u8]>, start: &BytesStart) -> Result<IpRegistrationInfo> {
         let mut reg = IpRegistrationInfo::default();
         
+        let tax_code = start.get_attr("КодНО".as_bytes())
+            .or_else(|| start.get_attr("КодОрг".as_bytes()))
+            .unwrap_or_default();
+        
         reg.authority = Some(RegistrationAuthority {
-            code: start.get_attr("КодНО".as_bytes())
-                .or_else(|| start.get_attr("КодОрг".as_bytes()))
-                .unwrap_or_default(),
+            code: tax_code.clone(),
             name: start.get_attr("НаимНО".as_bytes())
                 .or_else(|| start.get_attr("НаимОрг".as_bytes()))
                 .unwrap_or_default(),

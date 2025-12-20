@@ -282,7 +282,7 @@ func (r *EntrepreneurRepository) GetByINN(ctx context.Context, inn string) (*mod
 }
 
 // List возвращает список ИП с фильтрацией и пагинацией
-func (r *EntrepreneurRepository) List(ctx context.Context, filter *model.EntrepreneurFilter, pagination *model.Pagination) ([]*model.Entrepreneur, int, error) {
+func (r *EntrepreneurRepository) List(ctx context.Context, filter *model.EntrepreneurFilter, pagination *model.Pagination, sort *model.EntrepreneurSort) ([]*model.Entrepreneur, int, error) {
 	// #region agent log - проверка существующих region_code в базе
 	if filter != nil && filter.RegionCode != nil && *filter.RegionCode != "" {
 		// Проверяем общее количество записей
@@ -403,6 +403,7 @@ func (r *EntrepreneurRepository) List(ctx context.Context, filter *model.Entrepr
 	// #endregion
 
 	whereClause, args := r.buildWhereClause(filter)
+	orderClause := r.buildOrderClause(sort)
 
 	limit := pagination.GetLimit()
 	offset := pagination.GetOffset()
@@ -447,9 +448,9 @@ func (r *EntrepreneurRepository) List(ctx context.Context, filter *model.Entrepr
 	dataQuery := fmt.Sprintf(`
 		SELECT * FROM egrul.entrepreneurs FINAL
 		%s
-		ORDER BY updated_at DESC
+		%s
 		LIMIT %d OFFSET %d
-	`, whereClause, limit, offset)
+	`, whereClause, orderClause, limit, offset)
 
 	// #region agent log
 	agentLog("run-filters", "entrepreneur.go:List:dataQuery", "executing data query", map[string]interface{}{
@@ -668,5 +669,34 @@ func (r *EntrepreneurRepository) loadAdditionalActivities(ctx context.Context, r
 		}
 	}
 	return nil
+}
+
+func (r *EntrepreneurRepository) buildOrderClause(sort *model.EntrepreneurSort) string {
+	if sort == nil {
+		return "ORDER BY updated_at DESC"
+	}
+
+	var field string
+	switch sort.Field {
+	case model.EntrepreneurSortFieldOgrnip:
+		field = "ogrnip"
+	case model.EntrepreneurSortFieldInn:
+		field = "inn"
+	case model.EntrepreneurSortFieldFullName:
+		field = "concat(last_name, ' ', first_name, ' ', coalesce(middle_name, ''))"
+	case model.EntrepreneurSortFieldRegistrationDate:
+		field = "registration_date"
+	case model.EntrepreneurSortFieldUpdatedAt:
+		field = "updated_at"
+	default:
+		field = "updated_at"
+	}
+
+	order := "ASC"
+	if sort.Order != nil && *sort.Order == model.SortOrderDesc {
+		order = "DESC"
+	}
+
+	return fmt.Sprintf("ORDER BY %s %s", field, order)
 }
 

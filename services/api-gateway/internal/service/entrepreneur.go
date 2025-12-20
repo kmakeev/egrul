@@ -42,8 +42,8 @@ func (s *EntrepreneurService) GetByINN(ctx context.Context, inn string) (*model.
 }
 
 // List возвращает список ИП
-func (s *EntrepreneurService) List(ctx context.Context, filter *model.EntrepreneurFilter, pagination *model.Pagination) (*model.EntrepreneurConnection, error) {
-	entrepreneurs, totalCount, err := s.entrepreneurRepo.List(ctx, filter, pagination)
+func (s *EntrepreneurService) List(ctx context.Context, filter *model.EntrepreneurFilter, pagination *model.Pagination, sort *model.EntrepreneurSort) (*model.EntrepreneurConnection, error) {
+	entrepreneurs, totalCount, err := s.entrepreneurRepo.List(ctx, filter, pagination, sort)
 	if err != nil {
 		return nil, err
 	}

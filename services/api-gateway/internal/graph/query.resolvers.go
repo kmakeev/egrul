@@ -76,8 +76,8 @@ func (r *queryResolver) EntrepreneurByInn(ctx context.Context, inn string) (*mod
 }
 
 // Entrepreneurs is the resolver for the entrepreneurs field.
-func (r *queryResolver) Entrepreneurs(ctx context.Context, filter *model.EntrepreneurFilter, pagination *model.Pagination) (*model.EntrepreneurConnection, error) {
-	return r.EntrepreneurService.List(ctx, filter, pagination)
+func (r *queryResolver) Entrepreneurs(ctx context.Context, filter *model.EntrepreneurFilter, pagination *model.Pagination, sort *model.EntrepreneurSort) (*model.EntrepreneurConnection, error) {
+	return r.EntrepreneurService.List(ctx, filter, pagination, sort)
 }
 
 // SearchEntrepreneurs is the resolver for the searchEntrepreneurs field.

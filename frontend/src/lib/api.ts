@@ -23,12 +23,14 @@ export interface IndividualEntrepreneur {
   firstName: string;
   middleName?: string;
   registrationDate?: string;
+  address?: Address;
   status: string;
   mainActivity?: Activity;
 }
 
 export interface Address {
   postalCode?: string;
+  regionCode?: string;
   region?: string;
   city?: string;
   street?: string;

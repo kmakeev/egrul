@@ -269,7 +269,7 @@ type ComplexityRoot struct {
 		EntityHistory       func(childComplexity int, entityType model.EntityType, entityID string, limit *int, offset *int) int
 		Entrepreneur        func(childComplexity int, ogrnip string) int
 		EntrepreneurByInn   func(childComplexity int, inn string) int
-		Entrepreneurs       func(childComplexity int, filter *model.EntrepreneurFilter, pagination *model.Pagination) int
+		Entrepreneurs       func(childComplexity int, filter *model.EntrepreneurFilter, pagination *model.Pagination, sort *model.EntrepreneurSort) int
 		RelatedCompanies    func(childComplexity int, inn string, limit *int, offset *int) int
 		Search              func(childComplexity int, query string, limit *int) int
 		SearchCompanies     func(childComplexity int, query string, limit *int, offset *int) int
@@ -329,7 +329,7 @@ type QueryResolver interface {
 	SearchCompanies(ctx context.Context, query string, limit *int, offset *int) ([]*model.Company, error)
 	Entrepreneur(ctx context.Context, ogrnip string) (*model.Entrepreneur, error)
 	EntrepreneurByInn(ctx context.Context, inn string) (*model.Entrepreneur, error)
-	Entrepreneurs(ctx context.Context, filter *model.EntrepreneurFilter, pagination *model.Pagination) (*model.EntrepreneurConnection, error)
+	Entrepreneurs(ctx context.Context, filter *model.EntrepreneurFilter, pagination *model.Pagination, sort *model.EntrepreneurSort) (*model.EntrepreneurConnection, error)
 	SearchEntrepreneurs(ctx context.Context, query string, limit *int, offset *int) ([]*model.Entrepreneur, error)
 	Search(ctx context.Context, query string, limit *int) (*model.SearchResult, error)
 	Statistics(ctx context.Context, filter *model.StatsFilter) (*model.Statistics, error)
@@ -1579,7 +1579,7 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 			return 0, false
 		}
 
-		return e.complexity.Query.Entrepreneurs(childComplexity, args["filter"].(*model.EntrepreneurFilter), args["pagination"].(*model.Pagination)), true
+		return e.complexity.Query.Entrepreneurs(childComplexity, args["filter"].(*model.EntrepreneurFilter), args["pagination"].(*model.Pagination), args["sort"].(*model.EntrepreneurSort)), true
 
 	case "Query.relatedCompanies":
 		if e.complexity.Query.RelatedCompanies == nil {
@@ -1804,6 +1804,7 @@ func (e *executableSchema) Exec(ctx context.Context) graphql.ResponseHandler {
 		ec.unmarshalInputCompanyFilter,
 		ec.unmarshalInputCompanySort,
 		ec.unmarshalInputEntrepreneurFilter,
+		ec.unmarshalInputEntrepreneurSort,
 		ec.unmarshalInputPagination,
 		ec.unmarshalInputStatsFilter,
 	)
@@ -1956,6 +1957,17 @@ enum CompanySortField {
   FULL_NAME
   REGISTRATION_DATE
   CAPITAL_AMOUNT
+  UPDATED_AT
+}
+
+"""
+Поле для сортировки предпринимателей
+"""
+enum EntrepreneurSortField {
+  OGRNIP
+  INN
+  FULL_NAME
+  REGISTRATION_DATE
   UPDATED_AT
 }
 
@@ -2358,6 +2370,14 @@ input CompanySort {
 }
 
 """
+Сортировка предпринимателей
+"""
+input EntrepreneurSort {
+  field: EntrepreneurSortField!
+  order: SortOrder = ASC
+}
+
+"""
 Фильтр компаний
 """
 input CompanyFilter {
@@ -2447,6 +2467,7 @@ type Query {
   entrepreneurs(
     filter: EntrepreneurFilter
     pagination: Pagination
+    sort: EntrepreneurSort
   ): EntrepreneurConnection!
   
   # Поиск ИП по текстовому запросу
@@ -3131,6 +3152,11 @@ func (ec *executionContext) field_Query_entrepreneurs_args(ctx context.Context, 
 		return nil, err
 	}
 	args["pagination"] = arg1
+	arg2, err := ec.field_Query_entrepreneurs_argsSort(ctx, rawArgs)
+	if err != nil {
+		return nil, err
+	}
+	args["sort"] = arg2
 	return args, nil
 }
 func (ec *executionContext) field_Query_entrepreneurs_argsFilter(
@@ -3174,6 +3200,28 @@ func (ec *executionContext) field_Query_entrepreneurs_argsPagination(
 	}
 
 	var zeroVal *model.Pagination
+	return zeroVal, nil
+}
+
+func (ec *executionContext) field_Query_entrepreneurs_argsSort(
+	ctx context.Context,
+	rawArgs map[string]interface{},
+) (*model.EntrepreneurSort, error) {
+	// We won't call the directive if the argument is null.
+	// Set call_argument_directives_with_null to true to call directives
+	// even if the argument is null.
+	_, ok := rawArgs["sort"]
+	if !ok {
+		var zeroVal *model.EntrepreneurSort
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("sort"))
+	if tmp, ok := rawArgs["sort"]; ok {
+		return ec.unmarshalOEntrepreneurSort2ᚖgithubᚗcomᚋegrulᚑsystemᚋservicesᚋapiᚑgatewayᚋinternalᚋgraphᚋmodelᚐEntrepreneurSort(ctx, tmp)
+	}
+
+	var zeroVal *model.EntrepreneurSort
 	return zeroVal, nil
 }
 
@@ -11598,7 +11646,7 @@ func (ec *executionContext) _Query_entrepreneurs(ctx context.Context, field grap
 	}()
 	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
 		ctx = rctx // use context from middleware stack in children
-		return ec.resolvers.Query().Entrepreneurs(rctx, fc.Args["filter"].(*model.EntrepreneurFilter), fc.Args["pagination"].(*model.Pagination))
+		return ec.resolvers.Query().Entrepreneurs(rctx, fc.Args["filter"].(*model.EntrepreneurFilter), fc.Args["pagination"].(*model.Pagination), fc.Args["sort"].(*model.EntrepreneurSort))
 	})
 	if err != nil {
 		ec.Error(ctx, err)
@@ -15547,6 +15595,44 @@ func (ec *executionContext) unmarshalInputEntrepreneurFilter(ctx context.Context
 	return it, nil
 }
 
+func (ec *executionContext) unmarshalInputEntrepreneurSort(ctx context.Context, obj interface{}) (model.EntrepreneurSort, error) {
+	var it model.EntrepreneurSort
+	asMap := map[string]interface{}{}
+	for k, v := range obj.(map[string]interface{}) {
+		asMap[k] = v
+	}
+
+	if _, present := asMap["order"]; !present {
+		asMap["order"] = "ASC"
+	}
+
+	fieldsInOrder := [...]string{"field", "order"}
+	for _, k := range fieldsInOrder {
+		v, ok := asMap[k]
+		if !ok {
+			continue
+		}
+		switch k {
+		case "field":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("field"))
+			data, err := ec.unmarshalNEntrepreneurSortField2githubᚗcomᚋegrulᚑsystemᚋservicesᚋapiᚑgatewayᚋinternalᚋgraphᚋmodelᚐEntrepreneurSortField(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.Field = data
+		case "order":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("order"))
+			data, err := ec.unmarshalOSortOrder2ᚖgithubᚗcomᚋegrulᚑsystemᚋservicesᚋapiᚑgatewayᚋinternalᚋgraphᚋmodelᚐSortOrder(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.Order = data
+		}
+	}
+
+	return it, nil
+}
+
 func (ec *executionContext) unmarshalInputPagination(ctx context.Context, obj interface{}) (model.Pagination, error) {
 	var it model.Pagination
 	asMap := map[string]interface{}{}
@@ -18362,6 +18448,16 @@ func (ec *executionContext) marshalNEntrepreneurEdge2ᚖgithubᚗcomᚋegrulᚑs
 	return ec._EntrepreneurEdge(ctx, sel, v)
 }
 
+func (ec *executionContext) unmarshalNEntrepreneurSortField2githubᚗcomᚋegrulᚑsystemᚋservicesᚋapiᚑgatewayᚋinternalᚋgraphᚋmodelᚐEntrepreneurSortField(ctx context.Context, v interface{}) (model.EntrepreneurSortField, error) {
+	var res model.EntrepreneurSortField
+	err := res.UnmarshalGQL(v)
+	return res, graphql.ErrorOnPath(ctx, err)
+}
+
+func (ec *executionContext) marshalNEntrepreneurSortField2githubᚗcomᚋegrulᚑsystemᚋservicesᚋapiᚑgatewayᚋinternalᚋgraphᚋmodelᚐEntrepreneurSortField(ctx context.Context, sel ast.SelectionSet, v model.EntrepreneurSortField) graphql.Marshaler {
+	return v
+}
+
 func (ec *executionContext) unmarshalNFloat2float64(ctx context.Context, v interface{}) (float64, error) {
 	res, err := graphql.UnmarshalFloatContext(ctx, v)
 	return res, graphql.ErrorOnPath(ctx, err)
@@ -19130,6 +19226,14 @@ func (ec *executionContext) unmarshalOEntrepreneurFilter2ᚖgithubᚗcomᚋegrul
 	return &res, graphql.ErrorOnPath(ctx, err)
 }
 
+func (ec *executionContext) unmarshalOEntrepreneurSort2ᚖgithubᚗcomᚋegrulᚑsystemᚋservicesᚋapiᚑgatewayᚋinternalᚋgraphᚋmodelᚐEntrepreneurSort(ctx context.Context, v interface{}) (*model.EntrepreneurSort, error) {
+	if v == nil {
+		return nil, nil
+	}
+	res, err := ec.unmarshalInputEntrepreneurSort(ctx, v)
+	return &res, graphql.ErrorOnPath(ctx, err)
+}
+
 func (ec *executionContext) unmarshalOFloat2ᚖfloat64(ctx context.Context, v interface{}) (*float64, error) {
 	if v == nil {
 		return nil, nil
@@ -19199,6 +19303,23 @@ func (ec *executionContext) unmarshalOSortOrder2githubᚗcomᚋegrulᚑsystemᚋ
 
 func (ec *executionContext) marshalOSortOrder2githubᚗcomᚋegrulᚑsystemᚋservicesᚋapiᚑgatewayᚋinternalᚋgraphᚋmodelᚐSortOrder(ctx context.Context, sel ast.SelectionSet, v model.SortOrder) graphql.Marshaler {
 	res := graphql.MarshalString(string(v))
+	return res
+}
+
+func (ec *executionContext) unmarshalOSortOrder2ᚖgithubᚗcomᚋegrulᚑsystemᚋservicesᚋapiᚑgatewayᚋinternalᚋgraphᚋmodelᚐSortOrder(ctx context.Context, v interface{}) (*model.SortOrder, error) {
+	if v == nil {
+		return nil, nil
+	}
+	tmp, err := graphql.UnmarshalString(v)
+	res := model.SortOrder(tmp)
+	return &res, graphql.ErrorOnPath(ctx, err)
+}
+
+func (ec *executionContext) marshalOSortOrder2ᚖgithubᚗcomᚋegrulᚑsystemᚋservicesᚋapiᚑgatewayᚋinternalᚋgraphᚋmodelᚐSortOrder(ctx context.Context, sel ast.SelectionSet, v *model.SortOrder) graphql.Marshaler {
+	if v == nil {
+		return graphql.Null
+	}
+	res := graphql.MarshalString(string(*v))
 	return res
 }
 

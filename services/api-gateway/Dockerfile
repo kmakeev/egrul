@@ -12,12 +12,14 @@ COPY services/api-gateway/ .
 # Генерируем go.sum и скачиваем зависимости
 RUN go mod tidy && go mod download
 
-# Генерируем GraphQL код
-# Игнорируем ошибки валидации, так как schema.resolvers.go конфликтует с отдельными файлами резолверов
+# Удаляем конфликтующие файлы перед генерацией
+RUN rm -f internal/graph/schema.resolvers.go internal/graph/generated/generated.go
+
+# Генерируем GraphQL код, игнорируя ошибки валидации
 RUN go run github.com/99designs/gqlgen generate || true
 
-# Удаляем конфликтующий schema.resolvers.go, если он был создан
-RUN rm -f internal/graph/schema.resolvers.go || true
+# Удаляем конфликтующий schema.resolvers.go после генерации
+RUN rm -f internal/graph/schema.resolvers.go
 
 # Собираем приложение
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
@@ -29,7 +31,7 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
 FROM alpine:3.20
 
 # Устанавливаем CA сертификаты и timezone данные
-RUN apk --no-cache add ca-certificates tzdata wget
+RUN apk --no-cache add ca-certificates tzdata curl
 
 # Создаем непривилегированного пользователя
 RUN adduser -D -g '' appuser
@@ -53,7 +55,7 @@ EXPOSE 8080
 
 # Healthcheck
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-    CMD wget --no-verbose --tries=1 --spider http://localhost:8080/health || exit 1
+    CMD curl -f http://localhost:8080/health || exit 1
 
 # Запускаем приложение
 CMD ["./api-gateway"]

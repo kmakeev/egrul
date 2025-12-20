@@ -2,5 +2,65 @@
 
 package model
 
+import (
+	"fmt"
+	"io"
+	"strconv"
+)
+
+// Сортировка предпринимателей
+type EntrepreneurSort struct {
+	Field EntrepreneurSortField `json:"field"`
+	Order *SortOrder            `json:"order,omitempty"`
+}
+
 type Query struct {
+}
+
+// Поле для сортировки предпринимателей
+type EntrepreneurSortField string
+
+const (
+	EntrepreneurSortFieldOgrnip           EntrepreneurSortField = "OGRNIP"
+	EntrepreneurSortFieldInn              EntrepreneurSortField = "INN"
+	EntrepreneurSortFieldFullName         EntrepreneurSortField = "FULL_NAME"
+	EntrepreneurSortFieldRegistrationDate EntrepreneurSortField = "REGISTRATION_DATE"
+	EntrepreneurSortFieldUpdatedAt        EntrepreneurSortField = "UPDATED_AT"
+)
+
+var AllEntrepreneurSortField = []EntrepreneurSortField{
+	EntrepreneurSortFieldOgrnip,
+	EntrepreneurSortFieldInn,
+	EntrepreneurSortFieldFullName,
+	EntrepreneurSortFieldRegistrationDate,
+	EntrepreneurSortFieldUpdatedAt,
+}
+
+func (e EntrepreneurSortField) IsValid() bool {
+	switch e {
+	case EntrepreneurSortFieldOgrnip, EntrepreneurSortFieldInn, EntrepreneurSortFieldFullName, EntrepreneurSortFieldRegistrationDate, EntrepreneurSortFieldUpdatedAt:
+		return true
+	}
+	return false
+}
+
+func (e EntrepreneurSortField) String() string {
+	return string(e)
+}
+
+func (e *EntrepreneurSortField) UnmarshalGQL(v interface{}) error {
+	str, ok := v.(string)
+	if !ok {
+		return fmt.Errorf("enums must be strings")
+	}
+
+	*e = EntrepreneurSortField(str)
+	if !e.IsValid() {
+		return fmt.Errorf("%s is not a valid EntrepreneurSortField", str)
+	}
+	return nil
+}
+
+func (e EntrepreneurSortField) MarshalGQL(w io.Writer) {
+	fmt.Fprint(w, strconv.Quote(e.String()))
 }

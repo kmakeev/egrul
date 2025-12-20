@@ -7,6 +7,7 @@ import {
 } from "@/lib/api/hooks";
 import type { LegalEntity, IndividualEntrepreneur } from "@/lib/api";
 import { searchFiltersSchema, type SearchFiltersInput } from "@/lib/validations";
+import { getRegionNameByCode } from "@/lib/regions";
 
 /**
  * Определяет тип поискового запроса
@@ -36,11 +37,11 @@ function detectQueryType(query: string): 'inn' | 'ogrn' | 'name' {
 }
 
 // Временно отключаем логи фронтенда для просмотра логов бэкенда
-const ENABLE_FRONTEND_LOGS = false;
+const ENABLE_FRONTEND_LOGS = true;
 
 // Включение/выключение отладочных логов для диагностики проблем с поиском
 // Установите в true для включения подробного логирования
-const ENABLE_DEBUG_LOGS = false;
+const ENABLE_DEBUG_LOGS = true;
 
 // Хелпер для отправки отладочных логов (выполняется только если ENABLE_DEBUG_LOGS = true)
 function debugLog(data: {
@@ -71,12 +72,12 @@ export type SearchRow = {
   type: "company" | "entrepreneur";
   name: string;
   inn: string;
+  ogrn?: string | null; // ОГРН для компаний или ОГРНИП для ИП
   region?: string | null;
-  status?: string | null;
   registrationDate?: string | null;
 };
 
-function parseSearchParams(params: URLSearchParams): SearchFiltersInput & { applied?: boolean } {
+function parseSearchParams(params: URLSearchParams): SearchFiltersInput {
   const raw = {
     q: params.get("q") ?? undefined,
     innOgrn: params.get("innOgrn") ?? undefined,
@@ -85,6 +86,7 @@ function parseSearchParams(params: URLSearchParams): SearchFiltersInput & { appl
     // Если статус не передан в URL, не подставляем "all", чтобы не слать statusCode = "all" на бэкенд
     status: (params.get("status") as SearchFiltersInput["status"]) ?? undefined,
     founderName: params.get("founderName") ?? undefined,
+    entityType: (params.get("entityType") as SearchFiltersInput["entityType"]) ?? "all",
     dateFrom: params.get("dateFrom") ?? undefined,
     dateTo: params.get("dateTo") ?? undefined,
     page: params.get("page") ?? "1",
@@ -97,10 +99,10 @@ function parseSearchParams(params: URLSearchParams): SearchFiltersInput & { appl
     applied: params.get("applied") === "true",
   };
 
-  return { ...searchFiltersSchema.parse(raw), applied: raw.applied };
+  return searchFiltersSchema.parse(raw);
 }
 
-function buildSearchParams(filters: SearchFiltersInput & { applied?: boolean }): URLSearchParams {
+function buildSearchParams(filters: SearchFiltersInput): URLSearchParams {
   const params = new URLSearchParams();
 
   if (filters.q) params.set("q", filters.q);
@@ -110,6 +112,8 @@ function buildSearchParams(filters: SearchFiltersInput & { applied?: boolean }):
   if (filters.status && filters.status !== "all")
     params.set("status", filters.status);
   if (filters.founderName) params.set("founderName", filters.founderName);
+  if (filters.entityType && filters.entityType !== "all")
+    params.set("entityType", filters.entityType);
   if (filters.dateFrom) params.set("dateFrom", filters.dateFrom);
   if (filters.dateTo) params.set("dateTo", filters.dateTo);
   if (filters.page && filters.page !== 1)
@@ -148,7 +152,7 @@ export function useSearch() {
     });
     // #endregion agent log: searchParams changed
     setUrlKey((prev: number) => prev + 1);
-  }, [searchParams.toString()]);
+  }, [searchParams]);
 
   const filters = useMemo(() => {
     const parsed = parseSearchParams(searchParams);
@@ -180,10 +184,11 @@ export function useSearch() {
     !!filters.status ||
     !!filters.founderName ||
     !!filters.dateFrom ||
-    !!filters.dateTo;
+    !!filters.dateTo ||
+    (filters.entityType && filters.entityType !== "all");
   
-  // Поиск активен если: есть текстовый запрос (автоматически) ИЛИ применены расширенные фильтры
-  const enabled = hasQuickSearch || (hasAdvancedFilters && filters.applied);
+  // Поиск активен если: есть текстовый запрос (автоматически) ИЛИ применены любые фильтры (включая пустые)
+  const enabled = hasQuickSearch || filters.applied;
 
   // #region agent log: useSearch filters
   if (ENABLE_FRONTEND_LOGS) {
@@ -242,35 +247,102 @@ export function useSearch() {
     
     // Дополнительный фильтр по ИНН/ОГРН из расширенного поиска
     if (filters.innOgrn) {
-      companyFilter.inn = filters.innOgrn;
-      entrepreneurFilter.inn = filters.innOgrn;
+      const innOgrnType = detectQueryType(filters.innOgrn);
+      const trimmedInnOgrn = filters.innOgrn.trim();
+      
+      if (innOgrnType === 'inn') {
+        // ИНН используется для обоих типов
+        companyFilter.inn = trimmedInnOgrn;
+        entrepreneurFilter.inn = trimmedInnOgrn;
+      } else if (innOgrnType === 'ogrn') {
+        if (trimmedInnOgrn.length === 13) {
+          // ОГРН для юридических лиц (13 цифр) - только в фильтр компаний
+          companyFilter.ogrn = trimmedInnOgrn;
+        } else if (trimmedInnOgrn.length === 15) {
+          // ОГРНИП для индивидуальных предпринимателей (15 цифр) - только в фильтр ИП
+          entrepreneurFilter.ogrnip = trimmedInnOgrn;
+        } else {
+          // Если формат не соответствует ожиданиям, пробуем в оба
+          companyFilter.ogrn = trimmedInnOgrn;
+          entrepreneurFilter.ogrnip = trimmedInnOgrn;
+        }
+      } else {
+        // Если это не ИНН и не ОГРН, считаем ИНН (для обратной совместимости)
+        companyFilter.inn = trimmedInnOgrn;
+        entrepreneurFilter.inn = trimmedInnOgrn;
+      }
     }
+    // ИСПРАВЛЕНИЕ: Логика добавления дополнительных фильтров
+    // Если есть основное поле поиска (q или innOgrn), то дополнительные фильтры добавляются 
+    // только к тем фильтрам, которые имеют основной идентификатор.
+    // Если основного поля нет (только расширенные параметры), то дополнительные фильтры 
+    // добавляются в оба фильтра для широкого поиска.
+    // НОВОЕ: Учитываем фильтр по типу организации (entityType)
+    
+    const hasMainSearchField = !!(debouncedQ || filters.innOgrn);
+    const hasCompanyMainFilter = !!(companyFilter.ogrn || companyFilter.inn || companyFilter.name);
+    const hasEntrepreneurMainFilter = !!(entrepreneurFilter.ogrnip || entrepreneurFilter.inn || entrepreneurFilter.name);
+    
+    // Определяем, какие типы организаций нужно искать
+    const shouldSearchCompanies = filters.entityType === "all" || filters.entityType === "company";
+    const shouldSearchEntrepreneurs = filters.entityType === "all" || filters.entityType === "entrepreneur";
+    
     // Frontend отправляет код региона (например, "77", "78"), поэтому используем regionCode вместо region
     // Backend ищет по regionCode для точного совпадения, а по region - для поиска по названию через ILIKE
     if (filters.region) {
-      companyFilter.regionCode = filters.region;
-      entrepreneurFilter.regionCode = filters.region;
+      if (shouldSearchCompanies && (!hasMainSearchField || hasCompanyMainFilter)) {
+        companyFilter.regionCode = filters.region;
+      }
+      if (shouldSearchEntrepreneurs && (!hasMainSearchField || hasEntrepreneurMainFilter)) {
+        entrepreneurFilter.regionCode = filters.region;
+      }
     }
     if (filters.okved) {
-      companyFilter.okved = filters.okved;
-      entrepreneurFilter.okved = filters.okved;
+      if (shouldSearchCompanies && (!hasMainSearchField || hasCompanyMainFilter)) {
+        companyFilter.okved = filters.okved;
+      }
+      if (shouldSearchEntrepreneurs && (!hasMainSearchField || hasEntrepreneurMainFilter)) {
+        entrepreneurFilter.okved = filters.okved;
+      }
     }
     // Фильтрация по коду статуса (status_code) вместо текстового статуса
     if (filters.status) {
-      companyFilter.statusCode = filters.status;
-      entrepreneurFilter.statusCode = filters.status;
+      if (shouldSearchCompanies && (!hasMainSearchField || hasCompanyMainFilter)) {
+        companyFilter.statusCode = filters.status;
+      }
+      if (shouldSearchEntrepreneurs && (!hasMainSearchField || hasEntrepreneurMainFilter)) {
+        entrepreneurFilter.statusCode = filters.status;
+      }
     }
     // Поиск по ФИО учредителя (только для ЮЛ)
     if (filters.founderName) {
-      companyFilter.founderName = filters.founderName;
+      if (shouldSearchCompanies && (!hasMainSearchField || hasCompanyMainFilter)) {
+        companyFilter.founderName = filters.founderName;
+      }
     }
     if (filters.dateFrom) {
-      companyFilter.registrationDateFrom = filters.dateFrom;
-      entrepreneurFilter.registrationDateFrom = filters.dateFrom;
+      if (shouldSearchCompanies && (!hasMainSearchField || hasCompanyMainFilter)) {
+        companyFilter.registrationDateFrom = filters.dateFrom;
+      }
+      if (shouldSearchEntrepreneurs && (!hasMainSearchField || hasEntrepreneurMainFilter)) {
+        entrepreneurFilter.registrationDateFrom = filters.dateFrom;
+      }
     }
     if (filters.dateTo) {
-      companyFilter.registrationDateTo = filters.dateTo;
-      entrepreneurFilter.registrationDateTo = filters.dateTo;
+      if (shouldSearchCompanies && (!hasMainSearchField || hasCompanyMainFilter)) {
+        companyFilter.registrationDateTo = filters.dateTo;
+      }
+      if (shouldSearchEntrepreneurs && (!hasMainSearchField || hasEntrepreneurMainFilter)) {
+        entrepreneurFilter.registrationDateTo = filters.dateTo;
+      }
+    }
+    
+    // Если выбран конкретный тип организации, очищаем фильтр для другого типа
+    if (!shouldSearchCompanies) {
+      Object.keys(companyFilter).forEach(key => delete companyFilter[key]);
+    }
+    if (!shouldSearchEntrepreneurs) {
+      Object.keys(entrepreneurFilter).forEach(key => delete entrepreneurFilter[key]);
     }
     
     // Создаем стабильный ключ для логирования
@@ -296,7 +368,7 @@ export function useSearch() {
     
     // Возвращаем объект с отдельными фильтрами для компаний и предпринимателей
     return { companyFilter, entrepreneurFilter };
-  }, [debouncedQ, filters.innOgrn, filters.region, filters.okved, filters.status, filters.founderName, filters.dateFrom, filters.dateTo, urlKey, enabled]);
+  }, [debouncedQ, filters.innOgrn, filters.region, filters.okved, filters.status, filters.founderName, filters.dateFrom, filters.dateTo, filters.entityType, urlKey, enabled, filters]);
 
     // #region agent log: useSearch filterParams
     if (ENABLE_FRONTEND_LOGS) {
@@ -358,11 +430,59 @@ export function useSearch() {
     });
     // #endregion agent log: after cleaning companyFilter
     
-    const vars: { filter?: Record<string, unknown>; pagination: { limit: number; offset: number } } = {
+    // ИСПРАВЛЕНИЕ: Создаем уникальный ключ кеширования на основе всех параметров фильтра
+    const cacheKey = JSON.stringify({
+      filter: cleanedCompanyFilter,
+      entityType: filters.entityType,
+      applied: filters.applied,
+      urlKey, // Добавляем urlKey для принудительного обновления кеша при изменении URL
+    });
+    
+    const vars: { 
+      filter?: Record<string, unknown>; 
+      pagination: { limit: number; offset: number };
+      sort?: Record<string, unknown>;
+      cacheKey: string;
+    } = {
       pagination: { limit, offset },
+      cacheKey,
     };
     if (hasCompanyFilter) {
       vars.filter = cleanedCompanyFilter;
+    }
+    
+    // Добавляем сортировку если указана
+    if (filters.sortBy && filters.sortOrder) {
+      // Маппинг полей сортировки фронтенда на GraphQL поля
+      const sortFieldMap: Record<string, string> = {
+        'name': 'FULL_NAME',
+        'inn': 'INN', 
+        'ogrn': 'OGRN',
+        'registrationDate': 'REGISTRATION_DATE'
+      };
+      
+      const graphqlField = sortFieldMap[filters.sortBy];
+      if (graphqlField) {
+        vars.sort = {
+          field: graphqlField,
+          order: filters.sortOrder.toUpperCase()
+        };
+        
+        // #region agent log: sort added to vars
+        debugLog({
+          runId: "run-filters",
+          hypothesisId: "SORT",
+          location: "use-search.ts:companyQueryVariables:sort-added",
+          message: "Sort parameter added to company query variables",
+          data: { 
+            sortBy: filters.sortBy,
+            sortOrder: filters.sortOrder,
+            graphqlField,
+            sortObject: vars.sort,
+          },
+        });
+        // #endregion agent log: sort added to vars
+      }
     }
     
     // #region agent log: vars before GraphQL request
@@ -375,6 +495,7 @@ export function useSearch() {
         varsHasFilter: 'filter' in vars,
         varsFilterValue: vars.filter,
         varsStringified: JSON.stringify(vars),
+        cacheKey,
       },
     });
     // #endregion agent log: vars before GraphQL request
@@ -392,13 +513,14 @@ export function useSearch() {
         hasCompanyFilter,
         limit,
         offset,
+        cacheKey,
         queryKey: JSON.stringify(vars),
       },
     });
     // #endregion agent log: companyQueryVariables memoized
     
     return vars;
-  }, [filterParams, limit, offset]);
+  }, [filterParams, limit, offset, filters.sortBy, filters.sortOrder, debouncedQ, urlKey]);
   
   const entrepreneurQueryVariables = useMemo(() => {
     const entrepreneurFilter = filterParams.entrepreneurFilter;
@@ -439,11 +561,59 @@ export function useSearch() {
     });
     // #endregion agent log: after cleaning entrepreneurFilter
     
-    const vars: { filter?: Record<string, unknown>; pagination: { limit: number; offset: number } } = {
+    // ИСПРАВЛЕНИЕ: Создаем уникальный ключ кеширования на основе всех параметров фильтра
+    const cacheKey = JSON.stringify({
+      filter: cleanedEntrepreneurFilter,
+      entityType: filters.entityType,
+      applied: filters.applied,
+      urlKey, // Добавляем urlKey для принудительного обновления кеша при изменении URL
+    });
+    
+    const vars: { 
+      filter?: Record<string, unknown>; 
+      pagination: { limit: number; offset: number };
+      sort?: Record<string, unknown>;
+      cacheKey: string;
+    } = {
       pagination: { limit, offset },
+      cacheKey,
     };
     if (hasEntrepreneurFilter) {
       vars.filter = cleanedEntrepreneurFilter;
+    }
+    
+    // Добавляем сортировку если указана
+    if (filters.sortBy && filters.sortOrder) {
+      // Маппинг полей сортировки фронтенда на GraphQL поля для предпринимателей
+      const sortFieldMap: Record<string, string> = {
+        'name': 'FULL_NAME',
+        'inn': 'INN', 
+        'ogrn': 'OGRNIP', // Для предпринимателей используем OGRNIP
+        'registrationDate': 'REGISTRATION_DATE'
+      };
+      
+      const graphqlField = sortFieldMap[filters.sortBy];
+      if (graphqlField) {
+        vars.sort = {
+          field: graphqlField,
+          order: filters.sortOrder.toUpperCase()
+        };
+        
+        // #region agent log: sort added to vars entrepreneurs
+        debugLog({
+          runId: "run-filters",
+          hypothesisId: "SORT",
+          location: "use-search.ts:entrepreneurQueryVariables:sort-added",
+          message: "Sort parameter added to entrepreneur query variables",
+          data: { 
+            sortBy: filters.sortBy,
+            sortOrder: filters.sortOrder,
+            graphqlField,
+            sortObject: vars.sort,
+          },
+        });
+        // #endregion agent log: sort added to vars entrepreneurs
+      }
     }
     
     // #region agent log: vars before GraphQL request entrepreneur
@@ -456,6 +626,7 @@ export function useSearch() {
         varsHasFilter: 'filter' in vars,
         varsFilterValue: vars.filter,
         varsStringified: JSON.stringify(vars),
+        cacheKey,
       },
     });
     // #endregion agent log: vars before GraphQL request entrepreneur
@@ -473,13 +644,14 @@ export function useSearch() {
         hasEntrepreneurFilter,
         limit,
         offset,
+        cacheKey,
         queryKey: JSON.stringify(vars),
       },
     });
     // #endregion agent log: entrepreneurQueryVariables memoized
     
     return vars;
-  }, [filterParams, limit, offset]);
+  }, [filterParams, limit, offset, filters.sortBy, filters.sortOrder, debouncedQ, urlKey]);
   
   // Для обратной совместимости оставляем queryVariables
   const queryVariables = companyQueryVariables;
@@ -503,10 +675,19 @@ export function useSearch() {
   });
   // #endregion agent log: before queries
 
-  // Проверяем, есть ли фильтр для каждого типа запроса
-  // Запрос должен выполняться только если есть хотя бы один фильтр в соответствующем объекте
+  // Проверяем, нужно ли выполнять запросы для каждого типа
+  // Запрос выполняется если: enabled=true И (есть фильтр ИЛИ выбран соответствующий тип организации)
+  const shouldSearchCompanies = filters.entityType === "all" || filters.entityType === "company";
+  const shouldSearchEntrepreneurs = filters.entityType === "all" || filters.entityType === "entrepreneur";
+  
   const hasCompanyFilterInVars = 'filter' in companyQueryVariables && companyQueryVariables.filter !== undefined;
   const hasEntrepreneurFilterInVars = 'filter' in entrepreneurQueryVariables && entrepreneurQueryVariables.filter !== undefined;
+  
+  // Запросы выполняются если enabled=true И нужно искать соответствующий тип И есть соответствующий фильтр
+  // Исключение: если нет основного поискового поля (только расширенные фильтры), то выполняем оба запроса
+  const hasMainSearchField = !!(debouncedQ || filters.innOgrn);
+  const companyQueryEnabled = enabled && shouldSearchCompanies && (hasCompanyFilterInVars || !hasMainSearchField);
+  const entrepreneurQueryEnabled = enabled && shouldSearchEntrepreneurs && (hasEntrepreneurFilterInVars || !hasMainSearchField);
   
   // #region agent log: filter check before queries
   debugLog({
@@ -515,12 +696,14 @@ export function useSearch() {
     message: "Filter check before queries",
     data: {
       enabled,
+      shouldSearchCompanies,
+      shouldSearchEntrepreneurs,
       hasCompanyFilterInVars,
       hasEntrepreneurFilterInVars,
       companyQueryVariablesFilter: companyQueryVariables.filter,
       entrepreneurQueryVariablesFilter: entrepreneurQueryVariables.filter,
-      companyEnabled: enabled && hasCompanyFilterInVars,
-      entrepreneurEnabled: enabled && hasEntrepreneurFilterInVars,
+      companyQueryEnabled,
+      entrepreneurQueryEnabled,
     },
   });
   // #endregion agent log: filter check before queries
@@ -528,18 +711,24 @@ export function useSearch() {
   const companiesQuery = useSearchCompaniesQuery(
     companyQueryVariables,
     {
-      // Запрос выполняется только если enabled=true И есть фильтр
-      enabled: enabled && hasCompanyFilterInVars,
+      // Запрос выполняется если enabled=true И нужно искать компании
+      enabled: companyQueryEnabled,
       // Не используем placeholderData, чтобы при отсутствии фильтра не показывать старые данные
+      // ИСПРАВЛЕНИЕ: Отключаем кеширование для предотвращения показа данных от предыдущих поисков
+      staleTime: 0,
+      gcTime: 0,
     }
   );
 
   const entrepreneursQuery = useSearchEntrepreneursQuery(
     entrepreneurQueryVariables,
     {
-      // Запрос выполняется только если enabled=true И есть фильтр
-      enabled: enabled && hasEntrepreneurFilterInVars,
+      // Запрос выполняется если enabled=true И нужно искать предпринимателей
+      enabled: entrepreneurQueryEnabled,
       // Не используем placeholderData, чтобы при отсутствии фильтра не показывать старые данные
+      // ИСПРАВЛЕНИЕ: Отключаем кеширование для предотвращения показа данных от предыдущих поисков
+      staleTime: 0,
+      gcTime: 0,
     }
   );
 
@@ -618,8 +807,8 @@ export function useSearch() {
   });
   // #endregion agent log: shouldShowData
 
-  const totalCompanies = shouldShowData ? (companiesQuery.data?.companies.totalCount ?? 0) : 0;
-  const totalEntrepreneurs = shouldShowData ? (entrepreneursQuery.data?.entrepreneurs.totalCount ?? 0) : 0;
+  const totalCompanies = shouldShowData && companyQueryEnabled ? (companiesQuery.data?.companies.totalCount ?? 0) : 0;
+  const totalEntrepreneurs = shouldShowData && entrepreneurQueryEnabled ? (entrepreneursQuery.data?.entrepreneurs.totalCount ?? 0) : 0;
   const total = totalCompanies + totalEntrepreneurs;
 
   const rows: SearchRow[] = useMemo(() => {
@@ -628,33 +817,33 @@ export function useSearch() {
       return [];
     }
     
-    // Используем данные только если запрос был выполнен (enabled был true)
-    // Если запрос отключен, не используем кэшированные данные
+    // ИСПРАВЛЕНИЕ: Используем данные только если соответствующий запрос активен И выполнен
+    // Это предотвращает показ кешированных данных от предыдущих поисков
     const companyRows: SearchRow[] =
-      (hasCompanyFilterInVars && companiesQuery.data?.companies.edges) 
+      (companyQueryEnabled && companiesQuery.data?.companies.edges) 
         ? companiesQuery.data.companies.edges.map(
           ({ node }: { node: LegalEntity }) => ({
           id: node.ogrn,
           type: "company",
           name: node.fullName ?? node.shortName ?? "",
           inn: node.inn ?? "",
-          region: undefined,
-          status: node.status ?? null,
+          ogrn: node.ogrn ?? null,
+          region: node.address?.regionCode ? getRegionNameByCode(node.address.regionCode) : null,
           registrationDate: node.registrationDate ?? null,
           })
         )
         : [];
 
     const entrepreneurRows: SearchRow[] =
-      (hasEntrepreneurFilterInVars && entrepreneursQuery.data?.entrepreneurs.edges)
+      (entrepreneurQueryEnabled && entrepreneursQuery.data?.entrepreneurs.edges)
         ? entrepreneursQuery.data.entrepreneurs.edges.map(
           ({ node }: { node: IndividualEntrepreneur }) => ({
           id: node.ogrnip,
           type: "entrepreneur",
           name: `${node.lastName} ${node.firstName} ${node.middleName ?? ""}`.trim(),
           inn: node.inn ?? "",
-          region: undefined,
-          status: node.status ?? null,
+          ogrn: node.ogrnip ?? null,
+          region: node.address?.regionCode ? getRegionNameByCode(node.address.regionCode) : null,
           registrationDate: node.registrationDate ?? null,
           })
         )
@@ -669,6 +858,9 @@ export function useSearch() {
       message: "rows computed",
       data: { 
         shouldShowData,
+        enabled,
+        companyQueryEnabled,
+        entrepreneurQueryEnabled,
         hasCompanyFilterInVars,
         hasEntrepreneurFilterInVars,
         companyRowsCount: companyRows.length,
@@ -681,9 +873,9 @@ export function useSearch() {
     // #endregion agent log: rows computed
     
     return allRows;
-  }, [companiesQuery.data, entrepreneursQuery.data, shouldShowData, hasCompanyFilterInVars, hasEntrepreneurFilterInVars]);
+  }, [companiesQuery.data, entrepreneursQuery.data, shouldShowData, companyQueryEnabled, entrepreneurQueryEnabled, enabled]);
 
-  function updateFilters(partial: Partial<SearchFiltersInput & { applied?: boolean }>) {
+  function updateFilters(partial: Partial<SearchFiltersInput>) {
     // #region agent log: updateFilters entry
     debugLog({
       runId: "run-filters",
@@ -732,6 +924,7 @@ export function useSearch() {
             "q",
             "status",
             "founderName",
+            "entityType",
           ].includes(key)
         ) {
           // помечаем поле как undefined, чтобы buildSearchParams не добавлял его в URL
@@ -742,9 +935,9 @@ export function useSearch() {
       }
     }
 
-    const next: SearchFiltersInput & { applied?: boolean } = {
+    const next: SearchFiltersInput = {
       ...filters,
-      ...(cleanedPartial as Partial<SearchFiltersInput & { applied?: boolean }>),
+      ...(cleanedPartial as Partial<SearchFiltersInput>),
       // Сбрасываем страницу на 1 при изменении фильтров поиска
       page:
         (cleanedPartial.page as number | undefined) ??
@@ -792,7 +985,7 @@ export function useSearch() {
       },
     });
     // #endregion agent log: router.replace
-    router.replace(newUrl);
+    router.replace(newUrl, { scroll: false });
     // Принудительно обновляем urlKey для пересчета фильтров
     setUrlKey((prev: number) => prev + 1);
 
@@ -809,7 +1002,7 @@ export function useSearch() {
 
   function resetFilters() {
     // Полностью очищаем все фильтры, переходя на чистый URL без параметров
-    router.replace(pathname);
+    router.replace(pathname, { scroll: false });
     // Принудительно обновляем urlKey для пересчета фильтров
     setUrlKey((prev: number) => prev + 1);
 

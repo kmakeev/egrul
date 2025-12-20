@@ -210,7 +210,6 @@ pub mod attr_names {
     // Адрес
     pub const INDEX: &[u8] = "Индекс".as_bytes();
     pub const KOD_REGION: &[u8] = "КодРегион".as_bytes();
-    pub const NAIM_REGION: &[u8] = "НаимРегион".as_bytes();
     pub const NAIMENOV: &[u8] = "Наименов".as_bytes();
     pub const TIP: &[u8] = "Тип".as_bytes();
     pub const DOM: &[u8] = "Дом".as_bytes();

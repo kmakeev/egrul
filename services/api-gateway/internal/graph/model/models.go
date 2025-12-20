@@ -352,7 +352,7 @@ func (p *Pagination) GetOffset() int {
 // CompanySort сортировка компаний
 type CompanySort struct {
 	Field CompanySortField `json:"field"`
-	Order SortOrder        `json:"order"`
+	Order *SortOrder       `json:"order,omitempty"`
 }
 
 // CompanyFilter фильтр компаний
