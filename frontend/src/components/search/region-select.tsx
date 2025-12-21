@@ -160,7 +160,7 @@ export function RegionSelect({ value, onChange }: RegionSelectProps) {
         <div className="max-h-[300px] overflow-y-auto">
           <SelectItem value="all">Все регионы</SelectItem>
           {filteredRegions.map((region) => (
-            <SelectItem key={region.code} value={region.code}>
+            <SelectItem key={region.code} value={region.code} title={region.name}>
               {region.name}
             </SelectItem>
           ))}

@@ -51,6 +51,7 @@ type entrepreneurRow struct {
 	Locality               sql.NullString  `ch:"locality"`
 	FullAddress            sql.NullString  `ch:"full_address"`
 	FiasID                 sql.NullString  `ch:"fias_id"`
+	KladrCode              sql.NullString  `ch:"kladr_code"`
 	Email                  sql.NullString  `ch:"email"`
 	OkvedMainCode          sql.NullString  `ch:"okved_main_code"`
 	OkvedMainName          sql.NullString  `ch:"okved_main_name"`
@@ -175,6 +176,9 @@ func (r *entrepreneurRow) toModel() *model.Entrepreneur {
 	}
 	if r.FiasID.Valid {
 		entrepreneur.Address.FiasID = &r.FiasID.String
+	}
+	if r.KladrCode.Valid {
+		entrepreneur.Address.KladrCode = &r.KladrCode.String
 	}
 
 	// Main activity

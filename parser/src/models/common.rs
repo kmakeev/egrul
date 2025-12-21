@@ -51,6 +51,8 @@ pub struct Address {
     pub postal_code: Option<String>,
     /// Код региона
     pub region_code: Option<String>,
+    /// Название региона
+    pub region: Option<String>,
     /// Район
     pub district: Option<String>,
     /// Город
@@ -69,6 +71,8 @@ pub struct Address {
     pub full_address: Option<String>,
     /// ФИАС код
     pub fias_id: Option<String>,
+    /// Код КЛАДР
+    pub kladr_code: Option<String>,
 }
 
 impl Address {
@@ -130,9 +134,11 @@ impl Address {
     pub fn is_empty(&self) -> bool {
         self.postal_code.is_none()
             && self.region_code.is_none()
+            && self.region.is_none()
             && self.city.is_none()
             && self.street.is_none()
             && self.full_address.is_none()
+            && self.kladr_code.is_none()
     }
 }
 

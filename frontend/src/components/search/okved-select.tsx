@@ -89,13 +89,10 @@ export function OkvedSelect({ value, onChange }: OkvedSelectProps) {
         >
           <SelectItem value="all">Любой ОКВЭД</SelectItem>
           {visibleOptions.map((opt: (typeof okvedOptions)[number]) => (
-            <SelectItem key={opt.code} value={opt.code}>
+            <SelectItem key={opt.code} value={opt.code} title={opt.title}>
               <div className="flex items-center gap-2">
                 <span className="font-mono">{opt.code}</span>
-                <span
-                  className="truncate max-w-[24rem]"
-                  title={opt.title}
-                >
+                <span className="truncate max-w-[24rem]">
                   {opt.title}
                 </span>
               </div>

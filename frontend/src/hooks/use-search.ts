@@ -368,7 +368,7 @@ export function useSearch() {
     
     // Возвращаем объект с отдельными фильтрами для компаний и предпринимателей
     return { companyFilter, entrepreneurFilter };
-  }, [debouncedQ, filters.innOgrn, filters.region, filters.okved, filters.status, filters.founderName, filters.dateFrom, filters.dateTo, filters.entityType, urlKey, enabled, filters]);
+  }, [debouncedQ, filters, urlKey, enabled]);
 
     // #region agent log: useSearch filterParams
     if (ENABLE_FRONTEND_LOGS) {
@@ -520,7 +520,7 @@ export function useSearch() {
     // #endregion agent log: companyQueryVariables memoized
     
     return vars;
-  }, [filterParams, limit, offset, filters.sortBy, filters.sortOrder, debouncedQ, urlKey]);
+  }, [filterParams, limit, offset, filters.sortBy, filters.sortOrder, debouncedQ, urlKey, filters.applied, filters.entityType]);
   
   const entrepreneurQueryVariables = useMemo(() => {
     const entrepreneurFilter = filterParams.entrepreneurFilter;
@@ -651,7 +651,7 @@ export function useSearch() {
     // #endregion agent log: entrepreneurQueryVariables memoized
     
     return vars;
-  }, [filterParams, limit, offset, filters.sortBy, filters.sortOrder, debouncedQ, urlKey]);
+  }, [filterParams, limit, offset, filters.sortBy, filters.sortOrder, debouncedQ, urlKey, filters.applied, filters.entityType]);
   
   // Для обратной совместимости оставляем queryVariables
   const queryVariables = companyQueryVariables;
@@ -873,7 +873,7 @@ export function useSearch() {
     // #endregion agent log: rows computed
     
     return allRows;
-  }, [companiesQuery.data, entrepreneursQuery.data, shouldShowData, companyQueryEnabled, entrepreneurQueryEnabled, enabled]);
+  }, [companiesQuery.data, entrepreneursQuery.data, shouldShowData, companyQueryEnabled, entrepreneurQueryEnabled, enabled, hasCompanyFilterInVars, hasEntrepreneurFilterInVars]);
 
   function updateFilters(partial: Partial<SearchFiltersInput>) {
     // #region agent log: updateFilters entry

@@ -396,12 +396,16 @@ impl EgripXmlParser {
                     let tag = name.as_ref();
 
                     if tag_matches(tag, "Регион".as_bytes()) {
-                        // Парсим только код региона, название не сохраняем
+                        // Извлекаем название региона
+                        address.region = e.get_attr("НаимРегион".as_bytes())
+                            .or_else(|| e.get_attr("Наименов".as_bytes()))
+                            .or_else(|| e.get_attr("Наименование".as_bytes()));
                         address.region_code = address.region_code.or_else(|| e.get_attr("Код".as_bytes()));
                     }
                     else if tag_matches(tag, "Город".as_bytes()) {
-                        address.city = e.get_attr("Наименов".as_bytes())
+                        address.city = e.get_attr("НаимГород".as_bytes())
                             .or_else(|| e.get_attr("НаименГор".as_bytes()))
+                            .or_else(|| e.get_attr("Наименов".as_bytes()))
                             .or_else(|| e.get_attr("Наименование".as_bytes()));
                     }
                     else if tag_matches(tag, "НаселПункт".as_bytes()) {
@@ -411,6 +415,8 @@ impl EgripXmlParser {
                     else if tag_matches(tag, "АдресРФ".as_bytes()) {
                         address.postal_code = e.get_attr("Индекс".as_bytes());
                         address.region_code = address.region_code.or_else(|| e.get_attr("КодРегион".as_bytes()));
+                        address.kladr_code = e.get_attr("КодАдрКладр".as_bytes())
+                            .or_else(|| e.get_attr("КодКладр".as_bytes()));
                     }
 
                     if is_start {

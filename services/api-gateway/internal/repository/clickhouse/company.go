@@ -136,6 +136,7 @@ type companyRow struct {
 	Flat                 sql.NullString  `ch:"flat"`
 	FullAddress          sql.NullString  `ch:"full_address"`
 	FiasID               sql.NullString  `ch:"fias_id"`
+	KladrCode            sql.NullString  `ch:"kladr_code"`
 	Email                sql.NullString  `ch:"email"`
 	CapitalAmount        sql.NullFloat64 `ch:"capital_amount"`
 	CapitalCurrency      sql.NullString  `ch:"capital_currency"`
@@ -288,6 +289,9 @@ func (r *companyRow) toModel() *model.Company {
 	}
 	if r.FiasID.Valid {
 		company.Address.FiasID = &r.FiasID.String
+	}
+	if r.KladrCode.Valid {
+		company.Address.KladrCode = &r.KladrCode.String
 	}
 
 	// Capital

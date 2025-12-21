@@ -61,7 +61,7 @@ export function SearchForm({
     } else {
       setHasUnappliedChanges(false);
     }
-  }, [filters.region, filters.okved, filters.status, filters.founderName, filters.dateFrom, filters.dateTo, filters.entityType, filters.applied, toast]);
+  }, [filters.region, filters.okved, filters.status, filters.founderName, filters.dateFrom, filters.dateTo, filters.entityType, filters.applied, toast, hasUnappliedChanges]);
 
   // Автоматически скрываем индикацию при применении фильтров
   useEffect(() => {

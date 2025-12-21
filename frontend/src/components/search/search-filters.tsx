@@ -201,13 +201,10 @@ export function SearchFilters({
                   <div className="max-h-[300px] overflow-y-auto">
                     <SelectItem value="all">Все статусы</SelectItem>
                     {filteredStatusOptions.map((opt) => (
-                      <SelectItem key={opt.code} value={opt.code}>
+                      <SelectItem key={opt.code} value={opt.code} title={opt.label}>
                         <div className="flex items-center gap-2">
                           <span className="font-mono">{opt.code}</span>
-                          <span
-                            className="truncate max-w-[30rem]"
-                            title={opt.label}
-                          >
+                          <span className="truncate max-w-[30rem]">
                             {opt.label}
                           </span>
                         </div>

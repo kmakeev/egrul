@@ -53,6 +53,7 @@ CREATE TABLE IF NOT EXISTS egrul.companies
     flat                    Nullable(String) COMMENT 'Квартира/Офис',
     full_address            Nullable(String) COMMENT 'Полный адрес одной строкой',
     fias_id                 Nullable(String) COMMENT 'ФИАС код',
+    kladr_code              Nullable(String) COMMENT 'Код КЛАДР',
     email                   Nullable(String) COMMENT 'Адрес электронной почты',
     
     -- === Уставный капитал ===
@@ -153,6 +154,7 @@ CREATE TABLE IF NOT EXISTS egrul.entrepreneurs
     locality                Nullable(String) COMMENT 'Населенный пункт',
     full_address            Nullable(String) COMMENT 'Полный адрес',
     fias_id                 Nullable(String) COMMENT 'ФИАС код',
+    kladr_code              Nullable(String) COMMENT 'Код КЛАДР',
     email                   Nullable(String) COMMENT 'Адрес электронной почты',
     
     -- === Виды деятельности (ОКВЭД) ===

@@ -152,6 +152,7 @@ type Address struct {
 	Flat        *string `json:"flat"`
 	FullAddress *string `json:"fullAddress"`
 	FiasID      *string `json:"fiasId"`
+	KladrCode   *string `json:"kladrCode"`
 }
 
 // LegalForm организационно-правовая форма

@@ -45,8 +45,20 @@ impl ParquetOutputWriter {
             Field::new("status_code", DataType::Utf8, true),
             Field::new("registration_date", DataType::Utf8, true),
             Field::new("termination_date", DataType::Utf8, true),
-            Field::new("address", DataType::Utf8, true),
+            // Адрес - все поля
+            Field::new("postal_code", DataType::Utf8, true),
             Field::new("region_code", DataType::Utf8, true),
+            Field::new("region", DataType::Utf8, true),
+            Field::new("district", DataType::Utf8, true),
+            Field::new("city", DataType::Utf8, true),
+            Field::new("locality", DataType::Utf8, true),
+            Field::new("street", DataType::Utf8, true),
+            Field::new("house", DataType::Utf8, true),
+            Field::new("building", DataType::Utf8, true),
+            Field::new("flat", DataType::Utf8, true),
+            Field::new("full_address", DataType::Utf8, true),
+            Field::new("fias_id", DataType::Utf8, true),
+            Field::new("kladr_code", DataType::Utf8, true),
             Field::new("capital_amount", DataType::Float64, true),
             Field::new("capital_currency", DataType::Utf8, true),
             Field::new("head_name", DataType::Utf8, true),
@@ -77,7 +89,20 @@ impl ParquetOutputWriter {
             Field::new("status_code", DataType::Utf8, true),
             Field::new("registration_date", DataType::Utf8, true),
             Field::new("termination_date", DataType::Utf8, true),
+            // Адрес - все поля
+            Field::new("postal_code", DataType::Utf8, true),
             Field::new("region_code", DataType::Utf8, true),
+            Field::new("region", DataType::Utf8, true),
+            Field::new("district", DataType::Utf8, true),
+            Field::new("city", DataType::Utf8, true),
+            Field::new("locality", DataType::Utf8, true),
+            Field::new("street", DataType::Utf8, true),
+            Field::new("house", DataType::Utf8, true),
+            Field::new("building", DataType::Utf8, true),
+            Field::new("flat", DataType::Utf8, true),
+            Field::new("full_address", DataType::Utf8, true),
+            Field::new("fias_id", DataType::Utf8, true),
+            Field::new("kladr_code", DataType::Utf8, true),
             Field::new("main_activity_code", DataType::Utf8, true),
             Field::new("main_activity_name", DataType::Utf8, true),
             Field::new("additional_activities", DataType::Utf8, true), // JSON массив
@@ -119,11 +144,46 @@ impl ParquetOutputWriter {
         let termination_date: StringArray = records.iter()
             .map(|r| r.termination_date.map(|d| d.to_string()))
             .collect();
-        let address: StringArray = records.iter()
-            .map(|r| r.address.as_ref().and_then(|a| a.full_address.as_deref()))
+        
+        // Все поля адреса
+        let postal_code: StringArray = records.iter()
+            .map(|r| r.address.as_ref().and_then(|a| a.postal_code.as_deref()))
             .collect();
         let region_code: StringArray = records.iter()
             .map(|r| r.address.as_ref().and_then(|a| a.region_code.as_deref()))
+            .collect();
+        let region: StringArray = records.iter()
+            .map(|r| r.address.as_ref().and_then(|a| a.region.as_deref()))
+            .collect();
+        let district: StringArray = records.iter()
+            .map(|r| r.address.as_ref().and_then(|a| a.district.as_deref()))
+            .collect();
+        let city: StringArray = records.iter()
+            .map(|r| r.address.as_ref().and_then(|a| a.city.as_deref()))
+            .collect();
+        let locality: StringArray = records.iter()
+            .map(|r| r.address.as_ref().and_then(|a| a.locality.as_deref()))
+            .collect();
+        let street: StringArray = records.iter()
+            .map(|r| r.address.as_ref().and_then(|a| a.street.as_deref()))
+            .collect();
+        let house: StringArray = records.iter()
+            .map(|r| r.address.as_ref().and_then(|a| a.house.as_deref()))
+            .collect();
+        let building: StringArray = records.iter()
+            .map(|r| r.address.as_ref().and_then(|a| a.building.as_deref()))
+            .collect();
+        let flat: StringArray = records.iter()
+            .map(|r| r.address.as_ref().and_then(|a| a.flat.as_deref()))
+            .collect();
+        let full_address: StringArray = records.iter()
+            .map(|r| r.address.as_ref().and_then(|a| a.full_address.as_deref()))
+            .collect();
+        let fias_id: StringArray = records.iter()
+            .map(|r| r.address.as_ref().and_then(|a| a.fias_id.as_deref()))
+            .collect();
+        let kladr_code: StringArray = records.iter()
+            .map(|r| r.address.as_ref().and_then(|a| a.kladr_code.as_deref()))
             .collect();
         let capital_amount: Float64Array = records.iter()
             .map(|r| r.capital.as_ref().map(|c| c.amount))
@@ -184,8 +244,20 @@ impl ParquetOutputWriter {
                 Arc::new(status_code),
                 Arc::new(registration_date),
                 Arc::new(termination_date),
-                Arc::new(address),
+                // Все поля адреса
+                Arc::new(postal_code),
                 Arc::new(region_code),
+                Arc::new(region),
+                Arc::new(district),
+                Arc::new(city),
+                Arc::new(locality),
+                Arc::new(street),
+                Arc::new(house),
+                Arc::new(building),
+                Arc::new(flat),
+                Arc::new(full_address),
+                Arc::new(fias_id),
+                Arc::new(kladr_code),
                 Arc::new(capital_amount),
                 Arc::new(capital_currency),
                 Arc::new(head_name),
@@ -248,8 +320,46 @@ impl ParquetOutputWriter {
         let termination_date: StringArray = records.iter()
             .map(|r| r.termination_date.map(|d| d.to_string()))
             .collect();
+        
+        // Все поля адреса
+        let postal_code: StringArray = records.iter()
+            .map(|r| r.address.as_ref().and_then(|a| a.postal_code.as_deref()))
+            .collect();
         let region_code: StringArray = records.iter()
             .map(|r| r.address.as_ref().and_then(|a| a.region_code.as_deref()))
+            .collect();
+        let region: StringArray = records.iter()
+            .map(|r| r.address.as_ref().and_then(|a| a.region.as_deref()))
+            .collect();
+        let district: StringArray = records.iter()
+            .map(|r| r.address.as_ref().and_then(|a| a.district.as_deref()))
+            .collect();
+        let city: StringArray = records.iter()
+            .map(|r| r.address.as_ref().and_then(|a| a.city.as_deref()))
+            .collect();
+        let locality: StringArray = records.iter()
+            .map(|r| r.address.as_ref().and_then(|a| a.locality.as_deref()))
+            .collect();
+        let street: StringArray = records.iter()
+            .map(|r| r.address.as_ref().and_then(|a| a.street.as_deref()))
+            .collect();
+        let house: StringArray = records.iter()
+            .map(|r| r.address.as_ref().and_then(|a| a.house.as_deref()))
+            .collect();
+        let building: StringArray = records.iter()
+            .map(|r| r.address.as_ref().and_then(|a| a.building.as_deref()))
+            .collect();
+        let flat: StringArray = records.iter()
+            .map(|r| r.address.as_ref().and_then(|a| a.flat.as_deref()))
+            .collect();
+        let full_address: StringArray = records.iter()
+            .map(|r| r.address.as_ref().and_then(|a| a.full_address.as_deref()))
+            .collect();
+        let fias_id: StringArray = records.iter()
+            .map(|r| r.address.as_ref().and_then(|a| a.fias_id.as_deref()))
+            .collect();
+        let kladr_code: StringArray = records.iter()
+            .map(|r| r.address.as_ref().and_then(|a| a.kladr_code.as_deref()))
             .collect();
         let main_activity_code: StringArray = records.iter()
             .map(|r| r.main_activity.as_ref().map(|a| a.code.as_str()))
@@ -289,7 +399,20 @@ impl ParquetOutputWriter {
                 Arc::new(status_code),
                 Arc::new(registration_date),
                 Arc::new(termination_date),
-                 Arc::new(region_code),
+                // Все поля адреса
+                Arc::new(postal_code),
+                Arc::new(region_code),
+                Arc::new(region),
+                Arc::new(district),
+                Arc::new(city),
+                Arc::new(locality),
+                Arc::new(street),
+                Arc::new(house),
+                Arc::new(building),
+                Arc::new(flat),
+                Arc::new(full_address),
+                Arc::new(fias_id),
+                Arc::new(kladr_code),
                 Arc::new(main_activity_code),
                 Arc::new(main_activity_name),
                 Arc::new(additional_activities),

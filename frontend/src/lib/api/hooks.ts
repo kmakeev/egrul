@@ -69,12 +69,73 @@ export function useCompanyQuery(ogrn: string) {
           query GetCompany($ogrn: ID!) {
             company(ogrn: $ogrn) {
               ogrn
+              ogrnDate
               inn
               kpp
               fullName
               shortName
+              brandName
+              legalForm
               status
+              statusCode
+              terminationMethod
               registrationDate
+              terminationDate
+              extractDate
+              address {
+                postalCode
+                regionCode
+                region
+                district
+                city
+                locality
+                street
+                house
+                building
+                flat
+                fullAddress
+                fiasId
+              }
+              email
+              capital {
+                amount
+                currency
+              }
+              director {
+                lastName
+                firstName
+                middleName
+                inn
+                position
+                positionCode
+              }
+              mainActivity {
+                code
+                name
+                isMain
+              }
+              activities {
+                code
+                name
+                isMain
+              }
+              regAuthority
+              taxAuthority
+              pfrRegNumber
+              fssRegNumber
+              foundersCount
+              licensesCount
+              branchesCount
+              isBankrupt
+              bankruptcyStage
+              isLiquidating
+              isReorganizing
+              lastGrn
+              lastGrnDate
+              sourceFile
+              versionDate
+              createdAt
+              updatedAt
             }
           }
         `,

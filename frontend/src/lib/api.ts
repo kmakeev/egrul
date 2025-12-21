@@ -1,18 +1,76 @@
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080/api/v1";
 
 export interface LegalEntity {
-  id: string;
+  id?: string;
   ogrn: string;
+  ogrnDate?: string;
   inn: string;
   kpp?: string;
-  fullName: string;
+  fullName?: string;
   shortName?: string;
+  brandName?: string;
+  legalForm?: string;
+  status?: string;
+  statusCode?: string;
+  terminationMethod?: string;
   registrationDate?: string;
+  terminationDate?: string;
+  extractDate?: string;
   address?: Address;
-  status: string;
-  mainActivity?: Activity;
+  email?: string;
   capital?: Capital;
+  director?: Person;
+  mainActivity?: Activity;
+  activities?: Activity[];
+  regAuthority?: string;
+  taxAuthority?: string;
+  pfrRegNumber?: string;
+  fssRegNumber?: string;
+  foundersCount?: number;
+  licensesCount?: number;
+  branchesCount?: number;
+  isBankrupt?: boolean;
+  bankruptcyStage?: string;
+  isLiquidating?: boolean;
+  isReorganizing?: boolean;
+  lastGrn?: string;
+  lastGrnDate?: string;
+  sourceFile?: string;
+  versionDate?: string;
+  createdAt?: string;
+  updatedAt?: string;
+  // Legacy fields for backward compatibility
   head?: Person;
+  founders?: Founder[];
+  history?: HistoryRecord[];
+  relatedCompanies?: RelatedCompany[];
+  registrationAuthority?: string;
+}
+
+export interface Founder {
+  id: string;
+  type: "individual" | "legal";
+  name: string;
+  inn?: string;
+  share?: number;
+  amount?: number;
+  currency?: string;
+}
+
+export interface HistoryRecord {
+  id: string;
+  date: string;
+  type: string;
+  description: string;
+  details?: Record<string, unknown>;
+}
+
+export interface RelatedCompany {
+  id: string;
+  ogrn: string;
+  name: string;
+  relationshipType: string;
+  status: string;
 }
 
 export interface IndividualEntrepreneur {
@@ -32,16 +90,23 @@ export interface Address {
   postalCode?: string;
   regionCode?: string;
   region?: string;
+  district?: string;
   city?: string;
+  locality?: string;
   street?: string;
   house?: string;
+  building?: string;
+  flat?: string;
   office?: string;
   fullAddress?: string;
+  fiasId?: string;
+  kladrCode?: string;
 }
 
 export interface Activity {
   code: string;
   name: string;
+  isMain?: boolean;
 }
 
 export interface Capital {
@@ -50,11 +115,12 @@ export interface Capital {
 }
 
 export interface Person {
-  lastName: string;
-  firstName: string;
+  lastName?: string;
+  firstName?: string;
   middleName?: string;
   inn?: string;
   position?: string;
+  positionCode?: string;
 }
 
 export interface SearchResult {
