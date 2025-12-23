@@ -15,6 +15,8 @@ import (
 
 // Founders is the resolver for the founders field on Company.
 func (r *companyResolver) Founders(ctx context.Context, obj *model.Company, limit *int, offset *int) ([]*model.Founder, error) {
+	r.Logger.Info("Founders resolver called", zap.String("ogrn", obj.Ogrn))
+	
 	l := 100
 	if limit != nil {
 		l = *limit
@@ -31,6 +33,7 @@ func (r *companyResolver) Founders(ctx context.Context, obj *model.Company, limi
 			r.Logger.Error("failed to get founders via dataloader", zap.String("ogrn", obj.Ogrn), zap.Error(err))
 			return nil, err
 		}
+		r.Logger.Info("Founders loaded via dataloader", zap.String("ogrn", obj.Ogrn), zap.Int("count", len(founders)))
 		return founders, nil
 	}
 
@@ -40,6 +43,7 @@ func (r *companyResolver) Founders(ctx context.Context, obj *model.Company, limi
 		r.Logger.Error("failed to get founders", zap.String("ogrn", obj.Ogrn), zap.Error(err))
 		return nil, err
 	}
+	r.Logger.Info("Founders loaded directly", zap.String("ogrn", obj.Ogrn), zap.Int("count", len(founders)))
 	return founders, nil
 }
 
@@ -65,6 +69,8 @@ func (r *companyResolver) Branches(ctx context.Context, obj *model.Company) ([]*
 
 // History is the resolver for the history field on Company.
 func (r *companyResolver) History(ctx context.Context, obj *model.Company, limit *int, offset *int) ([]*model.HistoryRecord, error) {
+	r.Logger.Info("History resolver called", zap.String("ogrn", obj.Ogrn))
+	
 	l := 50
 	if limit != nil {
 		l = *limit
@@ -79,6 +85,7 @@ func (r *companyResolver) History(ctx context.Context, obj *model.Company, limit
 		r.Logger.Error("failed to get history", zap.String("ogrn", obj.Ogrn), zap.Error(err))
 		return nil, err
 	}
+	r.Logger.Info("History loaded", zap.String("ogrn", obj.Ogrn), zap.Int("count", len(history)))
 	return history, nil
 }
 

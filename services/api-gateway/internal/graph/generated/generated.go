@@ -2167,7 +2167,7 @@ type Company {
   # История
   lastGrn: String
   lastGrnDate: Date
-  history(limit: Int, offset: Int): [HistoryRecord!]!
+  history(limit: Int, offset: Int): [HistoryRecord!]
   
   # Метаданные
   sourceFile: String
@@ -2234,7 +2234,7 @@ type Entrepreneur {
   # История
   lastGrn: String
   lastGrnDate: Date
-  history(limit: Int, offset: Int): [HistoryRecord!]!
+  history(limit: Int, offset: Int): [HistoryRecord!]
   
   # Метаданные
   sourceFile: String
@@ -6481,14 +6481,11 @@ func (ec *executionContext) _Company_history(ctx context.Context, field graphql.
 		return graphql.Null
 	}
 	if resTmp == nil {
-		if !graphql.HasFieldError(ctx, fc) {
-			ec.Errorf(ctx, "must not be null")
-		}
 		return graphql.Null
 	}
 	res := resTmp.([]*model.HistoryRecord)
 	fc.Result = res
-	return ec.marshalNHistoryRecord2ᚕᚖgithubᚗcomᚋegrulᚑsystemᚋservicesᚋapiᚑgatewayᚋinternalᚋgraphᚋmodelᚐHistoryRecordᚄ(ctx, field.Selections, res)
+	return ec.marshalOHistoryRecord2ᚕᚖgithubᚗcomᚋegrulᚑsystemᚋservicesᚋapiᚑgatewayᚋinternalᚋgraphᚋmodelᚐHistoryRecordᚄ(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) fieldContext_Company_history(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
@@ -8427,14 +8424,11 @@ func (ec *executionContext) _Entrepreneur_history(ctx context.Context, field gra
 		return graphql.Null
 	}
 	if resTmp == nil {
-		if !graphql.HasFieldError(ctx, fc) {
-			ec.Errorf(ctx, "must not be null")
-		}
 		return graphql.Null
 	}
 	res := resTmp.([]*model.HistoryRecord)
 	fc.Result = res
-	return ec.marshalNHistoryRecord2ᚕᚖgithubᚗcomᚋegrulᚑsystemᚋservicesᚋapiᚑgatewayᚋinternalᚋgraphᚋmodelᚐHistoryRecordᚄ(ctx, field.Selections, res)
+	return ec.marshalOHistoryRecord2ᚕᚖgithubᚗcomᚋegrulᚑsystemᚋservicesᚋapiᚑgatewayᚋinternalᚋgraphᚋmodelᚐHistoryRecordᚄ(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) fieldContext_Entrepreneur_history(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
@@ -15459,7 +15453,7 @@ func (ec *executionContext) unmarshalInputCompanySort(ctx context.Context, obj i
 			it.Field = data
 		case "order":
 			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("order"))
-			data, err := ec.unmarshalOSortOrder2githubᚗcomᚋegrulᚑsystemᚋservicesᚋapiᚑgatewayᚋinternalᚋgraphᚋmodelᚐSortOrder(ctx, v)
+			data, err := ec.unmarshalOSortOrder2ᚖgithubᚗcomᚋegrulᚑsystemᚋservicesᚋapiᚑgatewayᚋinternalᚋgraphᚋmodelᚐSortOrder(ctx, v)
 			if err != nil {
 				return it, err
 			}
@@ -16228,16 +16222,13 @@ func (ec *executionContext) _Company(ctx context.Context, sel ast.SelectionSet, 
 		case "history":
 			field := field
 
-			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
+			innerFunc := func(ctx context.Context, _ *graphql.FieldSet) (res graphql.Marshaler) {
 				defer func() {
 					if r := recover(); r != nil {
 						ec.Error(ctx, ec.Recover(ctx, r))
 					}
 				}()
 				res = ec._Company_history(ctx, field, obj)
-				if res == graphql.Null {
-					atomic.AddUint32(&fs.Invalids, 1)
-				}
 				return res
 			}
 
@@ -16528,16 +16519,13 @@ func (ec *executionContext) _Entrepreneur(ctx context.Context, sel ast.Selection
 		case "history":
 			field := field
 
-			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
+			innerFunc := func(ctx context.Context, _ *graphql.FieldSet) (res graphql.Marshaler) {
 				defer func() {
 					if r := recover(); r != nil {
 						ec.Error(ctx, ec.Recover(ctx, r))
 					}
 				}()
 				res = ec._Entrepreneur_history(ctx, field, obj)
-				if res == graphql.Null {
-					atomic.AddUint32(&fs.Invalids, 1)
-				}
 				return res
 			}
 
@@ -19250,6 +19238,53 @@ func (ec *executionContext) marshalOFloat2ᚖfloat64(ctx context.Context, sel as
 	return graphql.WrapContextMarshaler(ctx, res)
 }
 
+func (ec *executionContext) marshalOHistoryRecord2ᚕᚖgithubᚗcomᚋegrulᚑsystemᚋservicesᚋapiᚑgatewayᚋinternalᚋgraphᚋmodelᚐHistoryRecordᚄ(ctx context.Context, sel ast.SelectionSet, v []*model.HistoryRecord) graphql.Marshaler {
+	if v == nil {
+		return graphql.Null
+	}
+	ret := make(graphql.Array, len(v))
+	var wg sync.WaitGroup
+	isLen1 := len(v) == 1
+	if !isLen1 {
+		wg.Add(len(v))
+	}
+	for i := range v {
+		i := i
+		fc := &graphql.FieldContext{
+			Index:  &i,
+			Result: &v[i],
+		}
+		ctx := graphql.WithFieldContext(ctx, fc)
+		f := func(i int) {
+			defer func() {
+				if r := recover(); r != nil {
+					ec.Error(ctx, ec.Recover(ctx, r))
+					ret = nil
+				}
+			}()
+			if !isLen1 {
+				defer wg.Done()
+			}
+			ret[i] = ec.marshalNHistoryRecord2ᚖgithubᚗcomᚋegrulᚑsystemᚋservicesᚋapiᚑgatewayᚋinternalᚋgraphᚋmodelᚐHistoryRecord(ctx, sel, v[i])
+		}
+		if isLen1 {
+			f(i)
+		} else {
+			go f(i)
+		}
+
+	}
+	wg.Wait()
+
+	for _, e := range ret {
+		if e == graphql.Null {
+			return graphql.Null
+		}
+	}
+
+	return ret
+}
+
 func (ec *executionContext) unmarshalOInt2ᚖint(ctx context.Context, v interface{}) (*int, error) {
 	if v == nil {
 		return nil, nil
@@ -19293,17 +19328,6 @@ func (ec *executionContext) marshalOPerson2ᚖgithubᚗcomᚋegrulᚑsystemᚋse
 		return graphql.Null
 	}
 	return ec._Person(ctx, sel, v)
-}
-
-func (ec *executionContext) unmarshalOSortOrder2githubᚗcomᚋegrulᚑsystemᚋservicesᚋapiᚑgatewayᚋinternalᚋgraphᚋmodelᚐSortOrder(ctx context.Context, v interface{}) (model.SortOrder, error) {
-	tmp, err := graphql.UnmarshalString(v)
-	res := model.SortOrder(tmp)
-	return res, graphql.ErrorOnPath(ctx, err)
-}
-
-func (ec *executionContext) marshalOSortOrder2githubᚗcomᚋegrulᚑsystemᚋservicesᚋapiᚑgatewayᚋinternalᚋgraphᚋmodelᚐSortOrder(ctx context.Context, sel ast.SelectionSet, v model.SortOrder) graphql.Marshaler {
-	res := graphql.MarshalString(string(v))
-	return res
 }
 
 func (ec *executionContext) unmarshalOSortOrder2ᚖgithubᚗcomᚋegrulᚑsystemᚋservicesᚋapiᚑgatewayᚋinternalᚋgraphᚋmodelᚐSortOrder(ctx context.Context, v interface{}) (*model.SortOrder, error) {

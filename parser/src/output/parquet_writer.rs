@@ -62,6 +62,8 @@ impl ParquetOutputWriter {
             Field::new("capital_amount", DataType::Float64, true),
             Field::new("capital_currency", DataType::Utf8, true),
             Field::new("head_name", DataType::Utf8, true),
+            Field::new("head_inn", DataType::Utf8, true),
+            Field::new("head_middle_name", DataType::Utf8, true),
             Field::new("head_position", DataType::Utf8, true),
             Field::new("main_activity_code", DataType::Utf8, true),
             Field::new("main_activity_name", DataType::Utf8, true),
@@ -69,6 +71,7 @@ impl ParquetOutputWriter {
             Field::new("email", DataType::Utf8, true),
             Field::new("founders_count", DataType::Int32, true),
             Field::new("founders", DataType::Utf8, true), // JSON массив учредителей
+            Field::new("history", DataType::Utf8, true), // JSON массив истории изменений
             Field::new("extract_date", DataType::Utf8, true),
         ])
     }
@@ -107,6 +110,7 @@ impl ParquetOutputWriter {
             Field::new("main_activity_name", DataType::Utf8, true),
             Field::new("additional_activities", DataType::Utf8, true), // JSON массив
             Field::new("email", DataType::Utf8, true),
+            Field::new("history", DataType::Utf8, true), // JSON массив истории изменений
             Field::new("extract_date", DataType::Utf8, true),
         ])
     }
@@ -194,6 +198,12 @@ impl ParquetOutputWriter {
         let head_name: StringArray = records.iter()
             .map(|r| r.head.as_ref().map(|h| h.person.full_name()))
             .collect();
+        let head_inn: StringArray = records.iter()
+            .map(|r| r.head.as_ref().and_then(|h| h.person.inn.as_deref()))
+            .collect();
+        let head_middle_name: StringArray = records.iter()
+            .map(|r| r.head.as_ref().and_then(|h| h.person.middle_name.as_deref()))
+            .collect();
         let head_position: StringArray = records.iter()
             .map(|r| r.head.as_ref().and_then(|h| h.position.as_deref()))
             .collect();
@@ -224,6 +234,15 @@ impl ParquetOutputWriter {
                     None
                 } else {
                     serde_json::to_string(&r.founders).ok()
+                }
+            })
+            .collect();
+        let history: StringArray = records.iter()
+            .map(|r| {
+                if r.history.is_empty() {
+                    None
+                } else {
+                    serde_json::to_string(&r.history).ok()
                 }
             })
             .collect();
@@ -261,6 +280,8 @@ impl ParquetOutputWriter {
                 Arc::new(capital_amount),
                 Arc::new(capital_currency),
                 Arc::new(head_name),
+                Arc::new(head_inn),
+                Arc::new(head_middle_name),
                 Arc::new(head_position),
                 Arc::new(main_activity_code),
                 Arc::new(main_activity_name),
@@ -268,6 +289,7 @@ impl ParquetOutputWriter {
                 Arc::new(email),
                 Arc::new(founders_count),
                 Arc::new(founders),
+                Arc::new(history),
                 Arc::new(extract_date),
             ],
         )?;
@@ -379,6 +401,15 @@ impl ParquetOutputWriter {
         let email: StringArray = records.iter()
             .map(|r| r.email.as_deref())
             .collect();
+        let history: StringArray = records.iter()
+            .map(|r| {
+                if r.history.is_empty() {
+                    None
+                } else {
+                    serde_json::to_string(&r.history).ok()
+                }
+            })
+            .collect();
         let extract_date: StringArray = records.iter()
             .map(|r| r.extract_date.map(|d| d.to_string()))
             .collect();
@@ -417,6 +448,7 @@ impl ParquetOutputWriter {
                 Arc::new(main_activity_name),
                 Arc::new(additional_activities),
                 Arc::new(email),
+                Arc::new(history),
                 Arc::new(extract_date),
             ],
         )?;

@@ -4,8 +4,7 @@ import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Clock, Filter, ChevronDown, ChevronRight } from "lucide-react";
+import { Clock, ChevronDown, ChevronRight, FileText, Building2 } from "lucide-react";
 import { useCompanyHistoryQuery } from "@/lib/api/company-hooks";
 import { formatDate } from "@/lib/format-utils";
 import { decodeHtmlEntities } from "@/lib/html-utils";
@@ -16,20 +15,11 @@ interface CompanyHistoryProps {
 }
 
 export function CompanyHistory({ company }: CompanyHistoryProps) {
-  const [selectedFilter, setSelectedFilter] = useState<string>("all");
   const [expandedRecords, setExpandedRecords] = useState<Set<string>>(new Set());
   
   const { data: historyData, isLoading: historyLoading } = useCompanyHistoryQuery(company.ogrn);
 
-  const historyRecords = historyData?.company?.history || company.history || [];
-
-  // Фильтрация записей по типу
-  const filteredRecords = historyRecords.filter(record => 
-    selectedFilter === "all" || record.type === selectedFilter
-  );
-
-  // Получение уникальных типов изменений
-  const changeTypes = Array.from(new Set(historyRecords.map(record => record.type)));
+  const historyRecords = historyData?.company?.history || [];
 
   const toggleRecordExpansion = (recordId: string) => {
     const newExpanded = new Set(expandedRecords);
@@ -41,16 +31,18 @@ export function CompanyHistory({ company }: CompanyHistoryProps) {
     setExpandedRecords(newExpanded);
   };
 
-  const getChangeTypeColor = (type: string) => {
-    switch (type.toLowerCase()) {
-      case "регистрация":
+  const getReasonBadgeColor = (reasonCode?: string | null) => {
+    if (!reasonCode) return "bg-gray-100 text-gray-800 border-gray-200";
+    
+    // Коды причин: 11xxx - создание, 12xxx - изменение, 13xxx - прекращение
+    const code = reasonCode.substring(0, 2);
+    switch (code) {
+      case "11":
         return "bg-green-100 text-green-800 border-green-200";
-      case "изменение":
+      case "12":
         return "bg-blue-100 text-blue-800 border-blue-200";
-      case "ликвидация":
+      case "13":
         return "bg-red-100 text-red-800 border-red-200";
-      case "приостановление":
-        return "bg-yellow-100 text-yellow-800 border-yellow-200";
       default:
         return "bg-gray-100 text-gray-800 border-gray-200";
     }
@@ -68,23 +60,10 @@ export function CompanyHistory({ company }: CompanyHistoryProps) {
             )}
           </CardTitle>
           
-          {changeTypes.length > 0 && (
-            <div className="flex items-center gap-2">
-              <Filter className="h-4 w-4 text-gray-500" />
-              <Select value={selectedFilter} onValueChange={setSelectedFilter}>
-                <SelectTrigger className="w-48">
-                  <SelectValue placeholder="Фильтр по типу" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Все изменения</SelectItem>
-                  {changeTypes.map((type) => (
-                    <SelectItem key={type} value={type}>
-                      {type}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+          {historyRecords.length > 0 && (
+            <Badge variant="outline" className="text-sm">
+              Всего записей: {historyRecords.length}
+            </Badge>
           )}
         </div>
       </CardHeader>
@@ -95,7 +74,7 @@ export function CompanyHistory({ company }: CompanyHistoryProps) {
             {[1, 2, 3].map((i) => (
               <div key={i} className="animate-pulse border rounded-lg p-4">
                 <div className="flex items-center gap-3 mb-2">
-                  <div className="h-6 w-20 bg-gray-200 rounded"></div>
+                  <div className="h-6 w-32 bg-gray-200 rounded"></div>
                   <div className="h-4 w-24 bg-gray-200 rounded"></div>
                 </div>
                 <div className="h-4 bg-gray-200 rounded w-3/4 mb-2"></div>
@@ -103,37 +82,51 @@ export function CompanyHistory({ company }: CompanyHistoryProps) {
               </div>
             ))}
           </div>
-        ) : filteredRecords.length > 0 ? (
+        ) : historyRecords.length > 0 ? (
           <div className="space-y-4">
-            {filteredRecords.map((record) => {
+            {historyRecords.map((record) => {
               const isExpanded = expandedRecords.has(record.id);
+              const hasDetails = record.authority || record.certificateNumber || 
+                                record.snapshotFullName || record.snapshotStatus || 
+                                record.snapshotAddress;
               
               return (
                 <div
                   key={record.id}
-                  className="border rounded-lg p-4 hover:bg-gray-50 transition-colors"
+                  className="border rounded-lg p-4 transition-colors"
                 >
                   <div className="flex items-start justify-between">
                     <div className="flex-1">
-                      <div className="flex items-center gap-3 mb-2">
-                        <Badge className={getChangeTypeColor(record.type)}>
-                          {record.type}
+                      <div className="flex items-center gap-3 mb-2 flex-wrap">
+                        <Badge className={getReasonBadgeColor(record.reasonCode)}>
+                          ГРН: {record.grn}
                         </Badge>
-                        <span className="text-sm text-gray-500">
-                          {formatDate(record.date)}
-                        </span>
+                        {record.date && (
+                          <span className="text-sm text-gray-500 flex items-center gap-1">
+                            <Clock className="h-3 w-3" />
+                            {formatDate(record.date)}
+                          </span>
+                        )}
                       </div>
                       
-                      <p className="text-sm font-medium mb-2">
-                        {decodeHtmlEntities(record.description)}
-                      </p>
+                      {record.reasonDescription && (
+                        <p className="text-sm font-medium mb-2">
+                          {decodeHtmlEntities(record.reasonDescription)}
+                        </p>
+                      )}
                       
-                      {record.details && Object.keys(record.details).length > 0 && (
+                      {record.reasonCode && (
+                        <p className="text-xs text-gray-500 mb-2">
+                          Код причины: {record.reasonCode}
+                        </p>
+                      )}
+                      
+                      {hasDetails && (
                         <Button
                           variant="ghost"
                           size="sm"
                           onClick={() => toggleRecordExpansion(record.id)}
-                          className="flex items-center gap-1 p-0 h-auto text-blue-600 hover:text-blue-800"
+                          className="flex items-center gap-1 p-0 h-auto text-blue-600 hover:text-blue-800 mt-2"
                         >
                           {isExpanded ? (
                             <ChevronDown className="h-4 w-4" />
@@ -146,23 +139,63 @@ export function CompanyHistory({ company }: CompanyHistoryProps) {
                     </div>
                   </div>
                   
-                  {isExpanded && record.details && (
-                    <div className="mt-3 pt-3 border-t border-gray-200">
-                      <div className="grid gap-2">
-                        {Object.entries(record.details).map(([key, value]) => (
-                          <div key={key} className="flex gap-2">
-                            <span className="text-sm text-gray-500 min-w-0 flex-shrink-0">
-                              {key}:
-                            </span>
-                            <span className="text-sm font-medium">
-                              {typeof value === "object" 
-                                ? JSON.stringify(value, null, 2)
-                                : decodeHtmlEntities(String(value))
-                              }
-                            </span>
+                  {isExpanded && hasDetails && (
+                    <div className="mt-3 pt-3 border-t border-gray-200 space-y-3">
+                      {record.authority && (record.authority.code || record.authority.name) && (
+                        <div className="flex gap-2">
+                          <Building2 className="h-4 w-4 text-gray-400 mt-0.5 flex-shrink-0" />
+                          <div className="flex-1">
+                            <p className="text-xs text-gray-500 mb-1">Регистрирующий орган:</p>
+                            <p className="text-sm font-medium">
+                              {record.authority.name && decodeHtmlEntities(record.authority.name)}
+                              {record.authority.code && (
+                                <span className="text-xs text-gray-500 ml-2">
+                                  (код: {record.authority.code})
+                                </span>
+                              )}
+                            </p>
                           </div>
-                        ))}
-                      </div>
+                        </div>
+                      )}
+                      
+                      {(record.certificateSeries || record.certificateNumber || record.certificateDate) && (
+                        <div className="flex gap-2">
+                          <FileText className="h-4 w-4 text-gray-400 mt-0.5 flex-shrink-0" />
+                          <div className="flex-1">
+                            <p className="text-xs text-gray-500 mb-1">Свидетельство:</p>
+                            <p className="text-sm font-medium">
+                              {record.certificateSeries && `Серия: ${record.certificateSeries} `}
+                              {record.certificateNumber && `№ ${record.certificateNumber}`}
+                              {record.certificateDate && (
+                                <span className="text-xs text-gray-500 ml-2">
+                                  от {formatDate(record.certificateDate)}
+                                </span>
+                              )}
+                            </p>
+                          </div>
+                        </div>
+                      )}
+                      
+                      {record.snapshotFullName && (
+                        <div className="bg-gray-50 rounded p-3">
+                          <p className="text-xs text-gray-500 mb-1">Наименование на момент изменения:</p>
+                          <p className="text-sm">{decodeHtmlEntities(record.snapshotFullName)}</p>
+                        </div>
+                      )}
+                      
+                      {record.snapshotStatus && (
+                        <div className="bg-gray-50 rounded p-3">
+                          <p className="text-xs text-gray-500 mb-1">Статус на момент изменения:</p>
+                          <p className="text-sm">{record.snapshotStatus}</p>
+                        </div>
+                      )}
+                      
+                      {record.snapshotAddress && (
+                        <div className="bg-gray-50 rounded p-3">
+                          <p className="text-xs text-gray-500 mb-1">Адрес на момент изменения:</p>
+                          <p className="text-sm">{decodeHtmlEntities(record.snapshotAddress)}</p>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
@@ -173,10 +206,7 @@ export function CompanyHistory({ company }: CompanyHistoryProps) {
           <div className="text-center py-8">
             <Clock className="h-12 w-12 text-gray-400 mx-auto mb-4" />
             <p className="text-gray-500">
-              {selectedFilter === "all" 
-                ? "История изменений отсутствует"
-                : `Изменения типа "${selectedFilter}" не найдены`
-              }
+              История изменений отсутствует
             </p>
           </div>
         )}

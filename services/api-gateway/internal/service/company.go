@@ -121,7 +121,7 @@ func (s *CompanyService) GetHistory(ctx context.Context, ogrn string, limit, off
 	if limit <= 0 {
 		limit = 50
 	}
-	return s.historyRepo.GetByEntityID(ctx, model.EntityTypeCompany, ogrn, limit, offset)
+	return s.historyRepo.GetByEntityID(ctx, "company", ogrn, limit, offset)
 }
 
 // GetRelatedCompanies получает связанные компании по ИНН учредителя

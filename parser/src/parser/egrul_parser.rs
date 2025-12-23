@@ -740,9 +740,10 @@ impl EgrulXmlParser {
 
     /// Парсинг учредителя - российского юр. лица
     fn parse_founder_ul_ros(&self, reader: &mut Reader<&[u8]>, start: &BytesStart) -> Result<Founder> {
-        let ogrn = start.get_attr("ОГРН".as_bytes()).unwrap_or_default();
-        let inn = start.get_attr("ИНН".as_bytes()).unwrap_or_default();
-        let name = start.get_attr("НаимЮЛПолн".as_bytes())
+        // Атрибуты могут быть как в самом теге УчрЮЛРос, так и во вложенном НаимИННЮЛ
+        let mut ogrn = start.get_attr("ОГРН".as_bytes()).unwrap_or_default();
+        let mut inn = start.get_attr("ИНН".as_bytes()).unwrap_or_default();
+        let mut name = start.get_attr("НаимЮЛПолн".as_bytes())
             .or_else(|| start.get_attr("Наименование".as_bytes()))
             .unwrap_or_default();
         
@@ -754,18 +755,44 @@ impl EgrulXmlParser {
             match reader.read_event_into(&mut buf) {
                 Ok(Event::Start(ref e)) => {
                     depth += 1;
-                    let name = e.name();
-                    let tag = name.as_ref();
+                    let tag_name = e.name();
+                    let tag = tag_name.as_ref();
 
-                    if tag_matches(tag, "ДоляУстКап".as_bytes()) {
+                    // Читаем атрибуты из вложенного тега НаимИННЮЛ
+                    if tag_matches(tag, "НаимИННЮЛ".as_bytes()) {
+                        if let Some(attr_ogrn) = e.get_attr("ОГРН".as_bytes()) {
+                            ogrn = attr_ogrn;
+                        }
+                        if let Some(attr_inn) = e.get_attr("ИНН".as_bytes()) {
+                            inn = attr_inn;
+                        }
+                        if let Some(attr_name) = e.get_attr("НаимЮЛПолн".as_bytes())
+                            .or_else(|| e.get_attr("Наименование".as_bytes())) {
+                            name = attr_name;
+                        }
+                    }
+                    else if tag_matches(tag, "ДоляУстКап".as_bytes()) {
                         share = Some(self.parse_share(e));
                     }
                 }
                 Ok(Event::Empty(ref e)) => {
-                    let name = e.name();
-                    let tag = name.as_ref();
+                    let tag_name = e.name();
+                    let tag = tag_name.as_ref();
 
-                    if tag_matches(tag, "ДоляУстКап".as_bytes()) {
+                    // Читаем атрибуты из вложенного тега НаимИННЮЛ
+                    if tag_matches(tag, "НаимИННЮЛ".as_bytes()) {
+                        if let Some(attr_ogrn) = e.get_attr("ОГРН".as_bytes()) {
+                            ogrn = attr_ogrn;
+                        }
+                        if let Some(attr_inn) = e.get_attr("ИНН".as_bytes()) {
+                            inn = attr_inn;
+                        }
+                        if let Some(attr_name) = e.get_attr("НаимЮЛПолн".as_bytes())
+                            .or_else(|| e.get_attr("Наименование".as_bytes())) {
+                            name = attr_name;
+                        }
+                    }
+                    else if tag_matches(tag, "ДоляУстКап".as_bytes()) {
                         share = Some(self.parse_share(e));
                     }
                 }

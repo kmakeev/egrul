@@ -38,15 +38,15 @@ export function CompanyActivities({ company }: CompanyActivitiesProps) {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="flex items-start gap-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
-              <Badge variant="default" className="bg-blue-600">
+            <div className="flex items-start gap-4 p-3 border rounded-lg">
+              <Badge variant="default" className="bg-blue-600 dark:bg-blue-700">
                 Основной
               </Badge>
               <div className="flex-1">
-                <p className="font-mono text-sm font-semibold text-blue-900 mb-1">
+                <p className="font-mono text-sm font-semibold mb-1">
                   {company.mainActivity.code}
                 </p>
-                <p className="text-sm text-blue-800">
+                <p className="text-sm text-muted-foreground">
                   {decodeHtmlEntities(company.mainActivity.name)}
                 </p>
               </div>
@@ -91,7 +91,7 @@ export function CompanyActivities({ company }: CompanyActivitiesProps) {
               {visibleActivities.map((activity, index) => (
                 <div
                   key={`${activity.code}-${index}`}
-                  className="flex items-start gap-4 p-3 border rounded-lg hover:bg-gray-50 transition-colors"
+                  className="flex items-start gap-4 p-3 border rounded-lg transition-colors"
                 >
                   <Badge variant="outline" className="text-xs">
                     Доп.
@@ -100,7 +100,7 @@ export function CompanyActivities({ company }: CompanyActivitiesProps) {
                     <p className="font-mono text-sm font-semibold mb-1">
                       {activity.code}
                     </p>
-                    <p className="text-sm text-gray-700">
+                    <p className="text-sm text-muted-foreground">
                       {decodeHtmlEntities(activity.name)}
                     </p>
                   </div>

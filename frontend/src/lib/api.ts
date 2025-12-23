@@ -48,21 +48,35 @@ export interface LegalEntity {
 }
 
 export interface Founder {
-  id: string;
-  type: "individual" | "legal";
-  name: string;
+  type: "PERSON" | "RUSSIAN_COMPANY" | "FOREIGN_COMPANY" | "PUBLIC_ENTITY" | "FUND";
+  ogrn?: string;
   inn?: string;
-  share?: number;
-  amount?: number;
-  currency?: string;
+  name: string;
+  lastName?: string;
+  firstName?: string;
+  middleName?: string;
+  country?: string;
+  citizenship?: string;
+  shareNominalValue?: number;
+  sharePercent?: number;
 }
 
 export interface HistoryRecord {
   id: string;
-  date: string;
-  type: string;
-  description: string;
-  details?: Record<string, unknown>;
+  grn: string;
+  date: string | null;
+  reasonCode?: string | null;
+  reasonDescription?: string | null;
+  authority?: {
+    code?: string | null;
+    name?: string | null;
+  } | null;
+  certificateSeries?: string | null;
+  certificateNumber?: string | null;
+  certificateDate?: string | null;
+  snapshotFullName?: string | null;
+  snapshotStatus?: string | null;
+  snapshotAddress?: string | null;
 }
 
 export interface RelatedCompany {

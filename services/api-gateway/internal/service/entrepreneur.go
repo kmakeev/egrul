@@ -101,6 +101,6 @@ func (s *EntrepreneurService) GetHistory(ctx context.Context, ogrnip string, lim
 	if limit <= 0 {
 		limit = 50
 	}
-	return s.historyRepo.GetByEntityID(ctx, model.EntityTypeEntrepreneur, ogrnip, limit, offset)
+	return s.historyRepo.GetByEntityID(ctx, "entrepreneur", ogrnip, limit, offset)
 }
 

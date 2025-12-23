@@ -81,6 +81,8 @@ func (r *founderRow) toModel() *model.Founder {
 
 // GetByCompanyOGRN получает учредителей компании по ОГРН
 func (r *FounderRepository) GetByCompanyOGRN(ctx context.Context, ogrn string, limit, offset int) ([]*model.Founder, error) {
+	r.logger.Info("GetByCompanyOGRN called", zap.String("ogrn", ogrn), zap.Int("limit", limit), zap.Int("offset", offset))
+	
 	query := `
 		SELECT * FROM egrul.founders FINAL
 		WHERE company_ogrn = ?
@@ -90,6 +92,7 @@ func (r *FounderRepository) GetByCompanyOGRN(ctx context.Context, ogrn string, l
 
 	rows, err := r.client.conn.Query(ctx, query, ogrn, limit, offset)
 	if err != nil {
+		r.logger.Error("query founders failed", zap.String("ogrn", ogrn), zap.Error(err))
 		return nil, fmt.Errorf("query founders: %w", err)
 	}
 	defer rows.Close()
@@ -97,12 +100,35 @@ func (r *FounderRepository) GetByCompanyOGRN(ctx context.Context, ogrn string, l
 	var founders []*model.Founder
 	for rows.Next() {
 		var row founderRow
-		if err := rows.ScanStruct(&row); err != nil {
+		var versionDate sql.NullTime
+		var createdAt, updatedAt sql.NullTime
+		if err := rows.Scan(
+			&row.ID,
+			&row.CompanyOgrn,
+			&row.CompanyInn,
+			&row.CompanyName,
+			&row.FounderType,
+			&row.FounderOgrn,
+			&row.FounderInn,
+			&row.FounderName,
+			&row.FounderLastName,
+			&row.FounderFirstName,
+			&row.FounderMiddleName,
+			&row.FounderCountry,
+			&row.FounderCitizenship,
+			&row.ShareNominalValue,
+			&row.SharePercent,
+			&versionDate,
+			&createdAt,
+			&updatedAt,
+		); err != nil {
+			r.logger.Error("scan founder row failed", zap.Error(err))
 			return nil, fmt.Errorf("scan founder row: %w", err)
 		}
 		founders = append(founders, row.toModel())
 	}
 
+	r.logger.Info("GetByCompanyOGRN completed", zap.String("ogrn", ogrn), zap.Int("count", len(founders)))
 	return founders, nil
 }
 

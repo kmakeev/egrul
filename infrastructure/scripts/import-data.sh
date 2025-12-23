@@ -101,7 +101,7 @@ import_founders_from_companies_import() {
         full_name,
         founders
     FROM ${CLICKHOUSE_DATABASE}.companies_import
-    WHERE founders IS NOT NULL AND founders != '' AND founders != '[]'
+    WHERE founders != '' AND founders != '[]'
     "
     
     # Теперь импортируем учредителей из временной таблицы
@@ -174,6 +174,86 @@ import_founders_from_companies_import() {
     log_success "Импорт учредителей завершен. Всего записей: $founders_count"
 }
 
+# Функция для импорта истории изменений из временной таблицы компаний
+import_history_from_companies_import() {
+    log_info "Импорт истории изменений из данных ЕГРЮЛ..."
+    
+    # Импортируем историю из временной таблицы
+    # Используем подзапрос для фильтрации перед ARRAY JOIN
+    clickhouse_query "
+    INSERT INTO ${CLICKHOUSE_DATABASE}.company_history (
+        entity_type, entity_id, inn,
+        grn, grn_date,
+        reason_code, reason_description,
+        authority_code, authority_name,
+        certificate_series, certificate_number, certificate_date
+    )
+    SELECT 
+        'company' as entity_type,
+        ogrn as entity_id,
+        inn,
+        JSONExtractString(history_json, 'grn') as grn,
+        toDateOrNull(JSONExtractString(history_json, 'date')) as grn_date,
+        JSONExtractString(history_json, 'reason_code') as reason_code,
+        JSONExtractString(history_json, 'reason_description') as reason_description,
+        JSONExtractString(history_json, 'authority_code') as authority_code,
+        JSONExtractString(history_json, 'authority_name') as authority_name,
+        JSONExtractString(history_json, 'certificate_series') as certificate_series,
+        JSONExtractString(history_json, 'certificate_number') as certificate_number,
+        toDateOrNull(JSONExtractString(history_json, 'certificate_date')) as certificate_date
+    FROM (
+        SELECT ogrn, inn, history
+        FROM ${CLICKHOUSE_DATABASE}.companies_import
+        WHERE length(history) > 2
+    )
+    ARRAY JOIN JSONExtractArrayRaw(history) as history_json
+    SETTINGS max_partitions_per_insert_block = 1000
+    "
+    
+    local history_count=$(clickhouse_query "SELECT count() FROM ${CLICKHOUSE_DATABASE}.company_history WHERE entity_type = 'company'")
+    log_success "Импорт истории ЕГРЮЛ завершен. Всего записей: $history_count"
+}
+
+# Функция для импорта истории изменений из временной таблицы предпринимателей
+import_history_from_entrepreneurs_import() {
+    log_info "Импорт истории изменений из данных ЕГРИП..."
+    
+    # Импортируем историю из временной таблицы
+    # Используем подзапрос для фильтрации перед ARRAY JOIN
+    clickhouse_query "
+    INSERT INTO ${CLICKHOUSE_DATABASE}.company_history (
+        entity_type, entity_id, inn,
+        grn, grn_date,
+        reason_code, reason_description,
+        authority_code, authority_name,
+        certificate_series, certificate_number, certificate_date
+    )
+    SELECT 
+        'entrepreneur' as entity_type,
+        ogrnip as entity_id,
+        inn,
+        JSONExtractString(history_json, 'grn') as grn,
+        toDateOrNull(JSONExtractString(history_json, 'date')) as grn_date,
+        JSONExtractString(history_json, 'reason_code') as reason_code,
+        JSONExtractString(history_json, 'reason_description') as reason_description,
+        JSONExtractString(history_json, 'authority_code') as authority_code,
+        JSONExtractString(history_json, 'authority_name') as authority_name,
+        JSONExtractString(history_json, 'certificate_series') as certificate_series,
+        JSONExtractString(history_json, 'certificate_number') as certificate_number,
+        toDateOrNull(JSONExtractString(history_json, 'certificate_date')) as certificate_date
+    FROM (
+        SELECT ogrnip, inn, history
+        FROM ${CLICKHOUSE_DATABASE}.entrepreneurs_import
+        WHERE length(history) > 2
+    )
+    ARRAY JOIN JSONExtractArrayRaw(history) as history_json
+    SETTINGS max_partitions_per_insert_block = 1000
+    "
+    
+    local history_count=$(clickhouse_query "SELECT count() FROM ${CLICKHOUSE_DATABASE}.company_history WHERE entity_type = 'entrepreneur'")
+    log_success "Импорт истории ЕГРИП завершен. Всего записей: $history_count"
+}
+
 # Функция для создания промежуточной таблицы и трансформации данных
 import_egrul_with_transform() {
     local file="$1"
@@ -218,13 +298,16 @@ import_egrul_with_transform() {
         capital_amount Nullable(Float64),
         capital_currency Nullable(String),
         head_name Nullable(String),
+        head_inn Nullable(String),
+        head_middle_name Nullable(String),
         head_position Nullable(String),
         main_activity_code Nullable(String),
         main_activity_name Nullable(String),
         additional_activities Nullable(String),
         email Nullable(String),
         founders_count Nullable(Int32),
-        founders Nullable(String),
+        founders String DEFAULT '',
+        history String DEFAULT '',
         extract_date Nullable(String)
     ) ENGINE = Memory
     "
@@ -259,7 +342,7 @@ import_egrul_with_transform() {
         registration_date, termination_date, 
         postal_code, region_code, region, district, city, locality, street, house, building, flat, full_address, fias_id, kladr_code,
         capital_amount, capital_currency,
-        head_last_name, head_first_name, head_position,
+        head_last_name, head_first_name, head_middle_name, head_inn, head_position,
         okved_main_code, okved_main_name,
         okved_additional, okved_additional_names, additional_activities,
         email, founders_count, extract_date,
@@ -296,6 +379,8 @@ import_egrul_with_transform() {
         arrayElement(splitByChar(' ', coalesce(head_name, '')), 1) AS head_last_name,
         if(length(splitByChar(' ', coalesce(head_name, ''))) > 1, 
            arrayElement(splitByChar(' ', coalesce(head_name, '')), 2), NULL) AS head_first_name,
+        head_middle_name,
+        head_inn,
         head_position,
         main_activity_code,
         main_activity_name,
@@ -331,6 +416,9 @@ import_egrul_with_transform() {
     
     # Импорт учредителей
     import_founders_from_companies_import
+    
+    # Импорт истории изменений
+    import_history_from_companies_import
     
     # Удаляем временную таблицу
     clickhouse_query "DROP TABLE IF EXISTS ${CLICKHOUSE_DATABASE}.companies_import"
@@ -384,6 +472,7 @@ import_egrip_with_transform() {
         main_activity_name Nullable(String),
         additional_activities Nullable(String),
         email Nullable(String),
+        history String DEFAULT '',
         extract_date Nullable(String)
     ) ENGINE = Memory
     "
@@ -485,6 +574,9 @@ import_egrip_with_transform() {
         clickhouse_query "OPTIMIZE TABLE ${CLICKHOUSE_DATABASE}.entrepreneurs FINAL"
     fi
     
+    # Импорт истории изменений
+    import_history_from_entrepreneurs_import
+    
     # Удаляем временную таблицу
     clickhouse_query "DROP TABLE IF EXISTS ${CLICKHOUSE_DATABASE}.entrepreneurs_import"
 }
@@ -520,6 +612,14 @@ show_stats() {
         countIf(status = 'active') as active,
         countIf(status = 'liquidated') as liquidated
     FROM ${CLICKHOUSE_DATABASE}.entrepreneurs FORMAT Pretty"
+    echo ""
+    echo "История изменений:"
+    clickhouse_query "SELECT 
+        entity_type,
+        count() as total
+    FROM ${CLICKHOUSE_DATABASE}.company_history
+    GROUP BY entity_type
+    FORMAT Pretty"
 }
 
 # Главная функция
@@ -532,6 +632,10 @@ main() {
     
     # Проверяем подключение
     check_connection || exit 1
+    
+    # Очищаем таблицу истории перед импортом (для MVP - полная перезагрузка)
+    log_info "Очистка таблицы истории изменений..."
+    clickhouse_query "TRUNCATE TABLE ${CLICKHOUSE_DATABASE}.company_history"
     
     # Импорт ЕГРЮЛ
     local egrul_file="${DATA_DIR}/egrul_egrul.parquet"

@@ -2,15 +2,9 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { defaultGraphQLClient } from "@/lib/api/graphql-client";
-import type { Founder, HistoryRecord, RelatedCompany, Activity } from "@/lib/api";
+import type { HistoryRecord, RelatedCompany, Activity } from "@/lib/api";
 
 // ==================== Типы ответов GraphQL ====================
-
-interface GetCompanyFoundersResponse {
-  company: {
-    founders: Founder[];
-  } | null;
-}
 
 interface GetCompanyHistoryResponse {
   company: {
@@ -32,32 +26,6 @@ interface GetCompanyActivitiesResponse {
 
 // ==================== Хуки для дополнительных данных ====================
 
-export function useCompanyFoundersQuery(ogrn: string) {
-  return useQuery<GetCompanyFoundersResponse, Error>({
-    queryKey: ["company-founders", ogrn],
-    queryFn: () =>
-      defaultGraphQLClient.request<GetCompanyFoundersResponse, { ogrn: string }>(
-        /* GraphQL */ `
-          query GetCompanyFounders($ogrn: ID!) {
-            company(ogrn: $ogrn) {
-              founders {
-                id
-                type
-                name
-                inn
-                share
-                amount
-                currency
-              }
-            }
-          }
-        `,
-        { ogrn }
-      ),
-    enabled: !!ogrn,
-  });
-}
-
 export function useCompanyHistoryQuery(ogrn: string) {
   return useQuery<GetCompanyHistoryResponse, Error>({
     queryKey: ["company-history", ogrn],
@@ -66,12 +34,22 @@ export function useCompanyHistoryQuery(ogrn: string) {
         /* GraphQL */ `
           query GetCompanyHistory($ogrn: ID!) {
             company(ogrn: $ogrn) {
-              history {
+              history(limit: 100, offset: 0) {
                 id
+                grn
                 date
-                type
-                description
-                details
+                reasonCode
+                reasonDescription
+                authority {
+                  code
+                  name
+                }
+                certificateSeries
+                certificateNumber
+                certificateDate
+                snapshotFullName
+                snapshotStatus
+                snapshotAddress
               }
             }
           }

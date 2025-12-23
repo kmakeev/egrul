@@ -123,6 +123,19 @@ export function useCompanyQuery(ogrn: string) {
               taxAuthority
               pfrRegNumber
               fssRegNumber
+              founders {
+                type
+                ogrn
+                inn
+                name
+                lastName
+                firstName
+                middleName
+                country
+                citizenship
+                shareNominalValue
+                sharePercent
+              }
               foundersCount
               licensesCount
               branchesCount

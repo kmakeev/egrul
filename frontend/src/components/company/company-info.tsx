@@ -1,7 +1,7 @@
 "use client";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { MapPin, Calendar, Building, DollarSign } from "lucide-react";
+import { MapPin, Calendar, Building, Banknote } from "lucide-react";
 import { formatCurrency, formatDate } from "@/lib/format-utils";
 import { unifiedStatusOptions } from "@/lib/statuses";
 import type { LegalEntity } from "@/lib/api";
@@ -188,7 +188,7 @@ export function CompanyInfo({ company }: CompanyInfoProps) {
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <DollarSign className="h-5 w-5" />
+              <Banknote className="h-5 w-5" />
               Уставный капитал
             </CardTitle>
           </CardHeader>

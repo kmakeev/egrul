@@ -159,6 +159,57 @@ func (h *ManualHandler) handleCompanyQuery(ctx context.Context, req *GraphQLRequ
 		return &GraphQLResponse{Errors: []GraphQLError{{Message: err.Error()}}}, nil
 	}
 
+	// Если в запросе есть поле founders, загружаем учредителей
+	if strings.Contains(req.Query, "founders") && company != nil {
+		founders, err := h.resolver.Company().Founders(ctx, company, nil, nil)
+		if err == nil {
+			// Создаем map с данными компании и учредителями
+			result := map[string]interface{}{
+				"company": map[string]interface{}{
+					"ogrn":          company.Ogrn,
+					"ogrnDate":      company.OgrnDate,
+					"inn":           company.Inn,
+					"kpp":           company.Kpp,
+					"fullName":      company.FullName,
+					"shortName":     company.ShortName,
+					"brandName":     company.BrandName,
+					"legalForm":     company.LegalForm,
+					"status":        company.Status,
+					"statusCode":    company.StatusCode,
+					"terminationMethod": company.TerminationMethod,
+					"registrationDate": company.RegistrationDate,
+					"terminationDate": company.TerminationDate,
+					"extractDate":   company.ExtractDate,
+					"address":       company.Address,
+					"email":         company.Email,
+					"capital":       company.Capital,
+					"director":      company.Director,
+					"mainActivity":  company.MainActivity,
+					"activities":    company.Activities,
+					"regAuthority":  company.RegAuthority,
+					"taxAuthority":  company.TaxAuthority,
+					"pfrRegNumber":  company.PfrRegNumber,
+					"fssRegNumber":  company.FssRegNumber,
+					"foundersCount": company.FoundersCount,
+					"founders":      founders,
+					"licensesCount": company.LicensesCount,
+					"branchesCount": company.BranchesCount,
+					"isBankrupt":    company.IsBankrupt,
+					"bankruptcyStage": company.BankruptcyStage,
+					"isLiquidating": company.IsLiquidating,
+					"isReorganizing": company.IsReorganizing,
+					"lastGrn":       company.LastGrn,
+					"lastGrnDate":   company.LastGrnDate,
+					"sourceFile":    company.SourceFile,
+					"versionDate":   company.VersionDate,
+					"createdAt":     company.CreatedAt,
+					"updatedAt":     company.UpdatedAt,
+				},
+			}
+			return &GraphQLResponse{Data: result}, nil
+		}
+	}
+
 	return &GraphQLResponse{Data: map[string]interface{}{"company": company}}, nil
 }
 
