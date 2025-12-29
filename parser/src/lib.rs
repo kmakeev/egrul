@@ -53,6 +53,7 @@ pub mod error;
 pub mod config;
 pub mod parallel;
 pub mod cli;
+pub mod deduplication;
 
 // Re-export основных типов
 pub use error::{Error, Result};

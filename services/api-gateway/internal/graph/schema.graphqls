@@ -277,6 +277,7 @@ type Company {
   lastGrn: String
   lastGrnDate: Date
   history(limit: Int, offset: Int): [HistoryRecord!]!
+  historyCount: Int!
   
   # Метаданные
   sourceFile: String
@@ -344,6 +345,7 @@ type Entrepreneur {
   lastGrn: String
   lastGrnDate: Date
   history(limit: Int, offset: Int): [HistoryRecord!]!
+  historyCount: Int!
   
   # Метаданные
   sourceFile: String
@@ -602,6 +604,12 @@ type Query {
     limit: Int = 50
     offset: Int = 0
   ): [HistoryRecord!]!
+  
+  # Количество записей истории для сущности
+  entityHistoryCount(
+    entityType: EntityType!
+    entityId: ID!
+  ): Int!
   
   # Учредители компании
   companyFounders(

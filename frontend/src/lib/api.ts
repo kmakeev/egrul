@@ -43,6 +43,7 @@ export interface LegalEntity {
   head?: Person;
   founders?: Founder[];
   history?: HistoryRecord[];
+  historyCount?: number;
   relatedCompanies?: RelatedCompany[];
   registrationAuthority?: string;
 }

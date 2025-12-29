@@ -6,9 +6,13 @@ import type { HistoryRecord, RelatedCompany, Activity } from "@/lib/api";
 
 // ==================== Типы ответов GraphQL ====================
 
-interface GetCompanyHistoryResponse {
+export interface GetCompanyHistoryResponse {
   company: {
+    ogrn: string;
     history: HistoryRecord[];
+    historyCount?: number;
+    // Добавляем все остальные поля, которые может вернуть GraphQL
+    [key: string]: any;
   } | null;
 }
 
@@ -26,15 +30,15 @@ interface GetCompanyActivitiesResponse {
 
 // ==================== Хуки для дополнительных данных ====================
 
-export function useCompanyHistoryQuery(ogrn: string) {
-  return useQuery<GetCompanyHistoryResponse, Error>({
-    queryKey: ["company-history", ogrn],
+export function useCompanyHistoryQuery(ogrn: string, limit: number = 50, offset: number = 0, options?: { enabled?: boolean }) {
+  return useQuery<GetCompanyHistoryResponse>({
+    queryKey: ["company-history", ogrn, limit, offset],
     queryFn: () =>
-      defaultGraphQLClient.request<GetCompanyHistoryResponse, { ogrn: string }>(
+      defaultGraphQLClient.request<GetCompanyHistoryResponse, { ogrn: string; limit: number; offset: number }>(
         /* GraphQL */ `
-          query GetCompanyHistory($ogrn: ID!) {
+          query GetCompanyHistory($ogrn: ID!, $limit: Int!, $offset: Int!) {
             company(ogrn: $ogrn) {
-              history(limit: 100, offset: 0) {
+              history(limit: $limit, offset: $offset) {
                 id
                 grn
                 date
@@ -51,12 +55,53 @@ export function useCompanyHistoryQuery(ogrn: string) {
                 snapshotStatus
                 snapshotAddress
               }
+              historyCount
             }
           }
         `,
-        { ogrn }
+        { ogrn, limit, offset }
       ),
-    enabled: !!ogrn,
+    enabled: options?.enabled !== false && !!ogrn,
+    staleTime: 0, // Данные сразу считаются устаревшими - как в поиске
+    gcTime: 0, // Не кешируем данные - как в поиске
+  });
+}
+
+// Новый хук для истории через отдельный запрос (обходит проблемы с резолверами)
+export function useCompanyHistoryDirectQuery(ogrn: string, limit: number = 50, offset: number = 0, options?: { enabled?: boolean }) {
+  console.log("🚀 CALLING NEW DIRECT HISTORY QUERY", { ogrn, limit, offset });
+  
+  return useQuery<{ entityHistory: HistoryRecord[] }>({
+    queryKey: ["entity-history-direct", ogrn, limit, offset],
+    queryFn: () =>
+      defaultGraphQLClient.request<{ entityHistory: HistoryRecord[] }, { entityType: string; entityId: string; limit: number; offset: number }>(
+        /* GraphQL */ `
+          query GetEntityHistoryDirect($entityType: EntityType!, $entityId: ID!, $limit: Int!, $offset: Int!) {
+            entityHistory(entityType: $entityType, entityId: $entityId, limit: $limit, offset: $offset) {
+              id
+              grn
+              date
+              reasonCode
+              reasonDescription
+              authority {
+                code
+                name
+              }
+              certificateSeries
+              certificateNumber
+              certificateDate
+              snapshotFullName
+              snapshotStatus
+              snapshotAddress
+            }
+          }
+        `,
+        { entityType: "COMPANY", entityId: ogrn, limit, offset }
+      ),
+    enabled: options?.enabled !== false && !!ogrn,
+    staleTime: 0, // Данные сразу считаются устаревшими - как в поиске
+    gcTime: 0, // Не кешируем данные - как в поиске
+    retry: false, // Не повторяем запросы при ошибках
   });
 }
 

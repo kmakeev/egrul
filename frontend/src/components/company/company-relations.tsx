@@ -96,11 +96,11 @@ export function CompanyRelations({ company }: CompanyRelationsProps) {
               {[1, 2, 3].map((i) => (
                 <div key={i} className="animate-pulse border rounded-lg p-4">
                   <div className="flex items-center gap-3 mb-2">
-                    <div className="h-6 w-20 bg-gray-200 rounded"></div>
-                    <div className="h-6 w-16 bg-gray-200 rounded"></div>
+                    <div className="h-6 w-20 bg-muted rounded"></div>
+                    <div className="h-6 w-16 bg-muted rounded"></div>
                   </div>
-                  <div className="h-6 bg-gray-200 rounded w-3/4 mb-1"></div>
-                  <div className="h-4 bg-gray-200 rounded w-1/2"></div>
+                  <div className="h-6 bg-muted rounded w-3/4 mb-1"></div>
+                  <div className="h-4 bg-muted rounded w-1/2"></div>
                 </div>
               ))}
             </div>

@@ -176,17 +176,19 @@ import_founders_from_companies_import() {
 
 # Функция для импорта истории изменений из временной таблицы компаний
 import_history_from_companies_import() {
-    log_info "Импорт истории изменений из данных ЕГРЮЛ..."
+    log_info "Импорт истории изменений из данных ЕГРЮЛ с автоматической дедупликацией..."
     
-    # Импортируем историю из временной таблицы
-    # Используем подзапрос для фильтрации перед ARRAY JOIN
+    # Импортируем историю из временной таблицы в новую оптимизированную схему
+    # ReplacingMergeTree автоматически обработает дедупликацию по ключу (entity_type, entity_id, grn)
     clickhouse_query "
     INSERT INTO ${CLICKHOUSE_DATABASE}.company_history (
         entity_type, entity_id, inn,
         grn, grn_date,
         reason_code, reason_description,
         authority_code, authority_name,
-        certificate_series, certificate_number, certificate_date
+        certificate_series, certificate_number, certificate_date,
+        source_files, extract_date, file_hash,
+        created_at, updated_at
     )
     SELECT 
         'company' as entity_type,
@@ -200,9 +202,14 @@ import_history_from_companies_import() {
         JSONExtractString(history_json, 'authority_name') as authority_name,
         JSONExtractString(history_json, 'certificate_series') as certificate_series,
         JSONExtractString(history_json, 'certificate_number') as certificate_number,
-        toDateOrNull(JSONExtractString(history_json, 'certificate_date')) as certificate_date
+        toDateOrNull(JSONExtractString(history_json, 'certificate_date')) as certificate_date,
+        ['parquet_import'] as source_files,  -- Массив файлов-источников
+        coalesce(toDateOrNull(extract_date), today()) as extract_date,
+        'parquet_' || toString(cityHash64(ogrn || JSONExtractString(history_json, 'grn'))) as file_hash,  -- Генерируем хеш
+        now64(3) as created_at,
+        now64(3) as updated_at
     FROM (
-        SELECT ogrn, inn, history
+        SELECT ogrn, inn, history, extract_date
         FROM ${CLICKHOUSE_DATABASE}.companies_import
         WHERE length(history) > 2
     )
@@ -212,21 +219,36 @@ import_history_from_companies_import() {
     
     local history_count=$(clickhouse_query "SELECT count() FROM ${CLICKHOUSE_DATABASE}.company_history WHERE entity_type = 'company'")
     log_success "Импорт истории ЕГРЮЛ завершен. Всего записей: $history_count"
+    
+    # Запускаем принудительную дедупликацию для немедленного эффекта
+    log_info "Выполнение дедупликации истории ЕГРЮЛ..."
+    clickhouse_query "OPTIMIZE TABLE ${CLICKHOUSE_DATABASE}.company_history FINAL"
+    
+    # Проверяем эффективность дедупликации
+    local unique_count=$(clickhouse_query "SELECT count() FROM ${CLICKHOUSE_DATABASE}.company_history_view WHERE entity_type = 'company'")
+    local duplicates_removed=$((history_count - unique_count))
+    if [ $duplicates_removed -gt 0 ]; then
+        log_success "Дедупликация завершена. Удалено дублей: $duplicates_removed"
+    else
+        log_info "Дубли не обнаружены"
+    fi
 }
 
 # Функция для импорта истории изменений из временной таблицы предпринимателей
 import_history_from_entrepreneurs_import() {
-    log_info "Импорт истории изменений из данных ЕГРИП..."
+    log_info "Импорт истории изменений из данных ЕГРИП с автоматической дедупликацией..."
     
-    # Импортируем историю из временной таблицы
-    # Используем подзапрос для фильтрации перед ARRAY JOIN
+    # Импортируем историю из временной таблицы в новую оптимизированную схему
+    # ReplacingMergeTree автоматически обработает дедупликацию по ключу (entity_type, entity_id, grn)
     clickhouse_query "
     INSERT INTO ${CLICKHOUSE_DATABASE}.company_history (
         entity_type, entity_id, inn,
         grn, grn_date,
         reason_code, reason_description,
         authority_code, authority_name,
-        certificate_series, certificate_number, certificate_date
+        certificate_series, certificate_number, certificate_date,
+        source_files, extract_date, file_hash,
+        created_at, updated_at
     )
     SELECT 
         'entrepreneur' as entity_type,
@@ -240,9 +262,14 @@ import_history_from_entrepreneurs_import() {
         JSONExtractString(history_json, 'authority_name') as authority_name,
         JSONExtractString(history_json, 'certificate_series') as certificate_series,
         JSONExtractString(history_json, 'certificate_number') as certificate_number,
-        toDateOrNull(JSONExtractString(history_json, 'certificate_date')) as certificate_date
+        toDateOrNull(JSONExtractString(history_json, 'certificate_date')) as certificate_date,
+        ['parquet_import'] as source_files,  -- Массив файлов-источников
+        coalesce(toDateOrNull(extract_date), today()) as extract_date,
+        'parquet_' || toString(cityHash64(ogrnip || JSONExtractString(history_json, 'grn'))) as file_hash,  -- Генерируем хеш
+        now64(3) as created_at,
+        now64(3) as updated_at
     FROM (
-        SELECT ogrnip, inn, history
+        SELECT ogrnip, inn, history, extract_date
         FROM ${CLICKHOUSE_DATABASE}.entrepreneurs_import
         WHERE length(history) > 2
     )
@@ -252,6 +279,19 @@ import_history_from_entrepreneurs_import() {
     
     local history_count=$(clickhouse_query "SELECT count() FROM ${CLICKHOUSE_DATABASE}.company_history WHERE entity_type = 'entrepreneur'")
     log_success "Импорт истории ЕГРИП завершен. Всего записей: $history_count"
+    
+    # Запускаем принудительную дедупликацию для немедленного эффекта
+    log_info "Выполнение дедупликации истории ЕГРИП..."
+    clickhouse_query "OPTIMIZE TABLE ${CLICKHOUSE_DATABASE}.company_history FINAL"
+    
+    # Проверяем эффективность дедупликации
+    local unique_count=$(clickhouse_query "SELECT count() FROM ${CLICKHOUSE_DATABASE}.company_history_view WHERE entity_type = 'entrepreneur'")
+    local duplicates_removed=$((history_count - unique_count))
+    if [ $duplicates_removed -gt 0 ]; then
+        log_success "Дедупликация завершена. Удалено дублей: $duplicates_removed"
+    else
+        log_info "Дубли не обнаружены"
+    fi
 }
 
 # Функция для создания промежуточной таблицы и трансформации данных
@@ -613,12 +653,33 @@ show_stats() {
         countIf(status = 'liquidated') as liquidated
     FROM ${CLICKHOUSE_DATABASE}.entrepreneurs FORMAT Pretty"
     echo ""
-    echo "История изменений:"
+    echo "История изменений (с дедупликацией):"
     clickhouse_query "SELECT 
         entity_type,
-        count() as total
+        count() as total_records,
+        count(DISTINCT grn) as unique_grns,
+        count() - count(DISTINCT grn) as potential_duplicates,
+        round((count() - count(DISTINCT grn)) / count() * 100, 2) as dedup_ratio_percent
     FROM ${CLICKHOUSE_DATABASE}.company_history
     GROUP BY entity_type
+    FORMAT Pretty"
+    echo ""
+    echo "Дедуплицированная история (через VIEW):"
+    clickhouse_query "SELECT 
+        entity_type,
+        count() as unique_records
+    FROM ${CLICKHOUSE_DATABASE}.company_history_view
+    GROUP BY entity_type
+    FORMAT Pretty"
+    echo ""
+    echo "Статистика по источникам данных:"
+    clickhouse_query "SELECT 
+        arrayJoin(source_files) as source_file,
+        count() as records_count,
+        count(DISTINCT entity_id) as unique_entities
+    FROM ${CLICKHOUSE_DATABASE}.company_history_view
+    GROUP BY source_file
+    ORDER BY records_count DESC
     FORMAT Pretty"
 }
 

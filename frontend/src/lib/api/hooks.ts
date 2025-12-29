@@ -137,6 +137,24 @@ export function useCompanyQuery(ogrn: string) {
                 sharePercent
               }
               foundersCount
+              history(limit: 50, offset: 0) {
+                id
+                grn
+                date
+                reasonCode
+                reasonDescription
+                authority {
+                  code
+                  name
+                }
+                certificateSeries
+                certificateNumber
+                certificateDate
+                snapshotFullName
+                snapshotStatus
+                snapshotAddress
+              }
+              historyCount
               licensesCount
               branchesCount
               isBankrupt

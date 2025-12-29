@@ -124,6 +124,11 @@ func (s *CompanyService) GetHistory(ctx context.Context, ogrn string, limit, off
 	return s.historyRepo.GetByEntityID(ctx, "company", ogrn, limit, offset)
 }
 
+// GetHistoryCount получает общее количество записей истории компании
+func (s *CompanyService) GetHistoryCount(ctx context.Context, ogrn string) (int, error) {
+	return s.historyRepo.CountByEntityID(ctx, "company", ogrn)
+}
+
 // GetRelatedCompanies получает связанные компании по ИНН учредителя
 func (s *CompanyService) GetRelatedCompanies(ctx context.Context, inn string, limit, offset int) ([]*model.Company, error) {
 	if limit <= 0 {

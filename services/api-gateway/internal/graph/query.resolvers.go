@@ -109,6 +109,13 @@ func (r *queryResolver) Statistics(ctx context.Context, filter *model.StatsFilte
 
 // EntityHistory is the resolver for the entityHistory field.
 func (r *queryResolver) EntityHistory(ctx context.Context, entityType model.EntityType, entityID string, limit *int, offset *int) ([]*model.HistoryRecord, error) {
+	r.Logger.Info("EntityHistory resolver called - DIRECT QUERY", 
+		zap.String("entityType", string(entityType)),
+		zap.String("entityID", entityID),
+		zap.Any("limit", limit),
+		zap.Any("offset", offset),
+	)
+	
 	l := 50
 	if limit != nil {
 		l = *limit
@@ -117,13 +124,63 @@ func (r *queryResolver) EntityHistory(ctx context.Context, entityType model.Enti
 	if offset != nil {
 		o = *offset
 	}
+	
+	r.Logger.Info("EntityHistory parameters", 
+		zap.String("entityType", string(entityType)),
+		zap.String("entityID", entityID),
+		zap.Int("resolved_limit", l),
+		zap.Int("resolved_offset", o),
+	)
+	
 	// Используем CompanyService для компаний и EntrepreneurService для ИП
 	if entityType == model.EntityTypeCompany {
-		return r.CompanyService.GetHistory(ctx, entityID, l, o)
+		history, err := r.CompanyService.GetHistory(ctx, entityID, l, o)
+		if err != nil {
+			r.Logger.Error("failed to get company history", zap.String("entityID", entityID), zap.Error(err))
+			return nil, err
+		}
+		r.Logger.Info("EntityHistory loaded for company", 
+			zap.String("entityID", entityID),
+			zap.Int("count", len(history)),
+			zap.String("first_grn", func() string {
+				if len(history) > 0 { return history[0].Grn }
+				return "none"
+			}()),
+			zap.String("last_grn", func() string {
+				if len(history) > 0 { return history[len(history)-1].Grn }
+				return "none"
+			}()),
+		)
+		return history, nil
 	} else if entityType == model.EntityTypeEntrepreneur {
 		return r.EntrepreneurService.GetHistory(ctx, entityID, l, o)
 	}
 	return nil, fmt.Errorf("unsupported entity type: %v", entityType)
+}
+
+// EntityHistoryCount is the resolver for the entityHistoryCount field.
+func (r *queryResolver) EntityHistoryCount(ctx context.Context, entityType model.EntityType, entityID string) (int, error) {
+	r.Logger.Info("EntityHistoryCount resolver called - DIRECT QUERY", 
+		zap.String("entityType", string(entityType)),
+		zap.String("entityID", entityID),
+	)
+	
+	// Используем CompanyService для компаний и EntrepreneurService для ИП
+	if entityType == model.EntityTypeCompany {
+		count, err := r.CompanyService.GetHistoryCount(ctx, entityID)
+		if err != nil {
+			r.Logger.Error("failed to get company history count", zap.String("entityID", entityID), zap.Error(err))
+			return 0, err
+		}
+		r.Logger.Info("EntityHistoryCount loaded for company", 
+			zap.String("entityID", entityID),
+			zap.Int("count", count),
+		)
+		return count, nil
+	} else if entityType == model.EntityTypeEntrepreneur {
+		return r.EntrepreneurService.GetHistoryCount(ctx, entityID)
+	}
+	return 0, fmt.Errorf("unsupported entity type: %v", entityType)
 }
 
 // CompanyFounders is the resolver for the companyFounders field.

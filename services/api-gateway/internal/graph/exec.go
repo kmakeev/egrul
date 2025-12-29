@@ -142,6 +142,12 @@ func (h *ManualHandler) handleIntrospection(ctx context.Context, query string) (
 }
 
 func (h *ManualHandler) handleCompanyQuery(ctx context.Context, req *GraphQLRequest) (*GraphQLResponse, error) {
+	// #region agent log
+	agentLog("history-debug", "exec.go:handleCompanyQuery", "function called", map[string]interface{}{
+		"query": req.Query,
+	})
+	// #endregion
+	
 	ogrn, ok := req.Variables["ogrn"].(string)
 	if !ok {
 		// Try to extract from query
@@ -159,55 +165,173 @@ func (h *ManualHandler) handleCompanyQuery(ctx context.Context, req *GraphQLRequ
 		return &GraphQLResponse{Errors: []GraphQLError{{Message: err.Error()}}}, nil
 	}
 
-	// Если в запросе есть поле founders, загружаем учредителей
-	if strings.Contains(req.Query, "founders") && company != nil {
-		founders, err := h.resolver.Company().Founders(ctx, company, nil, nil)
-		if err == nil {
-			// Создаем map с данными компании и учредителями
-			result := map[string]interface{}{
-				"company": map[string]interface{}{
-					"ogrn":          company.Ogrn,
-					"ogrnDate":      company.OgrnDate,
-					"inn":           company.Inn,
-					"kpp":           company.Kpp,
-					"fullName":      company.FullName,
-					"shortName":     company.ShortName,
-					"brandName":     company.BrandName,
-					"legalForm":     company.LegalForm,
-					"status":        company.Status,
-					"statusCode":    company.StatusCode,
-					"terminationMethod": company.TerminationMethod,
-					"registrationDate": company.RegistrationDate,
-					"terminationDate": company.TerminationDate,
-					"extractDate":   company.ExtractDate,
-					"address":       company.Address,
-					"email":         company.Email,
-					"capital":       company.Capital,
-					"director":      company.Director,
-					"mainActivity":  company.MainActivity,
-					"activities":    company.Activities,
-					"regAuthority":  company.RegAuthority,
-					"taxAuthority":  company.TaxAuthority,
-					"pfrRegNumber":  company.PfrRegNumber,
-					"fssRegNumber":  company.FssRegNumber,
-					"foundersCount": company.FoundersCount,
-					"founders":      founders,
-					"licensesCount": company.LicensesCount,
-					"branchesCount": company.BranchesCount,
-					"isBankrupt":    company.IsBankrupt,
-					"bankruptcyStage": company.BankruptcyStage,
-					"isLiquidating": company.IsLiquidating,
-					"isReorganizing": company.IsReorganizing,
-					"lastGrn":       company.LastGrn,
-					"lastGrnDate":   company.LastGrnDate,
-					"sourceFile":    company.SourceFile,
-					"versionDate":   company.VersionDate,
-					"createdAt":     company.CreatedAt,
-					"updatedAt":     company.UpdatedAt,
-				},
+	// Если в запросе есть поля founders или history, загружаем их
+	hasFounders := strings.Contains(req.Query, "founders")
+	hasHistory := strings.Contains(req.Query, "history")
+	
+	// #region agent log
+	agentLog("history-debug", "exec.go:handleCompanyQuery", "checking for founders and history fields", map[string]interface{}{
+		"hasFounders": hasFounders,
+		"hasHistory": hasHistory,
+		"query": req.Query,
+	})
+	// #endregion
+	
+	if (hasFounders || hasHistory) && company != nil {
+		var founders []*model.Founder
+		var history []*model.HistoryRecord
+		
+		// Загружаем учредителей если запрошены
+		if hasFounders {
+			agentLog("history-debug", "exec.go:handleCompanyQuery", "loading founders", map[string]interface{}{"ogrn": company.Ogrn})
+			foundersResult, err := h.resolver.Company().Founders(ctx, company, nil, nil)
+			if err == nil {
+				founders = foundersResult
+				agentLog("history-debug", "exec.go:handleCompanyQuery", "founders loaded", map[string]interface{}{"count": len(founders)})
+			} else {
+				agentLog("history-debug", "exec.go:handleCompanyQuery", "founders error", map[string]interface{}{"error": err.Error()})
 			}
-			return &GraphQLResponse{Data: result}, nil
 		}
+		
+		// Загружаем историю если запрошена
+		if hasHistory {
+			agentLog("history-debug", "exec.go:handleCompanyQuery", "loading history", map[string]interface{}{"ogrn": company.Ogrn})
+			
+			// Извлекаем параметры limit и offset для истории из GraphQL запроса
+			var historyLimit, historyOffset *int
+			
+			// Сначала пробуем из variables
+			if limitVar, ok := req.Variables["limit"].(float64); ok {
+				l := int(limitVar)
+				historyLimit = &l
+			}
+			if offsetVar, ok := req.Variables["offset"].(float64); ok {
+				o := int(offsetVar)
+				historyOffset = &o
+			}
+			
+			// Если не нашли в variables, пробуем извлечь из строки запроса
+			if historyLimit == nil || historyOffset == nil {
+				// Ищем паттерн history(limit: X, offset: Y)
+				historyIdx := strings.Index(req.Query, "history(")
+				if historyIdx != -1 {
+					// Находим закрывающую скобку
+					start := historyIdx + len("history(")
+					end := strings.Index(req.Query[start:], ")")
+					if end != -1 {
+						argsStr := req.Query[start : start+end]
+						
+						// Парсим limit
+						if limitIdx := strings.Index(argsStr, "limit:"); limitIdx != -1 {
+							limitStart := limitIdx + len("limit:")
+							for limitStart < len(argsStr) && (argsStr[limitStart] == ' ' || argsStr[limitStart] == '\t') {
+								limitStart++
+							}
+							var limitVal int
+							if n, err := fmt.Sscanf(argsStr[limitStart:], "%d", &limitVal); err == nil && n == 1 {
+								historyLimit = &limitVal
+							}
+						}
+						
+						// Парсим offset
+						if offsetIdx := strings.Index(argsStr, "offset:"); offsetIdx != -1 {
+							offsetStart := offsetIdx + len("offset:")
+							for offsetStart < len(argsStr) && (argsStr[offsetStart] == ' ' || argsStr[offsetStart] == '\t') {
+								offsetStart++
+							}
+							var offsetVal int
+							if n, err := fmt.Sscanf(argsStr[offsetStart:], "%d", &offsetVal); err == nil && n == 1 {
+								historyOffset = &offsetVal
+							}
+						}
+					}
+				}
+			}
+			
+			agentLog("history-debug", "exec.go:handleCompanyQuery", "extracted history parameters", map[string]interface{}{
+				"limit": historyLimit,
+				"offset": historyOffset,
+				"query": req.Query,
+				"variables": req.Variables,
+			})
+			
+			historyResult, err := h.resolver.Company().History(ctx, company, historyLimit, historyOffset)
+			if err == nil {
+				history = historyResult
+				agentLog("history-debug", "exec.go:handleCompanyQuery", "history loaded", map[string]interface{}{
+					"count": len(history),
+					"limit": historyLimit,
+					"offset": historyOffset,
+				})
+			} else {
+				agentLog("history-debug", "exec.go:handleCompanyQuery", "history error", map[string]interface{}{"error": err.Error()})
+			}
+		}
+		
+		// Создаем map с данными компании
+		companyData := map[string]interface{}{
+			"ogrn":          company.Ogrn,
+			"ogrnDate":      company.OgrnDate,
+			"inn":           company.Inn,
+			"kpp":           company.Kpp,
+			"fullName":      company.FullName,
+			"shortName":     company.ShortName,
+			"brandName":     company.BrandName,
+			"legalForm":     company.LegalForm,
+			"status":        company.Status,
+			"statusCode":    company.StatusCode,
+			"terminationMethod": company.TerminationMethod,
+			"registrationDate": company.RegistrationDate,
+			"terminationDate": company.TerminationDate,
+			"extractDate":   company.ExtractDate,
+			"address":       company.Address,
+			"email":         company.Email,
+			"capital":       company.Capital,
+			"director":      company.Director,
+			"mainActivity":  company.MainActivity,
+			"activities":    company.Activities,
+			"regAuthority":  company.RegAuthority,
+			"taxAuthority":  company.TaxAuthority,
+			"pfrRegNumber":  company.PfrRegNumber,
+			"fssRegNumber":  company.FssRegNumber,
+			"foundersCount": company.FoundersCount,
+			"licensesCount": company.LicensesCount,
+			"branchesCount": company.BranchesCount,
+			"isBankrupt":    company.IsBankrupt,
+			"bankruptcyStage": company.BankruptcyStage,
+			"isLiquidating": company.IsLiquidating,
+			"isReorganizing": company.IsReorganizing,
+			"lastGrn":       company.LastGrn,
+			"lastGrnDate":   company.LastGrnDate,
+			"sourceFile":    company.SourceFile,
+			"versionDate":   company.VersionDate,
+			"createdAt":     company.CreatedAt,
+			"updatedAt":     company.UpdatedAt,
+		}
+		
+		// Добавляем founders если они были загружены
+		if founders != nil {
+			companyData["founders"] = founders
+		}
+		
+		// Добавляем history если она была загружена
+		if history != nil {
+			companyData["history"] = history
+			
+			// Также добавляем historyCount если запрошен
+			if strings.Contains(req.Query, "historyCount") {
+				historyCount, err := h.resolver.Company().HistoryCount(ctx, company)
+				if err == nil {
+					companyData["historyCount"] = historyCount
+					agentLog("history-debug", "exec.go:handleCompanyQuery", "historyCount loaded", map[string]interface{}{"count": historyCount})
+				}
+			}
+		}
+		
+		result := map[string]interface{}{
+			"company": companyData,
+		}
+		return &GraphQLResponse{Data: result}, nil
 	}
 
 	return &GraphQLResponse{Data: map[string]interface{}{"company": company}}, nil

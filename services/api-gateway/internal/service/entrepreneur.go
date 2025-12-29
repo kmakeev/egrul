@@ -104,3 +104,8 @@ func (s *EntrepreneurService) GetHistory(ctx context.Context, ogrnip string, lim
 	return s.historyRepo.GetByEntityID(ctx, "entrepreneur", ogrnip, limit, offset)
 }
 
+// GetHistoryCount получает общее количество записей истории ИП
+func (s *EntrepreneurService) GetHistoryCount(ctx context.Context, ogrnip string) (int, error) {
+	return s.historyRepo.CountByEntityID(ctx, "entrepreneur", ogrnip)
+}
+

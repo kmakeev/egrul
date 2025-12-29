@@ -21,6 +21,7 @@ type QueryResolver interface {
 	Search(ctx context.Context, query string, limit *int) (*model.SearchResult, error)
 	Statistics(ctx context.Context, filter *model.StatsFilter) (*model.Statistics, error)
 	EntityHistory(ctx context.Context, entityType model.EntityType, entityID string, limit *int, offset *int) ([]*model.HistoryRecord, error)
+	EntityHistoryCount(ctx context.Context, entityType model.EntityType, entityID string) (int, error)
 	CompanyFounders(ctx context.Context, ogrn string, limit *int, offset *int) ([]*model.Founder, error)
 	RelatedCompanies(ctx context.Context, inn string, limit *int, offset *int) ([]*model.Company, error)
 }
@@ -31,12 +32,14 @@ type CompanyResolver interface {
 	Licenses(ctx context.Context, obj *model.Company) ([]*model.License, error)
 	Branches(ctx context.Context, obj *model.Company) ([]*model.Branch, error)
 	History(ctx context.Context, obj *model.Company, limit *int, offset *int) ([]*model.HistoryRecord, error)
+	HistoryCount(ctx context.Context, obj *model.Company) (int, error)
 }
 
 // EntrepreneurResolver interface for Entrepreneur field resolvers
 type EntrepreneurResolver interface {
 	Licenses(ctx context.Context, obj *model.Entrepreneur) ([]*model.License, error)
 	History(ctx context.Context, obj *model.Entrepreneur, limit *int, offset *int) ([]*model.HistoryRecord, error)
+	HistoryCount(ctx context.Context, obj *model.Entrepreneur) (int, error)
 }
 
 // StatisticsResolver interface for Statistics field resolvers

@@ -8,6 +8,7 @@ import { Clock, ChevronDown, ChevronRight, FileText, Building2 } from "lucide-re
 import { useCompanyHistoryQuery } from "@/lib/api/company-hooks";
 import { formatDate } from "@/lib/format-utils";
 import { decodeHtmlEntities } from "@/lib/html-utils";
+import { SearchPagination } from "@/components/search/search-pagination";
 import type { LegalEntity } from "@/lib/api";
 
 interface CompanyHistoryProps {
@@ -15,11 +16,67 @@ interface CompanyHistoryProps {
 }
 
 export function CompanyHistory({ company }: CompanyHistoryProps) {
-  const [expandedRecords, setExpandedRecords] = useState<Set<string>>(new Set());
+  // ВРЕМЕННЫЙ МАРКЕР - НОВАЯ ВЕРСИЯ КОМПОНЕНТА
+  console.log("🔥 USING NEW COMPANY HISTORY COMPONENT VERSION 2.0");
   
-  const { data: historyData, isLoading: historyLoading } = useCompanyHistoryQuery(company.ogrn);
+  const [expandedRecords, setExpandedRecords] = useState<Set<string>>(new Set());
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
+  
+  // Используем серверную пагинацию через отдельный запрос
+  const offset = (page - 1) * pageSize;
+  
+  const { data: historyData, isLoading, isFetching, refetch } = useCompanyHistoryQuery(
+    company.ogrn, 
+    pageSize, 
+    offset,
+    { enabled: !!company.ogrn }
+  );
 
+  // Получаем данные из запроса
   const historyRecords = historyData?.company?.history || [];
+  const totalCountFromQuery = historyData?.company?.historyCount || 0;
+  
+  // Используем historyCount из основного запроса компании как fallback
+  const totalCountFromCompany = company.historyCount || 0;
+  
+  const totalCount = totalCountFromQuery || totalCountFromCompany || (historyRecords.length === 50 ? 100 : historyRecords.length);
+
+  // Временная отладочная информация
+  console.log('CompanyHistory Debug:', {
+    page,
+    pageSize,
+    offset,
+    historyRecordsLength: historyRecords.length,
+    totalCountFromQuery,
+    totalCountFromCompany,
+    totalCount,
+    shouldShowPagination: totalCount > pageSize,
+    queryParams: { ogrn: company.ogrn, limit: pageSize, offset },
+    isLoading,
+    isFetching,
+    firstRecordGrn: historyRecords[0]?.grn,
+    lastRecordGrn: historyRecords[historyRecords.length - 1]?.grn,
+    usingDirectQuery: true, // Маркер что используем новый хук
+    rawHistoryData: historyData
+  });
+
+
+
+  const handlePageChange = (newPage: number) => {
+    setPage(newPage);
+    setExpandedRecords(new Set()); // Сбрасываем развернутые записи при смене страницы
+    // Принудительно обновляем данные
+    refetch();
+  };
+
+  const handlePageSizeChange = (newPageSize: number) => {
+    setPageSize(newPageSize);
+    setPage(1); // Сбрасываем на первую страницу при изменении размера
+    setExpandedRecords(new Set());
+    // Принудительно обновляем данные
+    refetch();
+  };
 
   const toggleRecordExpansion = (recordId: string) => {
     const newExpanded = new Set(expandedRecords);
@@ -55,30 +112,30 @@ export function CompanyHistory({ company }: CompanyHistoryProps) {
           <CardTitle className="flex items-center gap-2">
             <Clock className="h-5 w-5" />
             История изменений
-            {historyLoading && (
+            {isLoading || isFetching && (
               <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
             )}
           </CardTitle>
           
-          {historyRecords.length > 0 && (
+          {totalCount > 0 && (
             <Badge variant="outline" className="text-sm">
-              Всего записей: {historyRecords.length}
+              Всего записей: {totalCount}
             </Badge>
           )}
         </div>
       </CardHeader>
       
       <CardContent>
-        {historyLoading ? (
+        {isLoading || isFetching ? (
           <div className="space-y-4">
             {[1, 2, 3].map((i) => (
               <div key={i} className="animate-pulse border rounded-lg p-4">
                 <div className="flex items-center gap-3 mb-2">
-                  <div className="h-6 w-32 bg-gray-200 rounded"></div>
-                  <div className="h-4 w-24 bg-gray-200 rounded"></div>
+                  <div className="h-6 w-32 bg-muted rounded"></div>
+                  <div className="h-4 w-24 bg-muted rounded"></div>
                 </div>
-                <div className="h-4 bg-gray-200 rounded w-3/4 mb-2"></div>
-                <div className="h-4 bg-gray-200 rounded w-1/2"></div>
+                <div className="h-4 bg-muted rounded w-3/4 mb-2"></div>
+                <div className="h-4 bg-muted rounded w-1/2"></div>
               </div>
             ))}
           </div>
@@ -208,6 +265,19 @@ export function CompanyHistory({ company }: CompanyHistoryProps) {
             <p className="text-gray-500">
               История изменений отсутствует
             </p>
+          </div>
+        )}
+        
+        {/* Пагинация */}
+        {totalCount > pageSize && (
+          <div className="mt-6 pt-4 border-t">
+            <SearchPagination
+              page={page}
+              pageSize={pageSize}
+              total={totalCount}
+              onPageChange={handlePageChange}
+              onPageSizeChange={handlePageSizeChange}
+            />
           </div>
         )}
       </CardContent>

@@ -42,6 +42,19 @@ func (r *entrepreneurResolver) History(ctx context.Context, obj *model.Entrepren
 	return history, nil
 }
 
+// HistoryCount is the resolver for the historyCount field on Entrepreneur.
+func (r *entrepreneurResolver) HistoryCount(ctx context.Context, obj *model.Entrepreneur) (int, error) {
+	r.Logger.Info("HistoryCount resolver called", zap.String("ogrnip", obj.Ogrnip))
+	
+	count, err := r.EntrepreneurService.GetHistoryCount(ctx, obj.Ogrnip)
+	if err != nil {
+		r.Logger.Error("failed to get history count", zap.String("ogrnip", obj.Ogrnip), zap.Error(err))
+		return 0, err
+	}
+	r.Logger.Info("HistoryCount loaded", zap.String("ogrnip", obj.Ogrnip), zap.Int("count", count))
+	return count, nil
+}
+
 // Entrepreneur returns EntrepreneurResolver implementation.
 func (r *Resolver) Entrepreneur() EntrepreneurResolver { return &entrepreneurResolver{r} }
 
