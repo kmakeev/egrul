@@ -2,7 +2,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { defaultGraphQLClient } from "@/lib/api/graphql-client";
-import type { HistoryRecord, RelatedCompany, Activity } from "@/lib/api";
+import type { HistoryRecord, Activity } from "@/lib/api";
 
 // ==================== Типы ответов GraphQL ====================
 
@@ -12,13 +12,47 @@ export interface GetCompanyHistoryResponse {
     history: HistoryRecord[];
     historyCount?: number;
     // Добавляем все остальные поля, которые может вернуть GraphQL
-    [key: string]: any;
+    [key: string]: unknown;
   } | null;
 }
 
 interface GetCompanyRelationsResponse {
   company: {
-    relatedCompanies: RelatedCompany[];
+    relatedCompanies: Array<{
+      relationshipType: string;
+      description?: string;
+      commonFounders?: Array<{
+        type: string;
+        inn?: string;
+        name: string;
+        lastName?: string;
+        firstName?: string;
+        middleName?: string;
+        sharePercent?: number;
+        citizenship?: string;
+      }>;
+      commonDirectors?: Array<{
+        inn?: string;
+        lastName?: string;
+        firstName?: string;
+        middleName?: string;
+        position?: string;
+      }>;
+      company: {
+        ogrn: string;
+        inn: string;
+        fullName: string;
+        shortName?: string;
+        status: string;
+        statusCode?: string;
+        terminationDate?: string;
+        registrationDate?: string;
+        address?: {
+          city?: string;
+          region?: string;
+        };
+      };
+    }>;
   } | null;
 }
 
@@ -105,27 +139,57 @@ export function useCompanyHistoryDirectQuery(ogrn: string, limit: number = 50, o
   });
 }
 
-export function useCompanyRelationsQuery(ogrn: string) {
+export function useCompanyRelationsQuery(ogrn: string, limit: number = 50) {
   return useQuery<GetCompanyRelationsResponse, Error>({
-    queryKey: ["company-relations", ogrn],
+    queryKey: ["company-relations", ogrn, limit],
     queryFn: () =>
-      defaultGraphQLClient.request<GetCompanyRelationsResponse, { ogrn: string }>(
+      defaultGraphQLClient.request<GetCompanyRelationsResponse, { ogrn: string; limit: number }>(
         /* GraphQL */ `
-          query GetCompanyRelations($ogrn: ID!) {
+          query GetCompanyRelations($ogrn: ID!, $limit: Int) {
             company(ogrn: $ogrn) {
-              relatedCompanies {
-                id
-                ogrn
-                name
+              relatedCompanies(limit: $limit) {
                 relationshipType
-                status
+                description
+                commonFounders {
+                  type
+                  inn
+                  name
+                  lastName
+                  firstName
+                  middleName
+                  sharePercent
+                  citizenship
+                }
+                commonDirectors {
+                  inn
+                  lastName
+                  firstName
+                  middleName
+                  position
+                }
+                company {
+                  ogrn
+                  inn
+                  fullName
+                  shortName
+                  status
+                  statusCode
+                  terminationDate
+                  registrationDate
+                  address {
+                    city
+                    region
+                  }
+                }
               }
             }
           }
         `,
-        { ogrn }
+        { ogrn, limit }
       ),
     enabled: !!ogrn,
+    staleTime: 5 * 60 * 1000, // 5 минут
+    gcTime: 10 * 60 * 1000, // 10 минут
   });
 }
 

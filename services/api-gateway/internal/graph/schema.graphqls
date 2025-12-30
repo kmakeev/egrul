@@ -23,6 +23,19 @@ enum EntityStatus {
 }
 
 """
+Тип связи между компаниями
+"""
+enum RelationshipType {
+  FOUNDER_COMPANY      # Компания-учредитель
+  SUBSIDIARY_COMPANY   # Дочерняя компания (где данная компания учредитель)
+  COMMON_FOUNDERS      # Компания с общими учредителями-физлицами
+  COMMON_DIRECTORS     # Компания с общими руководителями-физлицами
+  FOUNDER_TO_DIRECTOR  # Учредитель основной компании является руководителем связанной
+  DIRECTOR_TO_FOUNDER  # Руководитель основной компании является учредителем связанной
+  RELATED_BY_PERSON    # Связанная через физическое лицо
+}
+
+"""
 Тип учредителя
 """
 enum FounderType {
@@ -190,6 +203,17 @@ type Branch {
 }
 
 """
+Связанная компания
+"""
+type RelatedCompany {
+  company: Company!
+  relationshipType: RelationshipType!
+  description: String
+  commonFounders: [Founder!]  # Общие учредители (для типа COMMON_FOUNDERS)
+  commonDirectors: [Person!]  # Общие руководители (для типа COMMON_DIRECTORS)
+}
+
+"""
 Запись истории изменений (ГРН)
 """
 type HistoryRecord {
@@ -278,6 +302,9 @@ type Company {
   lastGrnDate: Date
   history(limit: Int, offset: Int): [HistoryRecord!]!
   historyCount: Int!
+  
+  # Связанные компании
+  relatedCompanies(limit: Int, offset: Int): [RelatedCompany!]!
   
   # Метаданные
   sourceFile: String

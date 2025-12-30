@@ -165,21 +165,24 @@ func (h *ManualHandler) handleCompanyQuery(ctx context.Context, req *GraphQLRequ
 		return &GraphQLResponse{Errors: []GraphQLError{{Message: err.Error()}}}, nil
 	}
 
-	// Если в запросе есть поля founders или history, загружаем их
+	// Если в запросе есть поля founders, history или relatedCompanies, загружаем их
 	hasFounders := strings.Contains(req.Query, "founders")
 	hasHistory := strings.Contains(req.Query, "history")
+	hasRelatedCompanies := strings.Contains(req.Query, "relatedCompanies")
 	
 	// #region agent log
-	agentLog("history-debug", "exec.go:handleCompanyQuery", "checking for founders and history fields", map[string]interface{}{
+	agentLog("history-debug", "exec.go:handleCompanyQuery", "checking for founders, history and relatedCompanies fields", map[string]interface{}{
 		"hasFounders": hasFounders,
 		"hasHistory": hasHistory,
+		"hasRelatedCompanies": hasRelatedCompanies,
 		"query": req.Query,
 	})
 	// #endregion
 	
-	if (hasFounders || hasHistory) && company != nil {
+	if (hasFounders || hasHistory || hasRelatedCompanies) && company != nil {
 		var founders []*model.Founder
 		var history []*model.HistoryRecord
+		var relatedCompanies []*model.RelatedCompany
 		
 		// Загружаем учредителей если запрошены
 		if hasFounders {
@@ -268,6 +271,22 @@ func (h *ManualHandler) handleCompanyQuery(ctx context.Context, req *GraphQLRequ
 			}
 		}
 		
+		// Загружаем связанные компании если запрошены
+		if hasRelatedCompanies {
+			agentLog("history-debug", "exec.go:handleCompanyQuery", "loading related companies", map[string]interface{}{"ogrn": company.Ogrn})
+			
+			// Для связанных компаний используем стандартные параметры
+			relatedResult, err := h.resolver.Company().RelatedCompanies(ctx, company, nil, nil)
+			if err == nil {
+				relatedCompanies = relatedResult
+				agentLog("history-debug", "exec.go:handleCompanyQuery", "related companies loaded", map[string]interface{}{
+					"count": len(relatedCompanies),
+				})
+			} else {
+				agentLog("history-debug", "exec.go:handleCompanyQuery", "related companies error", map[string]interface{}{"error": err.Error()})
+			}
+		}
+		
 		// Создаем map с данными компании
 		companyData := map[string]interface{}{
 			"ogrn":          company.Ogrn,
@@ -326,6 +345,14 @@ func (h *ManualHandler) handleCompanyQuery(ctx context.Context, req *GraphQLRequ
 					agentLog("history-debug", "exec.go:handleCompanyQuery", "historyCount loaded", map[string]interface{}{"count": historyCount})
 				}
 			}
+		}
+		
+		// Добавляем relatedCompanies если они были запрошены (даже если пустые)
+		if hasRelatedCompanies {
+			if relatedCompanies == nil {
+				relatedCompanies = []*model.RelatedCompany{}
+			}
+			companyData["relatedCompanies"] = relatedCompanies
 		}
 		
 		result := map[string]interface{}{

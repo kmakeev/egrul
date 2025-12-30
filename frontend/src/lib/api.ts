@@ -86,6 +86,8 @@ export interface RelatedCompany {
   name: string;
   relationshipType: string;
   status: string;
+  company?: LegalEntity;
+  description?: string;
 }
 
 export interface IndividualEntrepreneur {

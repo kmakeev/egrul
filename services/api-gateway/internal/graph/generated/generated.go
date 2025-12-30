@@ -123,6 +123,7 @@ type ComplexityRoot struct {
 		PfrRegNumber      func(childComplexity int) int
 		RegAuthority      func(childComplexity int) int
 		RegistrationDate  func(childComplexity int) int
+		RelatedCompanies  func(childComplexity int, limit *int, offset *int) int
 		ShortName         func(childComplexity int) int
 		SourceFile        func(childComplexity int) int
 		Status            func(childComplexity int) int
@@ -269,6 +270,7 @@ type ComplexityRoot struct {
 		CompanyByInn        func(childComplexity int, inn string) int
 		CompanyFounders     func(childComplexity int, ogrn string, limit *int, offset *int) int
 		EntityHistory       func(childComplexity int, entityType model.EntityType, entityID string, limit *int, offset *int) int
+		EntityHistoryCount  func(childComplexity int, entityType model.EntityType, entityID string) int
 		Entrepreneur        func(childComplexity int, ogrnip string) int
 		EntrepreneurByInn   func(childComplexity int, inn string) int
 		Entrepreneurs       func(childComplexity int, filter *model.EntrepreneurFilter, pagination *model.Pagination, sort *model.EntrepreneurSort) int
@@ -286,6 +288,13 @@ type ComplexityRoot struct {
 		LiquidatedCount    func(childComplexity int) int
 		RegionCode         func(childComplexity int) int
 		RegionName         func(childComplexity int) int
+	}
+
+	RelatedCompany struct {
+		CommonFounders   func(childComplexity int) int
+		Company          func(childComplexity int) int
+		Description      func(childComplexity int) int
+		RelationshipType func(childComplexity int) int
 	}
 
 	SearchResult struct {
@@ -319,6 +328,7 @@ type CompanyResolver interface {
 
 	History(ctx context.Context, obj *model.Company, limit *int, offset *int) ([]*model.HistoryRecord, error)
 	HistoryCount(ctx context.Context, obj *model.Company) (int, error)
+	RelatedCompanies(ctx context.Context, obj *model.Company, limit *int, offset *int) ([]*model.RelatedCompany, error)
 }
 type EntrepreneurResolver interface {
 	Licenses(ctx context.Context, obj *model.Entrepreneur) ([]*model.License, error)
@@ -338,6 +348,7 @@ type QueryResolver interface {
 	Search(ctx context.Context, query string, limit *int) (*model.SearchResult, error)
 	Statistics(ctx context.Context, filter *model.StatsFilter) (*model.Statistics, error)
 	EntityHistory(ctx context.Context, entityType model.EntityType, entityID string, limit *int, offset *int) ([]*model.HistoryRecord, error)
+	EntityHistoryCount(ctx context.Context, entityType model.EntityType, entityID string) (int, error)
 	CompanyFounders(ctx context.Context, ogrn string, limit *int, offset *int) ([]*model.Founder, error)
 	RelatedCompanies(ctx context.Context, inn string, limit *int, offset *int) ([]*model.Company, error)
 }
@@ -783,6 +794,18 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 		}
 
 		return e.complexity.Company.RegistrationDate(childComplexity), true
+
+	case "Company.relatedCompanies":
+		if e.complexity.Company.RelatedCompanies == nil {
+			break
+		}
+
+		args, err := ec.field_Company_relatedCompanies_args(context.TODO(), rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.complexity.Company.RelatedCompanies(childComplexity, args["limit"].(*int), args["offset"].(*int)), true
 
 	case "Company.shortName":
 		if e.complexity.Company.ShortName == nil {
@@ -1563,6 +1586,18 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 
 		return e.complexity.Query.EntityHistory(childComplexity, args["entityType"].(model.EntityType), args["entityId"].(string), args["limit"].(*int), args["offset"].(*int)), true
 
+	case "Query.entityHistoryCount":
+		if e.complexity.Query.EntityHistoryCount == nil {
+			break
+		}
+
+		args, err := ec.field_Query_entityHistoryCount_args(context.TODO(), rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.complexity.Query.EntityHistoryCount(childComplexity, args["entityType"].(model.EntityType), args["entityId"].(string)), true
+
 	case "Query.entrepreneur":
 		if e.complexity.Query.Entrepreneur == nil {
 			break
@@ -1700,6 +1735,34 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 		}
 
 		return e.complexity.RegionStatistics.RegionName(childComplexity), true
+
+	case "RelatedCompany.commonFounders":
+		if e.complexity.RelatedCompany.CommonFounders == nil {
+			break
+		}
+
+		return e.complexity.RelatedCompany.CommonFounders(childComplexity), true
+
+	case "RelatedCompany.company":
+		if e.complexity.RelatedCompany.Company == nil {
+			break
+		}
+
+		return e.complexity.RelatedCompany.Company(childComplexity), true
+
+	case "RelatedCompany.description":
+		if e.complexity.RelatedCompany.Description == nil {
+			break
+		}
+
+		return e.complexity.RelatedCompany.Description(childComplexity), true
+
+	case "RelatedCompany.relationshipType":
+		if e.complexity.RelatedCompany.RelationshipType == nil {
+			break
+		}
+
+		return e.complexity.RelatedCompany.RelationshipType(childComplexity), true
 
 	case "SearchResult.companies":
 		if e.complexity.SearchResult.Companies == nil {
@@ -1932,6 +1995,16 @@ enum EntityStatus {
 }
 
 """
+Тип связи между компаниями
+"""
+enum RelationshipType {
+  FOUNDER_COMPANY      # Компания-учредитель
+  SUBSIDIARY_COMPANY   # Дочерняя компания (где данная компания учредитель)
+  COMMON_FOUNDERS      # Компания с общими учредителями-физлицами
+  RELATED_BY_PERSON    # Связанная через физическое лицо
+}
+
+"""
 Тип учредителя
 """
 enum FounderType {
@@ -2099,6 +2172,16 @@ type Branch {
 }
 
 """
+Связанная компания
+"""
+type RelatedCompany {
+  company: Company!
+  relationshipType: RelationshipType!
+  description: String
+  commonFounders: [Founder!]  # Общие учредители (для типа COMMON_FOUNDERS)
+}
+
+"""
 Запись истории изменений (ГРН)
 """
 type HistoryRecord {
@@ -2187,6 +2270,9 @@ type Company {
   lastGrnDate: Date
   history(limit: Int, offset: Int): [HistoryRecord!]!
   historyCount: Int!
+  
+  # Связанные компании
+  relatedCompanies(limit: Int, offset: Int): [RelatedCompany!]!
   
   # Метаданные
   sourceFile: String
@@ -2514,6 +2600,12 @@ type Query {
     offset: Int = 0
   ): [HistoryRecord!]!
   
+  # Количество записей истории для сущности
+  entityHistoryCount(
+    entityType: EntityType!
+    entityId: ID!
+  ): Int!
+  
   # Учредители компании
   companyFounders(
     ogrn: ID!
@@ -2634,6 +2726,65 @@ func (ec *executionContext) field_Company_history_argsLimit(
 }
 
 func (ec *executionContext) field_Company_history_argsOffset(
+	ctx context.Context,
+	rawArgs map[string]interface{},
+) (*int, error) {
+	// We won't call the directive if the argument is null.
+	// Set call_argument_directives_with_null to true to call directives
+	// even if the argument is null.
+	_, ok := rawArgs["offset"]
+	if !ok {
+		var zeroVal *int
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("offset"))
+	if tmp, ok := rawArgs["offset"]; ok {
+		return ec.unmarshalOInt2ᚖint(ctx, tmp)
+	}
+
+	var zeroVal *int
+	return zeroVal, nil
+}
+
+func (ec *executionContext) field_Company_relatedCompanies_args(ctx context.Context, rawArgs map[string]interface{}) (map[string]interface{}, error) {
+	var err error
+	args := map[string]interface{}{}
+	arg0, err := ec.field_Company_relatedCompanies_argsLimit(ctx, rawArgs)
+	if err != nil {
+		return nil, err
+	}
+	args["limit"] = arg0
+	arg1, err := ec.field_Company_relatedCompanies_argsOffset(ctx, rawArgs)
+	if err != nil {
+		return nil, err
+	}
+	args["offset"] = arg1
+	return args, nil
+}
+func (ec *executionContext) field_Company_relatedCompanies_argsLimit(
+	ctx context.Context,
+	rawArgs map[string]interface{},
+) (*int, error) {
+	// We won't call the directive if the argument is null.
+	// Set call_argument_directives_with_null to true to call directives
+	// even if the argument is null.
+	_, ok := rawArgs["limit"]
+	if !ok {
+		var zeroVal *int
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("limit"))
+	if tmp, ok := rawArgs["limit"]; ok {
+		return ec.unmarshalOInt2ᚖint(ctx, tmp)
+	}
+
+	var zeroVal *int
+	return zeroVal, nil
+}
+
+func (ec *executionContext) field_Company_relatedCompanies_argsOffset(
 	ctx context.Context,
 	rawArgs map[string]interface{},
 ) (*int, error) {
@@ -2975,6 +3126,65 @@ func (ec *executionContext) field_Query_company_argsOgrn(
 
 	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("ogrn"))
 	if tmp, ok := rawArgs["ogrn"]; ok {
+		return ec.unmarshalNID2string(ctx, tmp)
+	}
+
+	var zeroVal string
+	return zeroVal, nil
+}
+
+func (ec *executionContext) field_Query_entityHistoryCount_args(ctx context.Context, rawArgs map[string]interface{}) (map[string]interface{}, error) {
+	var err error
+	args := map[string]interface{}{}
+	arg0, err := ec.field_Query_entityHistoryCount_argsEntityType(ctx, rawArgs)
+	if err != nil {
+		return nil, err
+	}
+	args["entityType"] = arg0
+	arg1, err := ec.field_Query_entityHistoryCount_argsEntityID(ctx, rawArgs)
+	if err != nil {
+		return nil, err
+	}
+	args["entityId"] = arg1
+	return args, nil
+}
+func (ec *executionContext) field_Query_entityHistoryCount_argsEntityType(
+	ctx context.Context,
+	rawArgs map[string]interface{},
+) (model.EntityType, error) {
+	// We won't call the directive if the argument is null.
+	// Set call_argument_directives_with_null to true to call directives
+	// even if the argument is null.
+	_, ok := rawArgs["entityType"]
+	if !ok {
+		var zeroVal model.EntityType
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("entityType"))
+	if tmp, ok := rawArgs["entityType"]; ok {
+		return ec.unmarshalNEntityType2githubᚗcomᚋegrulᚑsystemᚋservicesᚋapiᚑgatewayᚋinternalᚋgraphᚋmodelᚐEntityType(ctx, tmp)
+	}
+
+	var zeroVal model.EntityType
+	return zeroVal, nil
+}
+
+func (ec *executionContext) field_Query_entityHistoryCount_argsEntityID(
+	ctx context.Context,
+	rawArgs map[string]interface{},
+) (string, error) {
+	// We won't call the directive if the argument is null.
+	// Set call_argument_directives_with_null to true to call directives
+	// even if the argument is null.
+	_, ok := rawArgs["entityId"]
+	if !ok {
+		var zeroVal string
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("entityId"))
+	if tmp, ok := rawArgs["entityId"]; ok {
 		return ec.unmarshalNID2string(ctx, tmp)
 	}
 
@@ -6605,6 +6815,71 @@ func (ec *executionContext) fieldContext_Company_historyCount(_ context.Context,
 	return fc, nil
 }
 
+func (ec *executionContext) _Company_relatedCompanies(ctx context.Context, field graphql.CollectedField, obj *model.Company) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_Company_relatedCompanies(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return ec.resolvers.Company().RelatedCompanies(rctx, obj, fc.Args["limit"].(*int), fc.Args["offset"].(*int))
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.([]*model.RelatedCompany)
+	fc.Result = res
+	return ec.marshalNRelatedCompany2ᚕᚖgithubᚗcomᚋegrulᚑsystemᚋservicesᚋapiᚑgatewayᚋinternalᚋgraphᚋmodelᚐRelatedCompanyᚄ(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_Company_relatedCompanies(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Company",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "company":
+				return ec.fieldContext_RelatedCompany_company(ctx, field)
+			case "relationshipType":
+				return ec.fieldContext_RelatedCompany_relationshipType(ctx, field)
+			case "description":
+				return ec.fieldContext_RelatedCompany_description(ctx, field)
+			case "commonFounders":
+				return ec.fieldContext_RelatedCompany_commonFounders(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type RelatedCompany", field.Name)
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Company_relatedCompanies_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
 func (ec *executionContext) _Company_sourceFile(ctx context.Context, field graphql.CollectedField, obj *model.Company) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Company_sourceFile(ctx, field)
 	if err != nil {
@@ -7043,6 +7318,8 @@ func (ec *executionContext) fieldContext_CompanyEdge_node(_ context.Context, fie
 				return ec.fieldContext_Company_history(ctx, field)
 			case "historyCount":
 				return ec.fieldContext_Company_historyCount(ctx, field)
+			case "relatedCompanies":
+				return ec.fieldContext_Company_relatedCompanies(ctx, field)
 			case "sourceFile":
 				return ec.fieldContext_Company_sourceFile(ctx, field)
 			case "versionDate":
@@ -11130,6 +11407,8 @@ func (ec *executionContext) fieldContext_Query_company(ctx context.Context, fiel
 				return ec.fieldContext_Company_history(ctx, field)
 			case "historyCount":
 				return ec.fieldContext_Company_historyCount(ctx, field)
+			case "relatedCompanies":
+				return ec.fieldContext_Company_relatedCompanies(ctx, field)
 			case "sourceFile":
 				return ec.fieldContext_Company_sourceFile(ctx, field)
 			case "versionDate":
@@ -11268,6 +11547,8 @@ func (ec *executionContext) fieldContext_Query_companyByInn(ctx context.Context,
 				return ec.fieldContext_Company_history(ctx, field)
 			case "historyCount":
 				return ec.fieldContext_Company_historyCount(ctx, field)
+			case "relatedCompanies":
+				return ec.fieldContext_Company_relatedCompanies(ctx, field)
 			case "sourceFile":
 				return ec.fieldContext_Company_sourceFile(ctx, field)
 			case "versionDate":
@@ -11472,6 +11753,8 @@ func (ec *executionContext) fieldContext_Query_searchCompanies(ctx context.Conte
 				return ec.fieldContext_Company_history(ctx, field)
 			case "historyCount":
 				return ec.fieldContext_Company_historyCount(ctx, field)
+			case "relatedCompanies":
+				return ec.fieldContext_Company_relatedCompanies(ctx, field)
 			case "sourceFile":
 				return ec.fieldContext_Company_sourceFile(ctx, field)
 			case "versionDate":
@@ -12173,6 +12456,61 @@ func (ec *executionContext) fieldContext_Query_entityHistory(ctx context.Context
 	return fc, nil
 }
 
+func (ec *executionContext) _Query_entityHistoryCount(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_Query_entityHistoryCount(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return ec.resolvers.Query().EntityHistoryCount(rctx, fc.Args["entityType"].(model.EntityType), fc.Args["entityId"].(string))
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(int)
+	fc.Result = res
+	return ec.marshalNInt2int(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_Query_entityHistoryCount(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Query",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Int does not have child fields")
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Query_entityHistoryCount_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
 func (ec *executionContext) _Query_companyFounders(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Query_companyFounders(ctx, field)
 	if err != nil {
@@ -12367,6 +12705,8 @@ func (ec *executionContext) fieldContext_Query_relatedCompanies(ctx context.Cont
 				return ec.fieldContext_Company_history(ctx, field)
 			case "historyCount":
 				return ec.fieldContext_Company_historyCount(ctx, field)
+			case "relatedCompanies":
+				return ec.fieldContext_Company_relatedCompanies(ctx, field)
 			case "sourceFile":
 				return ec.fieldContext_Company_sourceFile(ctx, field)
 			case "versionDate":
@@ -12786,6 +13126,288 @@ func (ec *executionContext) fieldContext_RegionStatistics_liquidatedCount(_ cont
 	return fc, nil
 }
 
+func (ec *executionContext) _RelatedCompany_company(ctx context.Context, field graphql.CollectedField, obj *model.RelatedCompany) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_RelatedCompany_company(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.Company, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(*model.Company)
+	fc.Result = res
+	return ec.marshalNCompany2ᚖgithubᚗcomᚋegrulᚑsystemᚋservicesᚋapiᚑgatewayᚋinternalᚋgraphᚋmodelᚐCompany(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_RelatedCompany_company(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "RelatedCompany",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "ogrn":
+				return ec.fieldContext_Company_ogrn(ctx, field)
+			case "ogrnDate":
+				return ec.fieldContext_Company_ogrnDate(ctx, field)
+			case "inn":
+				return ec.fieldContext_Company_inn(ctx, field)
+			case "kpp":
+				return ec.fieldContext_Company_kpp(ctx, field)
+			case "fullName":
+				return ec.fieldContext_Company_fullName(ctx, field)
+			case "shortName":
+				return ec.fieldContext_Company_shortName(ctx, field)
+			case "brandName":
+				return ec.fieldContext_Company_brandName(ctx, field)
+			case "legalForm":
+				return ec.fieldContext_Company_legalForm(ctx, field)
+			case "status":
+				return ec.fieldContext_Company_status(ctx, field)
+			case "statusCode":
+				return ec.fieldContext_Company_statusCode(ctx, field)
+			case "terminationMethod":
+				return ec.fieldContext_Company_terminationMethod(ctx, field)
+			case "registrationDate":
+				return ec.fieldContext_Company_registrationDate(ctx, field)
+			case "terminationDate":
+				return ec.fieldContext_Company_terminationDate(ctx, field)
+			case "extractDate":
+				return ec.fieldContext_Company_extractDate(ctx, field)
+			case "address":
+				return ec.fieldContext_Company_address(ctx, field)
+			case "email":
+				return ec.fieldContext_Company_email(ctx, field)
+			case "capital":
+				return ec.fieldContext_Company_capital(ctx, field)
+			case "director":
+				return ec.fieldContext_Company_director(ctx, field)
+			case "mainActivity":
+				return ec.fieldContext_Company_mainActivity(ctx, field)
+			case "activities":
+				return ec.fieldContext_Company_activities(ctx, field)
+			case "regAuthority":
+				return ec.fieldContext_Company_regAuthority(ctx, field)
+			case "taxAuthority":
+				return ec.fieldContext_Company_taxAuthority(ctx, field)
+			case "pfrRegNumber":
+				return ec.fieldContext_Company_pfrRegNumber(ctx, field)
+			case "fssRegNumber":
+				return ec.fieldContext_Company_fssRegNumber(ctx, field)
+			case "founders":
+				return ec.fieldContext_Company_founders(ctx, field)
+			case "foundersCount":
+				return ec.fieldContext_Company_foundersCount(ctx, field)
+			case "licenses":
+				return ec.fieldContext_Company_licenses(ctx, field)
+			case "licensesCount":
+				return ec.fieldContext_Company_licensesCount(ctx, field)
+			case "branches":
+				return ec.fieldContext_Company_branches(ctx, field)
+			case "branchesCount":
+				return ec.fieldContext_Company_branchesCount(ctx, field)
+			case "isBankrupt":
+				return ec.fieldContext_Company_isBankrupt(ctx, field)
+			case "bankruptcyStage":
+				return ec.fieldContext_Company_bankruptcyStage(ctx, field)
+			case "isLiquidating":
+				return ec.fieldContext_Company_isLiquidating(ctx, field)
+			case "isReorganizing":
+				return ec.fieldContext_Company_isReorganizing(ctx, field)
+			case "lastGrn":
+				return ec.fieldContext_Company_lastGrn(ctx, field)
+			case "lastGrnDate":
+				return ec.fieldContext_Company_lastGrnDate(ctx, field)
+			case "history":
+				return ec.fieldContext_Company_history(ctx, field)
+			case "historyCount":
+				return ec.fieldContext_Company_historyCount(ctx, field)
+			case "relatedCompanies":
+				return ec.fieldContext_Company_relatedCompanies(ctx, field)
+			case "sourceFile":
+				return ec.fieldContext_Company_sourceFile(ctx, field)
+			case "versionDate":
+				return ec.fieldContext_Company_versionDate(ctx, field)
+			case "createdAt":
+				return ec.fieldContext_Company_createdAt(ctx, field)
+			case "updatedAt":
+				return ec.fieldContext_Company_updatedAt(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type Company", field.Name)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _RelatedCompany_relationshipType(ctx context.Context, field graphql.CollectedField, obj *model.RelatedCompany) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_RelatedCompany_relationshipType(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.RelationshipType, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(model.RelationshipType)
+	fc.Result = res
+	return ec.marshalNRelationshipType2githubᚗcomᚋegrulᚑsystemᚋservicesᚋapiᚑgatewayᚋinternalᚋgraphᚋmodelᚐRelationshipType(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_RelatedCompany_relationshipType(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "RelatedCompany",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type RelationshipType does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _RelatedCompany_description(ctx context.Context, field graphql.CollectedField, obj *model.RelatedCompany) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_RelatedCompany_description(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.Description, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		return graphql.Null
+	}
+	res := resTmp.(*string)
+	fc.Result = res
+	return ec.marshalOString2ᚖstring(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_RelatedCompany_description(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "RelatedCompany",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type String does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _RelatedCompany_commonFounders(ctx context.Context, field graphql.CollectedField, obj *model.RelatedCompany) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_RelatedCompany_commonFounders(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.CommonFounders, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		return graphql.Null
+	}
+	res := resTmp.([]*model.Founder)
+	fc.Result = res
+	return ec.marshalOFounder2ᚕᚖgithubᚗcomᚋegrulᚑsystemᚋservicesᚋapiᚑgatewayᚋinternalᚋgraphᚋmodelᚐFounderᚄ(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_RelatedCompany_commonFounders(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "RelatedCompany",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "type":
+				return ec.fieldContext_Founder_type(ctx, field)
+			case "ogrn":
+				return ec.fieldContext_Founder_ogrn(ctx, field)
+			case "inn":
+				return ec.fieldContext_Founder_inn(ctx, field)
+			case "name":
+				return ec.fieldContext_Founder_name(ctx, field)
+			case "lastName":
+				return ec.fieldContext_Founder_lastName(ctx, field)
+			case "firstName":
+				return ec.fieldContext_Founder_firstName(ctx, field)
+			case "middleName":
+				return ec.fieldContext_Founder_middleName(ctx, field)
+			case "country":
+				return ec.fieldContext_Founder_country(ctx, field)
+			case "citizenship":
+				return ec.fieldContext_Founder_citizenship(ctx, field)
+			case "shareNominalValue":
+				return ec.fieldContext_Founder_shareNominalValue(ctx, field)
+			case "sharePercent":
+				return ec.fieldContext_Founder_sharePercent(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type Founder", field.Name)
+		},
+	}
+	return fc, nil
+}
+
 func (ec *executionContext) _SearchResult_companies(ctx context.Context, field graphql.CollectedField, obj *model.SearchResult) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_SearchResult_companies(ctx, field)
 	if err != nil {
@@ -12901,6 +13523,8 @@ func (ec *executionContext) fieldContext_SearchResult_companies(_ context.Contex
 				return ec.fieldContext_Company_history(ctx, field)
 			case "historyCount":
 				return ec.fieldContext_Company_historyCount(ctx, field)
+			case "relatedCompanies":
+				return ec.fieldContext_Company_relatedCompanies(ctx, field)
 			case "sourceFile":
 				return ec.fieldContext_Company_sourceFile(ctx, field)
 			case "versionDate":
@@ -16427,6 +17051,42 @@ func (ec *executionContext) _Company(ctx context.Context, sel ast.SelectionSet, 
 			}
 
 			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
+		case "relatedCompanies":
+			field := field
+
+			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Company_relatedCompanies(ctx, field, obj)
+				if res == graphql.Null {
+					atomic.AddUint32(&fs.Invalids, 1)
+				}
+				return res
+			}
+
+			if field.Deferrable != nil {
+				dfs, ok := deferred[field.Deferrable.Label]
+				di := 0
+				if ok {
+					dfs.AddField(field)
+					di = len(dfs.Values) - 1
+				} else {
+					dfs = graphql.NewFieldSet([]graphql.CollectedField{field})
+					deferred[field.Deferrable.Label] = dfs
+				}
+				dfs.Concurrently(di, func(ctx context.Context) graphql.Marshaler {
+					return innerFunc(ctx, dfs)
+				})
+
+				// don't run the out.Concurrently() call below
+				out.Values[i] = graphql.Null
+				continue
+			}
+
+			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
 		case "sourceFile":
 			out.Values[i] = ec._Company_sourceFile(ctx, field, obj)
 		case "versionDate":
@@ -17517,6 +18177,28 @@ func (ec *executionContext) _Query(ctx context.Context, sel ast.SelectionSet) gr
 			}
 
 			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return rrm(innerCtx) })
+		case "entityHistoryCount":
+			field := field
+
+			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Query_entityHistoryCount(ctx, field)
+				if res == graphql.Null {
+					atomic.AddUint32(&fs.Invalids, 1)
+				}
+				return res
+			}
+
+			rrm := func(ctx context.Context) graphql.Marshaler {
+				return ec.OperationContext.RootResolverMiddleware(ctx,
+					func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
+			}
+
+			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return rrm(innerCtx) })
 		case "companyFounders":
 			field := field
 
@@ -17633,6 +18315,54 @@ func (ec *executionContext) _RegionStatistics(ctx context.Context, sel ast.Selec
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
 			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.deferred, int32(len(deferred)))
+
+	for label, dfs := range deferred {
+		ec.processDeferredGroup(graphql.DeferredGroup{
+			Label:    label,
+			Path:     graphql.GetPath(ctx),
+			FieldSet: dfs,
+			Context:  ctx,
+		})
+	}
+
+	return out
+}
+
+var relatedCompanyImplementors = []string{"RelatedCompany"}
+
+func (ec *executionContext) _RelatedCompany(ctx context.Context, sel ast.SelectionSet, obj *model.RelatedCompany) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, relatedCompanyImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferred := make(map[string]*graphql.FieldSet)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("RelatedCompany")
+		case "company":
+			out.Values[i] = ec._RelatedCompany_company(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "relationshipType":
+			out.Values[i] = ec._RelatedCompany_relationshipType(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "description":
+			out.Values[i] = ec._RelatedCompany_description(ctx, field, obj)
+		case "commonFounders":
+			out.Values[i] = ec._RelatedCompany_commonFounders(ctx, field, obj)
 		default:
 			panic("unknown field " + strconv.Quote(field.Name))
 		}
@@ -18947,6 +19677,76 @@ func (ec *executionContext) marshalNRegionStatistics2ᚖgithubᚗcomᚋegrulᚑs
 	return ec._RegionStatistics(ctx, sel, v)
 }
 
+func (ec *executionContext) marshalNRelatedCompany2ᚕᚖgithubᚗcomᚋegrulᚑsystemᚋservicesᚋapiᚑgatewayᚋinternalᚋgraphᚋmodelᚐRelatedCompanyᚄ(ctx context.Context, sel ast.SelectionSet, v []*model.RelatedCompany) graphql.Marshaler {
+	ret := make(graphql.Array, len(v))
+	var wg sync.WaitGroup
+	isLen1 := len(v) == 1
+	if !isLen1 {
+		wg.Add(len(v))
+	}
+	for i := range v {
+		i := i
+		fc := &graphql.FieldContext{
+			Index:  &i,
+			Result: &v[i],
+		}
+		ctx := graphql.WithFieldContext(ctx, fc)
+		f := func(i int) {
+			defer func() {
+				if r := recover(); r != nil {
+					ec.Error(ctx, ec.Recover(ctx, r))
+					ret = nil
+				}
+			}()
+			if !isLen1 {
+				defer wg.Done()
+			}
+			ret[i] = ec.marshalNRelatedCompany2ᚖgithubᚗcomᚋegrulᚑsystemᚋservicesᚋapiᚑgatewayᚋinternalᚋgraphᚋmodelᚐRelatedCompany(ctx, sel, v[i])
+		}
+		if isLen1 {
+			f(i)
+		} else {
+			go f(i)
+		}
+
+	}
+	wg.Wait()
+
+	for _, e := range ret {
+		if e == graphql.Null {
+			return graphql.Null
+		}
+	}
+
+	return ret
+}
+
+func (ec *executionContext) marshalNRelatedCompany2ᚖgithubᚗcomᚋegrulᚑsystemᚋservicesᚋapiᚑgatewayᚋinternalᚋgraphᚋmodelᚐRelatedCompany(ctx context.Context, sel ast.SelectionSet, v *model.RelatedCompany) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			ec.Errorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._RelatedCompany(ctx, sel, v)
+}
+
+func (ec *executionContext) unmarshalNRelationshipType2githubᚗcomᚋegrulᚑsystemᚋservicesᚋapiᚑgatewayᚋinternalᚋgraphᚋmodelᚐRelationshipType(ctx context.Context, v interface{}) (model.RelationshipType, error) {
+	tmp, err := graphql.UnmarshalString(v)
+	res := model.RelationshipType(tmp)
+	return res, graphql.ErrorOnPath(ctx, err)
+}
+
+func (ec *executionContext) marshalNRelationshipType2githubᚗcomᚋegrulᚑsystemᚋservicesᚋapiᚑgatewayᚋinternalᚋgraphᚋmodelᚐRelationshipType(ctx context.Context, sel ast.SelectionSet, v model.RelationshipType) graphql.Marshaler {
+	res := graphql.MarshalString(string(v))
+	if res == graphql.Null {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			ec.Errorf(ctx, "the requested element is null which the schema does not allow")
+		}
+	}
+	return res
+}
+
 func (ec *executionContext) marshalNSearchResult2githubᚗcomᚋegrulᚑsystemᚋservicesᚋapiᚑgatewayᚋinternalᚋgraphᚋmodelᚐSearchResult(ctx context.Context, sel ast.SelectionSet, v model.SearchResult) graphql.Marshaler {
 	return ec._SearchResult(ctx, sel, &v)
 }
@@ -19450,6 +20250,53 @@ func (ec *executionContext) marshalOFloat2ᚖfloat64(ctx context.Context, sel as
 	}
 	res := graphql.MarshalFloatContext(*v)
 	return graphql.WrapContextMarshaler(ctx, res)
+}
+
+func (ec *executionContext) marshalOFounder2ᚕᚖgithubᚗcomᚋegrulᚑsystemᚋservicesᚋapiᚑgatewayᚋinternalᚋgraphᚋmodelᚐFounderᚄ(ctx context.Context, sel ast.SelectionSet, v []*model.Founder) graphql.Marshaler {
+	if v == nil {
+		return graphql.Null
+	}
+	ret := make(graphql.Array, len(v))
+	var wg sync.WaitGroup
+	isLen1 := len(v) == 1
+	if !isLen1 {
+		wg.Add(len(v))
+	}
+	for i := range v {
+		i := i
+		fc := &graphql.FieldContext{
+			Index:  &i,
+			Result: &v[i],
+		}
+		ctx := graphql.WithFieldContext(ctx, fc)
+		f := func(i int) {
+			defer func() {
+				if r := recover(); r != nil {
+					ec.Error(ctx, ec.Recover(ctx, r))
+					ret = nil
+				}
+			}()
+			if !isLen1 {
+				defer wg.Done()
+			}
+			ret[i] = ec.marshalNFounder2ᚖgithubᚗcomᚋegrulᚑsystemᚋservicesᚋapiᚑgatewayᚋinternalᚋgraphᚋmodelᚐFounder(ctx, sel, v[i])
+		}
+		if isLen1 {
+			f(i)
+		} else {
+			go f(i)
+		}
+
+	}
+	wg.Wait()
+
+	for _, e := range ret {
+		if e == graphql.Null {
+			return graphql.Null
+		}
+	}
+
+	return ret
 }
 
 func (ec *executionContext) unmarshalOInt2ᚖint(ctx context.Context, v interface{}) (*int, error) {

@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { MapPin, ExternalLink } from 'lucide-react';
 import { mapsConfig, getMapsConfigError } from '@/lib/maps-config';
 import type { Address } from '@/lib/api';
@@ -8,21 +8,106 @@ interface CompanyMapProps {
   companyName?: string;
 }
 
+// Типы для Yandex Maps API
+interface YMapsAPI {
+  ready: (callback: () => void) => void;
+  Map: new (container: string | HTMLElement, state: MapState, options?: MapOptions) => YMap;
+  Placemark: new (geometry: [number, number], properties?: PlacemarkProperties, options?: PlacemarkOptions) => YPlacemark;
+  geocode: (request: string, options?: GeocodeOptions) => Promise<GeocodeResult>;
+}
+
+interface MapState {
+  center: [number, number];
+  zoom: number;
+}
+
+interface MapOptions {
+  controls?: string[];
+}
+
+interface YMap {
+  geoObjects: {
+    add: (placemark: YPlacemark) => void;
+  };
+  destroy: () => void;
+}
+
+interface YPlacemark {
+  // Placemark interface - можно расширить при необходимости
+  [key: string]: unknown;
+}
+
+interface PlacemarkProperties {
+  balloonContent?: string;
+  hintContent?: string;
+}
+
+interface PlacemarkOptions {
+  preset?: string;
+}
+
+interface GeocodeOptions {
+  results?: number;
+}
+
+interface GeocodeResult {
+  geoObjects: {
+    get: (index: number) => GeoObject | undefined;
+  };
+}
+
+interface GeoObject {
+  geometry: {
+    getCoordinates: () => [number, number];
+  };
+}
+
 declare global {
   interface Window {
-    ymaps: any;
+    ymaps: YMapsAPI;
   }
 }
 
 export const CompanyMap: React.FC<CompanyMapProps> = ({ address, companyName = 'Компания' }) => {
   const mapRef = useRef<HTMLDivElement>(null);
-  const [mapInstance, setMapInstance] = useState<any>(null);
+  const [mapInstance, setMapInstance] = useState<YMap | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [coordinates, setCoordinates] = useState<[number, number] | null>(null);
 
+  // Мемоизируем адрес для стабильности зависимостей
+  const memoizedAddress = useMemo(() => ({
+    fullAddress: address.fullAddress,
+    kladrCode: address.kladrCode,
+    fiasId: address.fiasId,
+    region: address.region,
+    city: address.city,
+    street: address.street,
+    house: address.house,
+    building: address.building,
+    flat: address.flat,
+    postalCode: address.postalCode,
+    regionCode: address.regionCode,
+    district: address.district,
+    locality: address.locality
+  }), [
+    address.fullAddress,
+    address.kladrCode,
+    address.fiasId,
+    address.region,
+    address.city,
+    address.street,
+    address.house,
+    address.building,
+    address.flat,
+    address.postalCode,
+    address.regionCode,
+    address.district,
+    address.locality
+  ]);
+
   // Функция для очистки адреса от дублированных префиксов
-  const cleanAddress = (address: Address) => {
+  const cleanAddress = useCallback((address: Address) => {
     const cleanPart = (part: string | undefined) => {
       if (!part) return '';
       
@@ -44,87 +129,7 @@ export const CompanyMap: React.FC<CompanyMapProps> = ({ address, companyName = '
       flat: cleanPart(address.flat),
       fullAddress: cleanPart(address.fullAddress)
     };
-  };
-
-  // Fallback геокодирование по городу/региону
-  const tryFallbackGeocoding = async () => {
-    try {
-      const fallbackParts = [address.region, address.city].filter(Boolean);
-      if (fallbackParts.length === 0) {
-        setError('Адрес не найден на карте');
-        setIsLoading(false);
-        return;
-      }
-
-      const fallbackQuery = fallbackParts.join(', ');
-      console.log('Fallback geocoding query:', fallbackQuery);
-
-      if (window.ymaps) {
-        const geocoder = window.ymaps.geocode(fallbackQuery);
-        const result = await geocoder;
-        const firstGeoObject = result.geoObjects.get(0);
-
-        if (firstGeoObject) {
-          const coords = firstGeoObject.geometry.getCoordinates();
-          setCoordinates([coords[0], coords[1]]);
-          setError(null);
-          console.log('Fallback geocoding successful:', coords);
-        } else {
-          setError('Адрес не найден на карте');
-        }
-      } else {
-        setError('Адрес не найден на карте');
-      }
-    } catch (err: any) {
-      console.error('Ошибка fallback геокодирования:', err);
-      if (err.message === 'scriptError') {
-        console.log('All geocoding failed due to API restrictions, showing approximate location');
-        await showApproximateLocationByKladr();
-      } else {
-        setError('Адрес не найден на карте');
-        setIsLoading(false);
-      }
-    }
-  };
-
-  // Показать примерное местоположение по КЛАДР коду или региону
-  const showApproximateLocationByKladr = async () => {
-    try {
-      console.log('Showing approximate location by KLADR or region');
-      
-      let coords: [number, number] | null = null;
-
-      // Сначала пробуем определить по КЛАДР коду
-      if (address.kladrCode) {
-        coords = getCoordinatesByKladrCode(address.kladrCode);
-        if (coords) {
-          console.log('KLADR code coordinates found:', coords);
-        }
-      }
-
-      // Если КЛАДР не помог, используем регион
-      if (!coords && address.region) {
-        coords = getCoordinatesByRegion(address.region);
-        if (coords) {
-          console.log('Region coordinates found:', coords);
-        }
-      }
-
-      // Если ничего не нашли, используем центр России
-      if (!coords) {
-        coords = [55.7558, 37.6176]; // Москва
-        console.log('Using default coordinates (Moscow)');
-      }
-
-      setCoordinates(coords);
-      setError(null);
-      setIsLoading(false);
-    } catch (err) {
-      console.error('Error showing approximate location:', err);
-      setError('Не удалось определить местоположение');
-      setIsLoading(false);
-    }
-  };
+  }, []);
 
   // Получить координаты по КЛАДР коду
   const getCoordinatesByKladrCode = (kladrCode: string): [number, number] | null => {
@@ -185,8 +190,118 @@ export const CompanyMap: React.FC<CompanyMapProps> = ({ address, companyName = '
     return null;
   };
 
+  // Показать примерное местоположение по КЛАДР коду или региону
+  const showApproximateLocationByKladr = useCallback(async () => {
+    try {
+      console.log('Showing approximate location by KLADR or region');
+      
+      let coords: [number, number] | null = null;
+
+      // Сначала пробуем определить по КЛАДР коду
+      if (memoizedAddress.kladrCode) {
+        coords = getCoordinatesByKladrCode(memoizedAddress.kladrCode);
+        if (coords) {
+          console.log('KLADR code coordinates found:', coords);
+        }
+      }
+
+      // Если КЛАДР не помог, используем регион
+      if (!coords && memoizedAddress.region) {
+        coords = getCoordinatesByRegion(memoizedAddress.region);
+        if (coords) {
+          console.log('Region coordinates found:', coords);
+        }
+      }
+
+      // Если ничего не нашли, используем центр России
+      if (!coords) {
+        coords = [55.7558, 37.6176]; // Москва
+        console.log('Using default coordinates (Moscow)');
+      }
+
+      setCoordinates(coords);
+      setError(null);
+      setIsLoading(false);
+    } catch (err) {
+      console.error('Error showing approximate location:', err);
+      setError('Не удалось определить местоположение');
+      setIsLoading(false);
+    }
+  }, [memoizedAddress.kladrCode, memoizedAddress.region]);
+
+  // Fallback геокодирование по городу/региону
+  const tryFallbackGeocoding = useCallback(async () => {
+    try {
+      const fallbackParts = [memoizedAddress.region, memoizedAddress.city].filter(Boolean);
+      if (fallbackParts.length === 0) {
+        setError('Адрес не найден на карте');
+        setIsLoading(false);
+        return;
+      }
+
+      const fallbackQuery = fallbackParts.join(', ');
+      console.log('Fallback geocoding query:', fallbackQuery);
+
+      if (window.ymaps) {
+        const geocoder = window.ymaps.geocode(fallbackQuery);
+        const result = await geocoder;
+        const firstGeoObject = result.geoObjects.get(0);
+
+        if (firstGeoObject) {
+          const coords = firstGeoObject.geometry.getCoordinates();
+          setCoordinates([coords[0], coords[1]]);
+          setError(null);
+          console.log('Fallback geocoding successful:', coords);
+        } else {
+          setError('Адрес не найден на карте');
+        }
+      } else {
+        setError('Адрес не найден на карте');
+      }
+    } catch (err: unknown) {
+      console.error('Ошибка fallback геокодирования:', err);
+      if (err instanceof Error && err.message === 'scriptError') {
+        console.log('All geocoding failed due to API restrictions, showing approximate location');
+        await showApproximateLocationByKladr();
+      } else {
+        setError('Адрес не найден на карте');
+        setIsLoading(false);
+      }
+    }
+  }, [memoizedAddress.region, memoizedAddress.city, showApproximateLocationByKladr]);
+
+  // Геокодирование по текстовому адресу (fallback для КЛАДР)
+  const geocodeByTextAddress = useCallback(async (textAddress: string) => {
+    try {
+      console.log('Geocoding by text address:', textAddress);
+      
+      const geocoder = window.ymaps.geocode(textAddress);
+      const result = await geocoder;
+      const firstGeoObject = result.geoObjects.get(0);
+
+      if (firstGeoObject) {
+        const coords = firstGeoObject.geometry.getCoordinates();
+        setCoordinates([coords[0], coords[1]]);
+        setError(null);
+        console.log('Text address geocoding successful:', coords);
+        setIsLoading(false);
+      } else {
+        console.log('Text address not found, trying city-level search');
+        await tryFallbackGeocoding();
+      }
+    } catch (err: unknown) {
+      console.error('Text address geocoding error:', err);
+      if (err instanceof Error && err.message === 'scriptError') {
+        console.log('Text address geocoding failed due to API restrictions');
+        await showApproximateLocationByKladr();
+      } else {
+        await tryFallbackGeocoding();
+      }
+    }
+  }, [tryFallbackGeocoding, showApproximateLocationByKladr]);
+
   // Функция для получения координат по адресу
-  const geocodeAddress = async () => {
+  const geocodeAddress = useCallback(async () => {
     if (!window.ymaps) {
       setError('Яндекс.Карты не загружены');
       setIsLoading(false);
@@ -194,7 +309,7 @@ export const CompanyMap: React.FC<CompanyMapProps> = ({ address, companyName = '
     }
 
     try {
-      const cleanedAddress = cleanAddress(address);
+      const cleanedAddress = cleanAddress(memoizedAddress);
       
       let geocodeQuery = '';
       
@@ -203,9 +318,9 @@ export const CompanyMap: React.FC<CompanyMapProps> = ({ address, companyName = '
       // 2. Полный адрес
       // 3. Собранный из компонентов адрес
       
-      if (address.kladrCode) {
+      if (memoizedAddress.kladrCode) {
         // Используем КЛАДР код для точного поиска
-        geocodeQuery = address.kladrCode;
+        geocodeQuery = memoizedAddress.kladrCode;
         console.log('Using KLADR code for geocoding:', geocodeQuery);
       } else if (cleanedAddress.fullAddress) {
         geocodeQuery = cleanedAddress.fullAddress;
@@ -229,7 +344,7 @@ export const CompanyMap: React.FC<CompanyMapProps> = ({ address, companyName = '
 
       try {
         // Для КЛАДР кода используем специальные параметры
-        const geocodeOptions = address.kladrCode ? {
+        const geocodeOptions = memoizedAddress.kladrCode ? {
           results: 1,
           kind: 'house', // Ищем конкретный дом
           // Для КЛАДР кода указываем, что это код
@@ -243,7 +358,7 @@ export const CompanyMap: React.FC<CompanyMapProps> = ({ address, companyName = '
           setTimeout(() => reject(new Error('Timeout')), 15000);
         });
 
-        const result = await Promise.race([geocoder, timeoutPromise]);
+        const result = await Promise.race([geocoder, timeoutPromise]) as GeocodeResult;
         const firstGeoObject = result.geoObjects.get(0);
 
         if (firstGeoObject) {
@@ -254,7 +369,7 @@ export const CompanyMap: React.FC<CompanyMapProps> = ({ address, companyName = '
           setIsLoading(false);
         } else {
           // Если КЛАДР код не сработал, попробуем текстовый адрес
-          if (address.kladrCode && cleanedAddress.fullAddress) {
+          if (memoizedAddress.kladrCode && cleanedAddress.fullAddress) {
             console.log('KLADR code failed, trying full address');
             await geocodeByTextAddress(cleanedAddress.fullAddress);
           } else {
@@ -262,18 +377,18 @@ export const CompanyMap: React.FC<CompanyMapProps> = ({ address, companyName = '
             await tryFallbackGeocoding();
           }
         }
-      } catch (jsErr: any) {
+      } catch (jsErr: unknown) {
         console.error('Geocoding error:', jsErr);
-        if (jsErr.message === 'Timeout') {
+        if (jsErr instanceof Error && jsErr.message === 'Timeout') {
           setError('Превышено время ожидания ответа от сервиса карт');
           setIsLoading(false);
-        } else if (jsErr.message === 'scriptError') {
+        } else if (jsErr instanceof Error && jsErr.message === 'scriptError') {
           // API ключ все еще ограничен, показываем примерные координаты
           console.log('API key still restricted, showing approximate location');
           await showApproximateLocationByKladr();
         } else {
           // Если КЛАДР код не сработал, попробуем текстовый адрес
-          if (address.kladrCode && cleanedAddress.fullAddress) {
+          if (memoizedAddress.kladrCode && cleanedAddress.fullAddress) {
             console.log('KLADR geocoding failed, trying text address');
             await geocodeByTextAddress(cleanedAddress.fullAddress);
           } else {
@@ -281,50 +396,21 @@ export const CompanyMap: React.FC<CompanyMapProps> = ({ address, companyName = '
           }
         }
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Ошибка геокодирования:', err);
       setError('Ошибка при поиске адреса');
       setIsLoading(false);
     }
-  };
-
-  // Геокодирование по текстовому адресу (fallback для КЛАДР)
-  const geocodeByTextAddress = async (textAddress: string) => {
-    try {
-      console.log('Geocoding by text address:', textAddress);
-      
-      const geocoder = window.ymaps.geocode(textAddress);
-      const result = await geocoder;
-      const firstGeoObject = result.geoObjects.get(0);
-
-      if (firstGeoObject) {
-        const coords = firstGeoObject.geometry.getCoordinates();
-        setCoordinates([coords[0], coords[1]]);
-        setError(null);
-        console.log('Text address geocoding successful:', coords);
-        setIsLoading(false);
-      } else {
-        console.log('Text address not found, trying city-level search');
-        await tryFallbackGeocoding();
-      }
-    } catch (err: any) {
-      console.error('Text address geocoding error:', err);
-      if (err.message === 'scriptError') {
-        console.log('Text address geocoding failed due to API restrictions');
-        await showApproximateLocationByKladr();
-      } else {
-        await tryFallbackGeocoding();
-      }
-    }
-  };
+  }, [memoizedAddress, cleanAddress, geocodeByTextAddress, tryFallbackGeocoding, showApproximateLocationByKladr]);
 
   // Инициализация карты
-  const initMap = () => {
+  const initMap = useCallback(() => {
     if (!mapRef.current || !coordinates || !window.ymaps) return;
 
     const map = new window.ymaps.Map(mapRef.current, {
       center: coordinates,
-      zoom: mapsConfig.defaults.zoom,
+      zoom: mapsConfig.defaults.zoom
+    }, {
       controls: mapsConfig.defaults.controls
     });
 
@@ -333,7 +419,7 @@ export const CompanyMap: React.FC<CompanyMapProps> = ({ address, companyName = '
       balloonContent: `
         <div style="padding: 8px;">
           <strong>${companyName}</strong><br/>
-          <small>${address.fullAddress || 'Адрес не указан'}</small>
+          <small>${memoizedAddress.fullAddress || 'Адрес не указан'}</small>
         </div>
       `,
       hintContent: companyName
@@ -343,7 +429,7 @@ export const CompanyMap: React.FC<CompanyMapProps> = ({ address, companyName = '
 
     map.geoObjects.add(placemark);
     setMapInstance(map);
-  };
+  }, [coordinates, companyName, memoizedAddress.fullAddress]);
 
   // Загрузка Яндекс.Карт
   useEffect(() => {
@@ -357,13 +443,13 @@ export const CompanyMap: React.FC<CompanyMapProps> = ({ address, companyName = '
 
       // Отладочная информация об адресе
       console.log('=== Address Debug Info ===');
-      console.log('Full address:', address.fullAddress);
-      console.log('KLADR code:', address.kladrCode);
-      console.log('FIAS ID:', address.fiasId);
-      console.log('Region:', address.region);
-      console.log('City:', address.city);
-      console.log('Street:', address.street);
-      console.log('House:', address.house);
+      console.log('Full address:', memoizedAddress.fullAddress);
+      console.log('KLADR code:', memoizedAddress.kladrCode);
+      console.log('FIAS ID:', memoizedAddress.fiasId);
+      console.log('Region:', memoizedAddress.region);
+      console.log('City:', memoizedAddress.city);
+      console.log('Street:', memoizedAddress.street);
+      console.log('House:', memoizedAddress.house);
       console.log('========================');
 
       console.log('Loading Yandex Maps with API key:', process.env.NEXT_PUBLIC_YANDEX_MAPS_API_KEY?.substring(0, 8) + '...');
@@ -398,14 +484,15 @@ export const CompanyMap: React.FC<CompanyMapProps> = ({ address, companyName = '
     };
 
     loadYandexMaps();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [geocodeAddress]);
 
   // Инициализация карты после получения координат
   useEffect(() => {
     if (coordinates && !mapInstance) {
       initMap();
     }
-  }, [coordinates, mapInstance]);
+  }, [coordinates, mapInstance, initMap]);
 
   // Функция для открытия в Яндекс.Картах
   const openInYandexMaps = () => {

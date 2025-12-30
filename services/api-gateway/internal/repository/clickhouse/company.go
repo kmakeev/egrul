@@ -178,7 +178,7 @@ func (r *companyRow) toModel() *model.Company {
 		Ogrn:            r.Ogrn,
 		Inn:             r.Inn,
 		FullName:        r.FullName,
-		Status:          model.ParseEntityStatus(r.Status),
+		Status:          r.determineEntityStatus(),
 		FoundersCount:   int(r.FoundersCount),
 		LicensesCount:   int(r.LicensesCount),
 		BranchesCount:   int(r.BranchesCount),
@@ -371,6 +371,51 @@ func (r *companyRow) toModel() *model.Company {
 	}
 
 	return company
+}
+
+// determineEntityStatus определяет статус компании на основе statusCode и terminationDate
+func (r *companyRow) determineEntityStatus() model.EntityStatus {
+	// Если есть дата прекращения деятельности, значит компания закрыта
+	if r.TerminationDate.Valid {
+		return model.EntityStatusLiquidated
+	}
+
+	// Если есть код статуса, используем его
+	if r.StatusCode.Valid && r.StatusCode.String != "" {
+		code := r.StatusCode.String
+		
+		// Коды ликвидации
+		if code == "101" {
+			return model.EntityStatusLiquidating
+		}
+		
+		// Коды исключения из реестра (недействующие)
+		if code == "105" || code == "106" || code == "107" {
+			return model.EntityStatusLiquidated
+		}
+		
+		// Коды банкротства (113-117)
+		if code == "113" || code == "114" || code == "115" || code == "116" || code == "117" {
+			return model.EntityStatusBankrupt
+		}
+		
+		// Коды реорганизации (121-139)
+		if len(code) == 3 && (code[0:2] == "12" || code[0:2] == "13") {
+			return model.EntityStatusReorganizing
+		}
+		
+		// Коды недействительности регистрации (701, 702, 801, 802)
+		if len(code) == 3 && (code[0:2] == "70" || code[0:2] == "80") {
+			return model.EntityStatusLiquidated
+		}
+		
+		// Остальные коды (например, 111 - уменьшение капитала, 112 - изменение места нахождения)
+		// считаем действующими
+		return model.EntityStatusActive
+	}
+
+	// По умолчанию считаем действующей
+	return model.EntityStatusActive
 }
 
 // GetByOGRN получает компанию по ОГРН

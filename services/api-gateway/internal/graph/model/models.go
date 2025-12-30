@@ -485,3 +485,38 @@ type Statistics struct {
 	ByActivity          []*ActivityStatistics `json:"byActivity"`
 }
 
+// RelationshipType тип связи между компаниями
+type RelationshipType string
+
+const (
+	RelationshipTypeFounderCompany    RelationshipType = "FOUNDER_COMPANY"    // Компания-учредитель
+	RelationshipTypeSubsidiaryCompany RelationshipType = "SUBSIDIARY_COMPANY" // Дочерняя компания
+	RelationshipTypeCommonFounders    RelationshipType = "COMMON_FOUNDERS"    // Общие учредители-физлица
+	RelationshipTypeCommonDirectors   RelationshipType = "COMMON_DIRECTORS"   // Общие руководители-физлица
+	RelationshipTypeFounderToDirector RelationshipType = "FOUNDER_TO_DIRECTOR" // Учредитель → Руководитель
+	RelationshipTypeDirectorToFounder RelationshipType = "DIRECTOR_TO_FOUNDER" // Руководитель → Учредитель
+	RelationshipTypeRelatedByPerson   RelationshipType = "RELATED_BY_PERSON"  // Связанная через физлицо
+)
+
+func (r RelationshipType) IsValid() bool {
+	switch r {
+	case RelationshipTypeFounderCompany, RelationshipTypeSubsidiaryCompany,
+		RelationshipTypeCommonFounders, RelationshipTypeCommonDirectors, 
+		RelationshipTypeFounderToDirector, RelationshipTypeDirectorToFounder, RelationshipTypeRelatedByPerson:
+		return true
+	}
+	return false
+}
+
+func (r RelationshipType) String() string {
+	return string(r)
+}
+
+// RelatedCompany связанная компания
+type RelatedCompany struct {
+	Company          *Company          `json:"company"`
+	RelationshipType RelationshipType  `json:"relationshipType"`
+	Description      *string           `json:"description"`
+	CommonFounders   []*Founder        `json:"commonFounders"`
+	CommonDirectors  []*Person         `json:"commonDirectors"`
+}

@@ -33,6 +33,7 @@ type CompanyResolver interface {
 	Branches(ctx context.Context, obj *model.Company) ([]*model.Branch, error)
 	History(ctx context.Context, obj *model.Company, limit *int, offset *int) ([]*model.HistoryRecord, error)
 	HistoryCount(ctx context.Context, obj *model.Company) (int, error)
+	RelatedCompanies(ctx context.Context, obj *model.Company, limit *int, offset *int) ([]*model.RelatedCompany, error)
 }
 
 // EntrepreneurResolver interface for Entrepreneur field resolvers
