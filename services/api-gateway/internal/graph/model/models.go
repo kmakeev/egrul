@@ -493,6 +493,7 @@ const (
 	RelationshipTypeSubsidiaryCompany RelationshipType = "SUBSIDIARY_COMPANY" // Дочерняя компания
 	RelationshipTypeCommonFounders    RelationshipType = "COMMON_FOUNDERS"    // Общие учредители-физлица
 	RelationshipTypeCommonDirectors   RelationshipType = "COMMON_DIRECTORS"   // Общие руководители-физлица
+	RelationshipTypeCommonAddress     RelationshipType = "COMMON_ADDRESS"     // Общий адрес регистрации
 	RelationshipTypeFounderToDirector RelationshipType = "FOUNDER_TO_DIRECTOR" // Учредитель → Руководитель
 	RelationshipTypeDirectorToFounder RelationshipType = "DIRECTOR_TO_FOUNDER" // Руководитель → Учредитель
 	RelationshipTypeRelatedByPerson   RelationshipType = "RELATED_BY_PERSON"  // Связанная через физлицо
@@ -519,4 +520,5 @@ type RelatedCompany struct {
 	Description      *string           `json:"description"`
 	CommonFounders   []*Founder        `json:"commonFounders"`
 	CommonDirectors  []*Person         `json:"commonDirectors"`
+	CommonAddress    *Address          `json:"commonAddress"`
 }

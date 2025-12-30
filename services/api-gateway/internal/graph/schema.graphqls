@@ -30,6 +30,7 @@ enum RelationshipType {
   SUBSIDIARY_COMPANY   # Дочерняя компания (где данная компания учредитель)
   COMMON_FOUNDERS      # Компания с общими учредителями-физлицами
   COMMON_DIRECTORS     # Компания с общими руководителями-физлицами
+  COMMON_ADDRESS       # Компания с общим адресом регистрации
   FOUNDER_TO_DIRECTOR  # Учредитель основной компании является руководителем связанной
   DIRECTOR_TO_FOUNDER  # Руководитель основной компании является учредителем связанной
   RELATED_BY_PERSON    # Связанная через физическое лицо
@@ -211,6 +212,7 @@ type RelatedCompany {
   description: String
   commonFounders: [Founder!]  # Общие учредители (для типа COMMON_FOUNDERS)
   commonDirectors: [Person!]  # Общие руководители (для типа COMMON_DIRECTORS)
+  commonAddress: Address      # Общий адрес (для типа COMMON_ADDRESS)
 }
 
 """

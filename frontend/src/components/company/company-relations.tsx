@@ -3,12 +3,13 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Network, ExternalLink, Building, Users, Factory, Globe } from "lucide-react";
+import { ExternalLink, Building } from "lucide-react";
 import Link from "next/link";
 import { useCompanyRelationsQuery } from "@/lib/api/company-hooks";
 import { decodeHtmlEntities } from "@/lib/html-utils";
 import { formatDate } from "@/lib/format-utils";
 import { unifiedStatusOptions } from "@/lib/statuses";
+import { CompanyRelationsGraph } from "./company-relations-graph";
 import type { LegalEntity } from "@/lib/api";
 
 interface CompanyRelationsProps {
@@ -129,71 +130,77 @@ function getVariantByCode(code: string): "default" | "secondary" | "destructive"
   return "outline";
 }
 
-// Функция для получения иконки типа связи
-function getRelationshipIcon(type: string) {
-  switch (type) {
-    case "FOUNDER_COMPANY":
-      return <Factory className="h-4 w-4" />;
-    case "SUBSIDIARY_COMPANY":
-      return <Building className="h-4 w-4" />;
-    case "COMMON_FOUNDERS":
-      return <Users className="h-4 w-4" />;
-    case "COMMON_DIRECTORS":
-      return <Users className="h-4 w-4" />;
-    case "FOUNDER_TO_DIRECTOR":
-      return <Users className="h-4 w-4" />;
-    case "DIRECTOR_TO_FOUNDER":
-      return <Users className="h-4 w-4" />;
-    case "RELATED_BY_PERSON":
-      return <Globe className="h-4 w-4" />;
-    default:
-      return <Building className="h-4 w-4" />;
-  }
-}
+// Функция для получения иконки типа связи (не используется, но может понадобиться в будущем)
+// function getRelationshipIcon(type: string) {
+//   switch (type) {
+//     case "FOUNDER_COMPANY":
+//       return <Factory className="h-4 w-4" />;
+//     case "SUBSIDIARY_COMPANY":
+//       return <Building className="h-4 w-4" />;
+//     case "COMMON_FOUNDERS":
+//       return <Users className="h-4 w-4" />;
+//     case "COMMON_DIRECTORS":
+//       return <Users className="h-4 w-4" />;
+//     case "COMMON_ADDRESS":
+//       return <Globe className="h-4 w-4" />;
+//     case "FOUNDER_TO_DIRECTOR":
+//       return <Users className="h-4 w-4" />;
+//     case "DIRECTOR_TO_FOUNDER":
+//       return <Users className="h-4 w-4" />;
+//     case "RELATED_BY_PERSON":
+//       return <Globe className="h-4 w-4" />;
+//     default:
+//       return <Building className="h-4 w-4" />;
+//   }
+// }
 
-// Функция для получения текста типа связи
-function getRelationshipText(type: string) {
-  switch (type) {
-    case "FOUNDER_COMPANY":
-      return "Учредитель";
-    case "SUBSIDIARY_COMPANY":
-      return "Дочерняя";
-    case "COMMON_FOUNDERS":
-      return "Общие учредители";
-    case "COMMON_DIRECTORS":
-      return "Общие руководители";
-    case "FOUNDER_TO_DIRECTOR":
-      return "Перекрестные связи";
-    case "DIRECTOR_TO_FOUNDER":
-      return "Перекрестные связи";
-    case "RELATED_BY_PERSON":
-      return "Связанная";
-    default:
-      return "Связанная";
-  }
-}
+// Функция для получения текста типа связи (не используется, но может понадобиться в будущем)
+// function getRelationshipText(type: string) {
+//   switch (type) {
+//     case "FOUNDER_COMPANY":
+//       return "Учредитель";
+//     case "SUBSIDIARY_COMPANY":
+//       return "Дочерняя";
+//     case "COMMON_FOUNDERS":
+//       return "Общие учредители";
+//     case "COMMON_DIRECTORS":
+//       return "Общие руководители";
+//     case "COMMON_ADDRESS":
+//       return "Общий адрес";
+//     case "FOUNDER_TO_DIRECTOR":
+//       return "Перекрестные связи";
+//     case "DIRECTOR_TO_FOUNDER":
+//       return "Перекрестные связи";
+//     case "RELATED_BY_PERSON":
+//       return "Связанная";
+//     default:
+//       return "Связанная";
+//   }
+// }
 
-// Функция для получения цвета бейджа типа связи
-function getRelationshipBadgeVariant(type: string) {
-  switch (type) {
-    case "FOUNDER_COMPANY":
-      return "default" as const;
-    case "SUBSIDIARY_COMPANY":
-      return "secondary" as const;
-    case "COMMON_FOUNDERS":
-      return "outline" as const;
-    case "COMMON_DIRECTORS":
-      return "outline" as const;
-    case "FOUNDER_TO_DIRECTOR":
-      return "destructive" as const;
-    case "DIRECTOR_TO_FOUNDER":
-      return "destructive" as const;
-    case "RELATED_BY_PERSON":
-      return "destructive" as const;
-    default:
-      return "secondary" as const;
-  }
-}
+// Функция для получения цвета бейджа типа связи (не используется, но может понадобиться в будущем)
+// function getRelationshipBadgeVariant(type: string) {
+//   switch (type) {
+//     case "FOUNDER_COMPANY":
+//       return "default" as const;
+//     case "SUBSIDIARY_COMPANY":
+//       return "secondary" as const;
+//     case "COMMON_FOUNDERS":
+//       return "outline" as const;
+//     case "COMMON_DIRECTORS":
+//       return "outline" as const;
+//     case "COMMON_ADDRESS":
+//       return "outline" as const;
+//     case "FOUNDER_TO_DIRECTOR":
+//       return "destructive" as const;
+//     case "DIRECTOR_TO_FOUNDER":
+//       return "destructive" as const;
+//     case "RELATED_BY_PERSON":
+//       return "destructive" as const;
+//     default:
+//       return "secondary" as const;
+//   }
+// }
 
 export function CompanyRelations({ company }: CompanyRelationsProps) {
   // Настройки лимитов для связанных компаний
@@ -215,39 +222,16 @@ export function CompanyRelations({ company }: CompanyRelationsProps) {
     }
     acc[ogrn].relations.push(relation);
     return acc;
-  }, {} as Record<string, { company: any; relations: typeof relatedCompanies }>);
-
-  // Затем группируем по типу связи для отображения секций
-  const groupedCompanies = relatedCompanies.reduce((acc, relation) => {
-    const type = relation.relationshipType;
-    if (!acc[type]) {
-      acc[type] = [];
-    }
-    acc[type].push(relation);
-    return acc;
-  }, {} as Record<string, typeof relatedCompanies>);
+  }, {} as Record<string, { company: LegalEntity; relations: typeof relatedCompanies }>);
 
   return (
     <div className="space-y-6">
       {/* Граф связей */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Network className="h-5 w-5" />
-            Граф связей
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {/* TODO: Реализовать визуализацию графа связей */}
-          <div className="h-64 bg-gray-100 rounded-lg flex items-center justify-center">
-            <div className="text-center">
-              <Network className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-              <p className="text-gray-500 mb-2">Визуализация графа связей</p>
-              <p className="text-sm text-gray-400">(в разработке)</p>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+      <CompanyRelationsGraph 
+        company={company}
+        relatedCompanies={relatedCompanies}
+        isLoading={relationsLoading}
+      />
 
       {/* Список связанных компаний */}
       <Card>
@@ -314,7 +298,7 @@ export function CompanyRelations({ company }: CompanyRelationsProps) {
                   }
                   acc[ogrn].relations.push(relation);
                   return acc;
-                }, {} as Record<string, { company: any; relations: typeof relatedCompanies }>);
+                }, {} as Record<string, { company: LegalEntity; relations: typeof relatedCompanies }>);
 
                 // Показываем все уникальные компании
                 return (
@@ -366,7 +350,7 @@ export function CompanyRelations({ company }: CompanyRelationsProps) {
                                 </div>
                                 
                                 <h4 className="font-semibold text-lg mb-1">
-                                  {decodeHtmlEntities(relatedCompany.fullName)}
+                                  {decodeHtmlEntities(relatedCompany.fullName || "")}
                                 </h4>
                                 
                                 {relatedCompany.shortName && relatedCompany.shortName !== relatedCompany.fullName && (

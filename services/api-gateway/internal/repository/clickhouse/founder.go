@@ -500,3 +500,102 @@ func (r *FounderRepository) GetCrossPersonDetails(ctx context.Context, ogrn1, og
 	return persons, nil
 }
 
+// GetCompaniesWithCommonAddress получает компании с общим адресом регистрации
+func (r *FounderRepository) GetCompaniesWithCommonAddress(ctx context.Context, ogrn string, limit, offset int) ([]string, error) {
+	r.logger.Info("GetCompaniesWithCommonAddress called", zap.String("ogrn", ogrn), zap.Int("limit", limit), zap.Int("offset", offset))
+	
+	query := `
+		SELECT DISTINCT c2.ogrn
+		FROM egrul.companies c1 FINAL
+		INNER JOIN egrul.companies c2 FINAL ON c1.full_address = c2.full_address
+		WHERE c1.ogrn = ?
+		  AND c2.ogrn != ?
+		  AND c1.full_address IS NOT NULL
+		  AND c1.full_address != ''
+		  AND length(c1.full_address) > 10
+		ORDER BY c2.ogrn
+		LIMIT ? OFFSET ?
+	`
+
+	rows, err := r.client.conn.Query(ctx, query, ogrn, ogrn, limit, offset)
+	if err != nil {
+		r.logger.Error("query companies with common address failed", zap.String("ogrn", ogrn), zap.Error(err))
+		return nil, fmt.Errorf("query companies with common address: %w", err)
+	}
+	defer rows.Close()
+
+	var ogrns []string
+	for rows.Next() {
+		var relatedOgrn string
+		if err := rows.Scan(&relatedOgrn); err != nil {
+			r.logger.Error("scan related ogrn failed", zap.Error(err))
+			return nil, fmt.Errorf("scan related ogrn: %w", err)
+		}
+		ogrns = append(ogrns, relatedOgrn)
+	}
+
+	r.logger.Info("GetCompaniesWithCommonAddress completed", zap.String("ogrn", ogrn), zap.Int("count", len(ogrns)))
+	return ogrns, nil
+}
+
+// GetCommonAddressDetails получает детальную информацию об общем адресе между двумя компаниями
+func (r *FounderRepository) GetCommonAddressDetails(ctx context.Context, ogrn1, ogrn2 string) (*model.Address, error) {
+	r.logger.Info("GetCommonAddressDetails called", zap.String("ogrn1", ogrn1), zap.String("ogrn2", ogrn2))
+	
+	query := `
+		SELECT DISTINCT 
+			c1.postal_code,
+			c1.region_code,
+			c1.region,
+			c1.district,
+			c1.city,
+			c1.locality,
+			c1.street,
+			c1.house,
+			c1.building,
+			c1.flat,
+			c1.full_address,
+			c1.fias_id
+		FROM egrul.companies c1 FINAL
+		INNER JOIN egrul.companies c2 FINAL ON c1.full_address = c2.full_address
+		WHERE c1.ogrn = ? AND c2.ogrn = ?
+		  AND c1.full_address IS NOT NULL
+		  AND c1.full_address != ''
+	`
+
+	rows, err := r.client.conn.Query(ctx, query, ogrn1, ogrn2)
+	if err != nil {
+		r.logger.Error("query common address details failed", zap.String("ogrn1", ogrn1), zap.String("ogrn2", ogrn2), zap.Error(err))
+		return nil, fmt.Errorf("query common address details: %w", err)
+	}
+	defer rows.Close()
+
+	if rows.Next() {
+		var postalCode, regionCode, region, district, city, locality, street, house, building, flat, fullAddress, fiasId sql.NullString
+		
+		if err := rows.Scan(&postalCode, &regionCode, &region, &district, &city, &locality, &street, &house, &building, &flat, &fullAddress, &fiasId); err != nil {
+			r.logger.Error("scan common address failed", zap.Error(err))
+			return nil, fmt.Errorf("scan common address: %w", err)
+		}
+
+		address := &model.Address{}
+		if postalCode.Valid { address.PostalCode = &postalCode.String }
+		if regionCode.Valid { address.RegionCode = &regionCode.String }
+		if region.Valid { address.Region = &region.String }
+		if district.Valid { address.District = &district.String }
+		if city.Valid { address.City = &city.String }
+		if locality.Valid { address.Locality = &locality.String }
+		if street.Valid { address.Street = &street.String }
+		if house.Valid { address.House = &house.String }
+		if building.Valid { address.Building = &building.String }
+		if flat.Valid { address.Flat = &flat.String }
+		if fullAddress.Valid { address.FullAddress = &fullAddress.String }
+		if fiasId.Valid { address.FiasID = &fiasId.String }
+
+		r.logger.Info("GetCommonAddressDetails completed", zap.String("ogrn1", ogrn1), zap.String("ogrn2", ogrn2))
+		return address, nil
+	}
+
+	return nil, fmt.Errorf("common address not found")
+}
+

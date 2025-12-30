@@ -322,3 +322,34 @@ func (s *CompanyService) GetCrossPersonDetails(ctx context.Context, ogrn1, ogrn2
 	return s.founderRepo.GetCrossPersonDetails(ctx, ogrn1, ogrn2, crossType)
 }
 
+// GetCompaniesWithCommonAddress получает компании с общим адресом регистрации
+func (s *CompanyService) GetCompaniesWithCommonAddress(ctx context.Context, ogrn string, limit, offset int) ([]*model.Company, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+
+	ogrns, err := s.founderRepo.GetCompaniesWithCommonAddress(ctx, ogrn, limit, offset)
+	if err != nil {
+		return nil, err
+	}
+
+	companies := make([]*model.Company, 0, len(ogrns))
+	for _, relatedOgrn := range ogrns {
+		company, err := s.companyRepo.GetByOGRN(ctx, relatedOgrn)
+		if err != nil {
+			s.logger.Warn("failed to get company by ogrn", zap.String("ogrn", relatedOgrn), zap.Error(err))
+			continue
+		}
+		if company != nil {
+			companies = append(companies, company)
+		}
+	}
+
+	return companies, nil
+}
+
+// GetCommonAddressDetails получает детальную информацию об общем адресе между двумя компаниями
+func (s *CompanyService) GetCommonAddressDetails(ctx context.Context, ogrn1, ogrn2 string) (*model.Address, error) {
+	return s.founderRepo.GetCommonAddressDetails(ctx, ogrn1, ogrn2)
+}
+
