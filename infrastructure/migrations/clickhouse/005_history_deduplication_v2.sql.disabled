@@ -1,0 +1,244 @@
+-- ============================================================================
+-- МИГРАЦИЯ: Дедупликация истории изменений v2
+-- Version: 005_history_deduplication_v2
+-- Description: Альтернативная стратегия дедупликации - один ГРН на сущность
+-- ============================================================================
+
+-- Создаем таблицу с дедупликацией по ГРН (без учета source_file)
+CREATE TABLE IF NOT EXISTS egrul.company_history_v2
+(
+    -- === Идентификаторы ===
+    id                      UUID DEFAULT generateUUIDv4() COMMENT 'Уникальный идентификатор записи',
+    entity_type             LowCardinality(String) COMMENT 'Тип сущности: company/entrepreneur',
+    entity_id               String COMMENT 'ОГРН или ОГРНИП',
+    inn                     Nullable(String) COMMENT 'ИНН',
+    
+    -- === Сведения о записи ГРН ===
+    grn                     String COMMENT 'Государственный регистрационный номер записи',
+    grn_date                Date COMMENT 'Дата записи',
+    
+    -- === Причина изменения ===
+    reason_code             Nullable(String) COMMENT 'Код причины внесения записи',
+    reason_description      Nullable(String) COMMENT 'Описание причины',
+    
+    -- === Регистрирующий орган ===
+    authority_code          Nullable(String) COMMENT 'Код регистрирующего органа',
+    authority_name          Nullable(String) COMMENT 'Наименование регистрирующего органа',
+    
+    -- === Свидетельство ===
+    certificate_series      Nullable(String) COMMENT 'Серия свидетельства',
+    certificate_number      Nullable(String) COMMENT 'Номер свидетельства',
+    certificate_date        Nullable(Date) COMMENT 'Дата выдачи свидетельства',
+    
+    -- === Снимок основных данных на момент изменения ===
+    snapshot_full_name      Nullable(String) COMMENT 'Наименование на момент изменения',
+    snapshot_status         Nullable(String) COMMENT 'Статус на момент изменения',
+    snapshot_address        Nullable(String) COMMENT 'Адрес на момент изменения',
+    snapshot_json           Nullable(String) COMMENT 'Полный снимок данных в JSON',
+    
+    -- === Метаданные ===
+    source_files            Array(String) DEFAULT [] COMMENT 'Список файлов-источников (для отслеживания)',
+    extract_date            Date DEFAULT toDate('1970-01-01') COMMENT 'Дата выписки из XML',
+    created_at              DateTime64(3) DEFAULT now64(3) COMMENT 'Дата создания записи',
+    updated_at              DateTime64(3) DEFAULT now64(3) COMMENT 'Дата последнего обновления'
+)
+ENGINE = ReplacingMergeTree(updated_at)
+PARTITION BY toYYYYMM(grn_date)
+ORDER BY (entity_type, entity_id, grn)
+SETTINGS index_granularity = 8192;
+
+-- Комментарий: Теперь дедупликация происходит по ключу (entity_type, entity_id, grn)
+-- без учета source_file, что означает один ГРН на сущность
+
+-- ============================================================================
+-- МИГРАЦИЯ ДАННЫХ С АГРЕГАЦИЕЙ ПО ГРН
+-- ============================================================================
+
+-- Вставляем агрегированные данные - один ГРН на сущность
+INSERT INTO egrul.company_history_v2 (
+    id,
+    entity_type,
+    entity_id,
+    inn,
+    grn,
+    grn_date,
+    reason_code,
+    reason_description,
+    authority_code,
+    authority_name,
+    certificate_series,
+    certificate_number,
+    certificate_date,
+    snapshot_full_name,
+    snapshot_status,
+    snapshot_address,
+    snapshot_json,
+    source_files,
+    extract_date,
+    created_at,
+    updated_at
+)
+SELECT 
+    -- Берем ID из самой последней записи
+    argMax(id, created_at) as id,
+    entity_type,
+    entity_id,
+    -- Берем не-NULL значения, приоритет последней записи
+    argMax(inn, created_at) as inn,
+    grn,
+    argMax(grn_date, created_at) as grn_date,
+    argMax(reason_code, created_at) as reason_code,
+    argMax(reason_description, created_at) as reason_description,
+    argMax(authority_code, created_at) as authority_code,
+    argMax(authority_name, created_at) as authority_name,
+    argMax(certificate_series, created_at) as certificate_series,
+    argMax(certificate_number, created_at) as certificate_number,
+    argMax(certificate_date, created_at) as certificate_date,
+    argMax(snapshot_full_name, created_at) as snapshot_full_name,
+    argMax(snapshot_status, created_at) as snapshot_status,
+    argMax(snapshot_address, created_at) as snapshot_address,
+    argMax(snapshot_json, created_at) as snapshot_json,
+    -- Собираем все уникальные файлы-источники
+    arrayDistinct(groupArray(ifNull(source_file, ''))) as source_files,
+    argMax(toDate('1970-01-01'), created_at) as extract_date,
+    min(created_at) as created_at,
+    max(created_at) as updated_at
+FROM egrul.company_history
+GROUP BY entity_type, entity_id, grn;
+
+-- ============================================================================
+-- СОЗДАНИЕ ИНДЕКСОВ ДЛЯ НОВОЙ ТАБЛИЦЫ
+-- ============================================================================
+
+ALTER TABLE egrul.company_history_v2
+    ADD INDEX IF NOT EXISTS idx_history_entity_type entity_type TYPE set(10) GRANULARITY 4;
+
+ALTER TABLE egrul.company_history_v2
+    ADD INDEX IF NOT EXISTS idx_history_inn inn TYPE bloom_filter(0.01) GRANULARITY 4;
+
+ALTER TABLE egrul.company_history_v2
+    ADD INDEX IF NOT EXISTS idx_history_reason_code reason_code TYPE set(500) GRANULARITY 4;
+
+ALTER TABLE egrul.company_history_v2
+    ADD INDEX IF NOT EXISTS idx_history_grn_date grn_date TYPE minmax GRANULARITY 4;
+
+ALTER TABLE egrul.company_history_v2
+    ADD INDEX IF NOT EXISTS idx_history_extract_date extract_date TYPE minmax GRANULARITY 4;
+
+-- ============================================================================
+-- СОЗДАНИЕ VIEW ДЛЯ ФИНАЛЬНЫХ ДАННЫХ
+-- ============================================================================
+
+CREATE OR REPLACE VIEW egrul.company_history_unique AS
+SELECT 
+    id,
+    entity_type,
+    entity_id,
+    inn,
+    grn,
+    grn_date,
+    reason_code,
+    reason_description,
+    authority_code,
+    authority_name,
+    certificate_series,
+    certificate_number,
+    certificate_date,
+    snapshot_full_name,
+    snapshot_status,
+    snapshot_address,
+    snapshot_json,
+    source_files,
+    extract_date,
+    created_at,
+    updated_at
+FROM egrul.company_history_v2 FINAL
+ORDER BY entity_id, grn_date DESC, grn DESC;
+
+-- ============================================================================
+-- СТАТИСТИКА ДО И ПОСЛЕ ДЕДУПЛИКАЦИИ
+-- ============================================================================
+
+-- ============================================================================
+-- СТАТИСТИКА ДО И ПОСЛЕ ДЕДУПЛИКАЦИИ (ТОЛЬКО ДЛЯ СПРАВКИ)
+-- ============================================================================
+
+-- Эти запросы можно выполнить вручную после миграции для проверки:
+
+-- Статистика до дедупликации:
+-- SELECT 
+--     'До дедупликации' as stage,
+--     count(*) as total_records,
+--     count(DISTINCT grn) as unique_grns,
+--     count(*) - count(DISTINCT grn) as duplicates
+-- FROM egrul.company_history
+-- WHERE entity_id = '1067425004635';
+
+-- Статистика после дедупликации:
+-- SELECT 
+--     'После дедупликации' as stage,
+--     count(*) as total_records,
+--     count(DISTINCT grn) as unique_grns,
+--     count(*) - count(DISTINCT grn) as duplicates
+-- FROM egrul.company_history_v2 FINAL
+-- WHERE entity_id = '1067425004635';
+
+-- ============================================================================
+-- ТЕСТОВЫЕ ЗАПРОСЫ
+-- ============================================================================
+
+-- Проверка уникальности ГРН
+SELECT 
+    entity_id, grn, count(*) as cnt
+FROM egrul.company_history_v2 FINAL
+WHERE entity_id = '1067425004635'
+GROUP BY entity_id, grn
+HAVING cnt > 1;
+-- Должен вернуть пустой результат
+
+-- Сравнение количества записей
+SELECT 
+    'Старая таблица' as source,
+    count(*) as records
+FROM egrul.company_history
+WHERE entity_id = '1067425004635'
+
+UNION ALL
+
+SELECT 
+    'Новая таблица' as source,
+    count(*) as records
+FROM egrul.company_history_v2 FINAL
+WHERE entity_id = '1067425004635';
+
+-- Просмотр истории с информацией об источниках
+SELECT 
+    grn,
+    grn_date,
+    reason_code,
+    reason_description,
+    source_files,
+    arrayJoin(source_files) as source_file
+FROM egrul.company_history_v2 FINAL
+WHERE entity_id = '1067425004635'
+ORDER BY grn_date DESC, grn DESC
+LIMIT 10;
+
+-- ============================================================================
+-- КОММЕНТАРИИ ПО ИСПОЛЬЗОВАНИЮ
+-- ============================================================================
+
+-- ВАЖНО: Выберите одну из стратегий дедупликации:
+-- 
+-- 1. company_history (текущая) - дедупликация по (entity_type, entity_id, grn, source_file)
+--    Результат: каждый ГРН уникален в рамках одного файла
+--    Плюсы: сохраняется информация о всех источниках
+--    Минусы: дублирование ГРН между файлами
+--
+-- 2. company_history_v2 (новая) - дедупликация по (entity_type, entity_id, grn)
+--    Результат: каждый ГРН уникален для сущности
+--    Плюсы: истинная дедупликация, один ГРН = одна запись
+--    Минусы: теряется детальная информация об источниках (остается только массив файлов)
+
+-- Рекомендация: использовать company_history_v2 для пользовательского интерфейса
+-- и company_history для аудита и отладки

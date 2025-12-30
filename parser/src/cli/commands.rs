@@ -32,16 +32,27 @@ pub fn execute_parse(args: ParseArgs, config: &AppConfig) -> Result<()> {
         config.parser.batch_size 
     };
     
+    // Определяем ограничения на размер файлов
+    let max_file_size_mb = args.max_file_size_mb
+        .or_else(|| if config.output.max_file_size_mb > 0 { Some(config.output.max_file_size_mb) } else { None });
+    let max_records_per_file = args.max_records_per_file
+        .or_else(|| if config.output.max_records_per_file > 0 { Some(config.output.max_records_per_file) } else { None });
+    
     let parser_config = ParserConfig {
         num_threads: num_workers,
         channel_buffer_size: config.parser.channel_buffer_size,
         batch_size,
         show_progress: !args.no_progress && config.parser.show_progress,
         continue_on_error: args.continue_on_error && config.parser.continue_on_error,
+        max_file_size_mb,
+        max_records_per_file,
     };
     
     info!("Воркеров:        {}", num_workers);
     info!("Размер батча:    {}", batch_size);
+    if max_file_size_mb.is_some() || max_records_per_file.is_some() {
+        info!("Разбивка файлов: включена");
+    }
     info!("");
     
     let start = Instant::now();
@@ -85,8 +96,18 @@ fn execute_parse_file(
     let egrul_path = output.join(format!("egrul.{}", format.extension()));
     let egrip_path = output.join(format!("egrip.{}", format.extension()));
     
-    let mut egrul_writer = OutputWriter::new(&egrul_path, format)?;
-    let mut egrip_writer = OutputWriter::new(&egrip_path, format)?;
+    let mut egrul_writer = OutputWriter::with_limits(
+        &egrul_path,
+        format,
+        config.max_file_size_mb,
+        config.max_records_per_file,
+    )?;
+    let mut egrip_writer = OutputWriter::with_limits(
+        &egrip_path,
+        format,
+        config.max_file_size_mb,
+        config.max_records_per_file,
+    )?;
     
     let mut egrul_records = Vec::new();
     let mut egrip_records = Vec::new();

@@ -15,8 +15,8 @@ NC='\033[0m' # No Color
 # Конфигурация по умолчанию
 CLICKHOUSE_HOST="${CLICKHOUSE_HOST:-localhost}"
 CLICKHOUSE_PORT="${CLICKHOUSE_PORT:-8123}"
-CLICKHOUSE_USER="${CLICKHOUSE_USER:-admin}"
-CLICKHOUSE_PASSWORD="${CLICKHOUSE_PASSWORD:-admin}"
+CLICKHOUSE_USER="${CLICKHOUSE_USER:-egrul_import}"
+CLICKHOUSE_PASSWORD="${CLICKHOUSE_PASSWORD:-123}"
 CLICKHOUSE_DATABASE="${CLICKHOUSE_DATABASE:-egrul}"
 
 # Путь к debug-логу для отладки (NDJSON)
@@ -75,242 +75,39 @@ import_parquet() {
     fi
 }
 
-# Функция для импорта учредителей из временной таблицы компаний
+# Функция для импорта учредителей из временной таблицы компаний (устаревшая, оставлена для совместимости)
 import_founders_from_companies_import() {
-    log_info "Импорт учредителей из данных ЕГРЮЛ..."
-    
-    # Очищаем таблицу учредителей (для MVP - полная перезагрузка)
-    clickhouse_query "TRUNCATE TABLE ${CLICKHOUSE_DATABASE}.founders"
-    
-    # Сначала создаем временную таблицу для обработки JSON
-    clickhouse_query "
-    CREATE TABLE ${CLICKHOUSE_DATABASE}.founders_temp (
-        company_ogrn String,
-        company_inn String,
-        company_name String,
-        founders_json String
-    ) ENGINE = Memory
-    "
-    
-    # Заполняем временную таблицу только записями с учредителями
-    clickhouse_query "
-    INSERT INTO ${CLICKHOUSE_DATABASE}.founders_temp
-    SELECT 
-        ogrn,
-        inn,
-        full_name,
-        founders
-    FROM ${CLICKHOUSE_DATABASE}.companies_import
-    WHERE founders != '' AND founders != '[]'
-    "
-    
-    # Теперь импортируем учредителей из временной таблицы
-    clickhouse_query "
-    INSERT INTO ${CLICKHOUSE_DATABASE}.founders (
-        company_ogrn, company_inn, company_name,
-        founder_type, founder_ogrn, founder_inn, founder_name,
-        founder_last_name, founder_first_name, founder_middle_name,
-        founder_country, share_nominal_value, share_percent,
-        version_date
-    )
-    SELECT 
-        company_ogrn,
-        company_inn,
-        company_name,
-        -- Определяем тип учредителя по ключам в JSON
-        if(JSONHas(founder_json, 'Person'), 'person',
-           if(JSONHas(founder_json, 'RussianLegalEntity'), 'russian_company',
-              if(JSONHas(founder_json, 'ForeignLegalEntity'), 'foreign_company',
-                 if(JSONHas(founder_json, 'PublicEntity'), 'public_entity',
-                    if(JSONHas(founder_json, 'MutualFund'), 'fund', 'unknown'))))) as founder_type,
-        -- ОГРН учредителя (только для российских юр. лиц)
-        JSONExtractString(founder_json, 'RussianLegalEntity', 'ogrn') as founder_ogrn,
-        -- ИНН учредителя
-        if(JSONExtractString(founder_json, 'Person', 'person', 'inn') != '',
-           JSONExtractString(founder_json, 'Person', 'person', 'inn'),
-           JSONExtractString(founder_json, 'RussianLegalEntity', 'inn')) as founder_inn,
-        -- Имя учредителя
-        if(JSONHas(founder_json, 'Person'),
-           concat(JSONExtractString(founder_json, 'Person', 'person', 'last_name'), ' ',
-                  JSONExtractString(founder_json, 'Person', 'person', 'first_name'),
-                  if(JSONExtractString(founder_json, 'Person', 'person', 'middle_name') != '',
-                     concat(' ', JSONExtractString(founder_json, 'Person', 'person', 'middle_name')), '')),
-           if(JSONExtractString(founder_json, 'RussianLegalEntity', 'name') != '',
-              JSONExtractString(founder_json, 'RussianLegalEntity', 'name'),
-              if(JSONExtractString(founder_json, 'ForeignLegalEntity', 'name') != '',
-                 JSONExtractString(founder_json, 'ForeignLegalEntity', 'name'),
-                 if(JSONExtractString(founder_json, 'PublicEntity', 'name') != '',
-                    JSONExtractString(founder_json, 'PublicEntity', 'name'),
-                    JSONExtractString(founder_json, 'MutualFund', 'name'))))) as founder_name,
-        -- Фамилия (только для физических лиц)
-        JSONExtractString(founder_json, 'Person', 'person', 'last_name') as founder_last_name,
-        -- Имя (только для физических лиц)
-        JSONExtractString(founder_json, 'Person', 'person', 'first_name') as founder_first_name,
-        -- Отчество (только для физических лиц)
-        JSONExtractString(founder_json, 'Person', 'person', 'middle_name') as founder_middle_name,
-        -- Страна (для иностранных юр. лиц)
-        JSONExtractString(founder_json, 'ForeignLegalEntity', 'country') as founder_country,
-        -- Номинальная стоимость доли
-        if(JSONExtractFloat(founder_json, 'Person', 'share', 'nominal_value') != 0,
-           JSONExtractFloat(founder_json, 'Person', 'share', 'nominal_value'),
-           if(JSONExtractFloat(founder_json, 'RussianLegalEntity', 'share', 'nominal_value') != 0,
-              JSONExtractFloat(founder_json, 'RussianLegalEntity', 'share', 'nominal_value'),
-              JSONExtractFloat(founder_json, 'ForeignLegalEntity', 'share', 'nominal_value'))) as share_nominal_value,
-        -- Процент доли
-        if(JSONExtractFloat(founder_json, 'Person', 'share', 'percent') != 0,
-           JSONExtractFloat(founder_json, 'Person', 'share', 'percent'),
-           if(JSONExtractFloat(founder_json, 'RussianLegalEntity', 'share', 'percent') != 0,
-              JSONExtractFloat(founder_json, 'RussianLegalEntity', 'share', 'percent'),
-              JSONExtractFloat(founder_json, 'ForeignLegalEntity', 'share', 'percent'))) as share_percent,
-        today() as version_date
-    FROM ${CLICKHOUSE_DATABASE}.founders_temp
-    ARRAY JOIN JSONExtractArrayRaw(founders_json) as founder_json
-    "
-    
-    # Удаляем временную таблицу
-    clickhouse_query "DROP TABLE IF EXISTS ${CLICKHOUSE_DATABASE}.founders_temp"
-    
-    local founders_count=$(clickhouse_query "SELECT count() FROM ${CLICKHOUSE_DATABASE}.founders")
-    log_success "Импорт учредителей завершен. Всего записей: $founders_count"
+    log_warning "Функция import_founders_from_companies_import устарела - учредители теперь импортируются в рамках обработки отдельных файлов"
 }
 
 # Функция для импорта истории изменений из временной таблицы компаний
 import_history_from_companies_import() {
-    log_info "Импорт истории изменений из данных ЕГРЮЛ с автоматической дедупликацией..."
-    
-    # Импортируем историю из временной таблицы в новую оптимизированную схему
-    # ReplacingMergeTree автоматически обработает дедупликацию по ключу (entity_type, entity_id, grn)
-    clickhouse_query "
-    INSERT INTO ${CLICKHOUSE_DATABASE}.company_history (
-        entity_type, entity_id, inn,
-        grn, grn_date,
-        reason_code, reason_description,
-        authority_code, authority_name,
-        certificate_series, certificate_number, certificate_date,
-        source_files, extract_date, file_hash,
-        created_at, updated_at
-    )
-    SELECT 
-        'company' as entity_type,
-        ogrn as entity_id,
-        inn,
-        JSONExtractString(history_json, 'grn') as grn,
-        toDateOrNull(JSONExtractString(history_json, 'date')) as grn_date,
-        JSONExtractString(history_json, 'reason_code') as reason_code,
-        JSONExtractString(history_json, 'reason_description') as reason_description,
-        JSONExtractString(history_json, 'authority_code') as authority_code,
-        JSONExtractString(history_json, 'authority_name') as authority_name,
-        JSONExtractString(history_json, 'certificate_series') as certificate_series,
-        JSONExtractString(history_json, 'certificate_number') as certificate_number,
-        toDateOrNull(JSONExtractString(history_json, 'certificate_date')) as certificate_date,
-        ['parquet_import'] as source_files,  -- Массив файлов-источников
-        coalesce(toDateOrNull(extract_date), today()) as extract_date,
-        'parquet_' || toString(cityHash64(ogrn || JSONExtractString(history_json, 'grn'))) as file_hash,  -- Генерируем хеш
-        now64(3) as created_at,
-        now64(3) as updated_at
-    FROM (
-        SELECT ogrn, inn, history, extract_date
-        FROM ${CLICKHOUSE_DATABASE}.companies_import
-        WHERE length(history) > 2
-    )
-    ARRAY JOIN JSONExtractArrayRaw(history) as history_json
-    SETTINGS max_partitions_per_insert_block = 1000
-    "
-    
-    local history_count=$(clickhouse_query "SELECT count() FROM ${CLICKHOUSE_DATABASE}.company_history WHERE entity_type = 'company'")
-    log_success "Импорт истории ЕГРЮЛ завершен. Всего записей: $history_count"
-    
-    # Запускаем принудительную дедупликацию для немедленного эффекта
-    log_info "Выполнение дедупликации истории ЕГРЮЛ..."
-    clickhouse_query "OPTIMIZE TABLE ${CLICKHOUSE_DATABASE}.company_history FINAL"
-    
-    # Проверяем эффективность дедупликации
-    local unique_count=$(clickhouse_query "SELECT count() FROM ${CLICKHOUSE_DATABASE}.company_history_view WHERE entity_type = 'company'")
-    local duplicates_removed=$((history_count - unique_count))
-    if [ $duplicates_removed -gt 0 ]; then
-        log_success "Дедупликация завершена. Удалено дублей: $duplicates_removed"
-    else
-        log_info "Дубли не обнаружены"
-    fi
+    log_warning "Функция import_history_from_companies_import устарела - история теперь импортируется в рамках обработки отдельных файлов"
 }
 
 # Функция для импорта истории изменений из временной таблицы предпринимателей
 import_history_from_entrepreneurs_import() {
-    log_info "Импорт истории изменений из данных ЕГРИП с автоматической дедупликацией..."
-    
-    # Импортируем историю из временной таблицы в новую оптимизированную схему
-    # ReplacingMergeTree автоматически обработает дедупликацию по ключу (entity_type, entity_id, grn)
-    clickhouse_query "
-    INSERT INTO ${CLICKHOUSE_DATABASE}.company_history (
-        entity_type, entity_id, inn,
-        grn, grn_date,
-        reason_code, reason_description,
-        authority_code, authority_name,
-        certificate_series, certificate_number, certificate_date,
-        source_files, extract_date, file_hash,
-        created_at, updated_at
-    )
-    SELECT 
-        'entrepreneur' as entity_type,
-        ogrnip as entity_id,
-        inn,
-        JSONExtractString(history_json, 'grn') as grn,
-        toDateOrNull(JSONExtractString(history_json, 'date')) as grn_date,
-        JSONExtractString(history_json, 'reason_code') as reason_code,
-        JSONExtractString(history_json, 'reason_description') as reason_description,
-        JSONExtractString(history_json, 'authority_code') as authority_code,
-        JSONExtractString(history_json, 'authority_name') as authority_name,
-        JSONExtractString(history_json, 'certificate_series') as certificate_series,
-        JSONExtractString(history_json, 'certificate_number') as certificate_number,
-        toDateOrNull(JSONExtractString(history_json, 'certificate_date')) as certificate_date,
-        ['parquet_import'] as source_files,  -- Массив файлов-источников
-        coalesce(toDateOrNull(extract_date), today()) as extract_date,
-        'parquet_' || toString(cityHash64(ogrnip || JSONExtractString(history_json, 'grn'))) as file_hash,  -- Генерируем хеш
-        now64(3) as created_at,
-        now64(3) as updated_at
-    FROM (
-        SELECT ogrnip, inn, history, extract_date
-        FROM ${CLICKHOUSE_DATABASE}.entrepreneurs_import
-        WHERE length(history) > 2
-    )
-    ARRAY JOIN JSONExtractArrayRaw(history) as history_json
-    SETTINGS max_partitions_per_insert_block = 1000
-    "
-    
-    local history_count=$(clickhouse_query "SELECT count() FROM ${CLICKHOUSE_DATABASE}.company_history WHERE entity_type = 'entrepreneur'")
-    log_success "Импорт истории ЕГРИП завершен. Всего записей: $history_count"
-    
-    # Запускаем принудительную дедупликацию для немедленного эффекта
-    log_info "Выполнение дедупликации истории ЕГРИП..."
-    clickhouse_query "OPTIMIZE TABLE ${CLICKHOUSE_DATABASE}.company_history FINAL"
-    
-    # Проверяем эффективность дедупликации
-    local unique_count=$(clickhouse_query "SELECT count() FROM ${CLICKHOUSE_DATABASE}.company_history_view WHERE entity_type = 'entrepreneur'")
-    local duplicates_removed=$((history_count - unique_count))
-    if [ $duplicates_removed -gt 0 ]; then
-        log_success "Дедупликация завершена. Удалено дублей: $duplicates_removed"
-    else
-        log_info "Дубли не обнаружены"
-    fi
+    log_warning "Функция import_history_from_entrepreneurs_import устарела - история теперь импортируется в рамках обработки отдельных файлов"
 }
 
-# Функция для создания промежуточной таблицы и трансформации данных
-import_egrul_with_transform() {
+# Функция для импорта одного файла ЕГРЮЛ с полной обработкой
+import_single_egrul_file() {
     local file="$1"
     
     if [ ! -f "$file" ]; then
-        log_warning "Файл ЕГРЮЛ не найден: $file"
+        log_warning "Файл не найден: $file"
         return 1
     fi
     
     local file_size=$(du -h "$file" | cut -f1)
-    log_info "Импорт ЕГРЮЛ из $file ($file_size)..."
+    local file_basename=$(basename "$file")
+    log_info "Обработка файла $file_basename ($file_size)..."
     
-    # Создаем временную таблицу для импорта
-    clickhouse_query "DROP TABLE IF EXISTS ${CLICKHOUSE_DATABASE}.companies_import"
+    # Создаем временную таблицу для одного файла
+    clickhouse_query "DROP TABLE IF EXISTS ${CLICKHOUSE_DATABASE}.companies_import_single"
     
     clickhouse_query "
-    CREATE TABLE ${CLICKHOUSE_DATABASE}.companies_import (
+    CREATE TABLE ${CLICKHOUSE_DATABASE}.companies_import_single (
         ogrn String,
         ogrn_date Nullable(String),
         inn String,
@@ -352,30 +149,23 @@ import_egrul_with_transform() {
     ) ENGINE = Memory
     "
     
-    # Загружаем Parquet во временную таблицу
-    curl -s "http://${CLICKHOUSE_HOST}:${CLICKHOUSE_PORT}/?query=INSERT%20INTO%20${CLICKHOUSE_DATABASE}.companies_import%20FORMAT%20Parquet" \
+    # Загружаем файл во временную таблицу
+    log_info "  → Загрузка данных..."
+    curl -s "http://${CLICKHOUSE_HOST}:${CLICKHOUSE_PORT}/?query=INSERT%20INTO%20${CLICKHOUSE_DATABASE}.companies_import_single%20FORMAT%20Parquet" \
         --user "${CLICKHOUSE_USER}:${CLICKHOUSE_PASSWORD}" \
         --data-binary "@$file"
     
-    # Получаем количество загруженных записей
-    local imported_count=$(clickhouse_query "SELECT count() FROM ${CLICKHOUSE_DATABASE}.companies_import")
-    log_info "Загружено во временную таблицу: $imported_count записей"
-
-    # region agent log: счетчик импортированных записей ЕГРЮЛ (H1)
-    echo '{"sessionId":"debug-session","runId":"pre-fix","hypothesisId":"H1","location":"import-data.sh:companies_import","message":"companies_import_count","data":{"imported_count":'"$imported_count"'},"timestamp":'$(date +%s%3N)'}' >> "$DEBUG_LOG_PATH" || true
-    # endregion agent log
-
-    # region agent log: количество уникальных ОГРН в временной таблице (H3)
-    local uniq_ogrn_import=$(clickhouse_query "SELECT uniqExact(ogrn) FROM ${CLICKHOUSE_DATABASE}.companies_import")
-    echo '{"sessionId":"debug-session","runId":"pre-fix","hypothesisId":"H3","location":"import-data.sh:companies_import","message":"companies_import_uniq_ogrn","data":{"uniq_ogrn":'"$uniq_ogrn_import"'},"timestamp":'$(date +%s%3N)'}' >> "$DEBUG_LOG_PATH" || true
-    # endregion agent log
+    if [ $? -ne 0 ]; then
+        log_error "Ошибка загрузки файла $file"
+        clickhouse_query "DROP TABLE IF EXISTS ${CLICKHOUSE_DATABASE}.companies_import_single"
+        return 1
+    fi
     
-    # Для MVP не удаляем старые записи здесь, а просто вставляем новые.
-    # Дедупликация по extract_date будет реализована позже через отдельный процесс.
-    # Сейчас важно убедиться, что весь объём данных корректно загружается в таблицу companies.
+    local imported_count=$(clickhouse_query "SELECT count() FROM ${CLICKHOUSE_DATABASE}.companies_import_single")
+    log_info "  → Загружено записей: $imported_count"
     
-    # Трансформируем и вставляем в основную таблицу
-    # Используем логику обновления: заменяем запись только если новая extract_date >= существующей
+    # Импорт основных данных компаний
+    log_info "  → Импорт основных данных..."
     clickhouse_query "
     INSERT INTO ${CLICKHOUSE_DATABASE}.companies (
         ogrn, ogrn_date, inn, kpp, full_name, short_name, status, status_code,
@@ -415,7 +205,7 @@ import_egrul_with_transform() {
         kladr_code,
         capital_amount,
         coalesce(capital_currency, 'RUB'),
-        -- Разбиваем head_name на части (исправленная версия)
+        -- Разбиваем head_name на части
         arrayElement(splitByChar(' ', coalesce(head_name, '')), 1) AS head_last_name,
         if(length(splitByChar(' ', coalesce(head_name, ''))) > 1, 
            arrayElement(splitByChar(' ', coalesce(head_name, '')), 2), NULL) AS head_first_name,
@@ -429,58 +219,210 @@ import_egrul_with_transform() {
         additional_activities,
         email,
         founders_count,
-        -- Используем extract_date, если она не NULL, иначе минимальную дату для правильной работы ReplacingMergeTree
         coalesce(toDateOrNull(extract_date), toDate('1970-01-01')) AS extract_date,
         today()
-    FROM ${CLICKHOUSE_DATABASE}.companies_import
+    FROM ${CLICKHOUSE_DATABASE}.companies_import_single
     "
     
-    # Получаем количество записей в основной таблице
-    local total_count=$(clickhouse_query "SELECT count() FROM ${CLICKHOUSE_DATABASE}.companies")
-    log_success "Импорт ЕГРЮЛ завершен. Всего записей в таблице: $total_count"
+    # Импорт учредителей из этого файла
+    log_info "  → Импорт учредителей..."
+    clickhouse_query "
+    CREATE TABLE ${CLICKHOUSE_DATABASE}.founders_temp_single (
+        company_ogrn String,
+        company_inn String,
+        company_name String,
+        founders_json String
+    ) ENGINE = Memory
+    "
+    
+    clickhouse_query "
+    INSERT INTO ${CLICKHOUSE_DATABASE}.founders_temp_single
+    SELECT 
+        ogrn,
+        inn,
+        full_name,
+        founders
+    FROM ${CLICKHOUSE_DATABASE}.companies_import_single
+    WHERE founders != '' AND founders != '[]'
+    "
+    
+    clickhouse_query "
+    INSERT INTO ${CLICKHOUSE_DATABASE}.founders (
+        company_ogrn, company_inn, company_name,
+        founder_type, founder_ogrn, founder_inn, founder_name,
+        founder_last_name, founder_first_name, founder_middle_name,
+        founder_country, share_nominal_value, share_percent,
+        version_date
+    )
+    SELECT 
+        company_ogrn,
+        company_inn,
+        company_name,
+        if(JSONHas(founder_json, 'Person'), 'person',
+           if(JSONHas(founder_json, 'RussianLegalEntity'), 'russian_company',
+              if(JSONHas(founder_json, 'ForeignLegalEntity'), 'foreign_company',
+                 if(JSONHas(founder_json, 'PublicEntity'), 'public_entity',
+                    if(JSONHas(founder_json, 'MutualFund'), 'fund', 'unknown'))))) as founder_type,
+        JSONExtractString(founder_json, 'RussianLegalEntity', 'ogrn') as founder_ogrn,
+        if(JSONExtractString(founder_json, 'Person', 'person', 'inn') != '',
+           JSONExtractString(founder_json, 'Person', 'person', 'inn'),
+           JSONExtractString(founder_json, 'RussianLegalEntity', 'inn')) as founder_inn,
+        if(JSONHas(founder_json, 'Person'),
+           concat(JSONExtractString(founder_json, 'Person', 'person', 'last_name'), ' ',
+                  JSONExtractString(founder_json, 'Person', 'person', 'first_name'),
+                  if(JSONExtractString(founder_json, 'Person', 'person', 'middle_name') != '',
+                     concat(' ', JSONExtractString(founder_json, 'Person', 'person', 'middle_name')), '')),
+           if(JSONExtractString(founder_json, 'RussianLegalEntity', 'name') != '',
+              JSONExtractString(founder_json, 'RussianLegalEntity', 'name'),
+              if(JSONExtractString(founder_json, 'ForeignLegalEntity', 'name') != '',
+                 JSONExtractString(founder_json, 'ForeignLegalEntity', 'name'),
+                 if(JSONExtractString(founder_json, 'PublicEntity', 'name') != '',
+                    JSONExtractString(founder_json, 'PublicEntity', 'name'),
+                    JSONExtractString(founder_json, 'MutualFund', 'name'))))) as founder_name,
+        JSONExtractString(founder_json, 'Person', 'person', 'last_name') as founder_last_name,
+        JSONExtractString(founder_json, 'Person', 'person', 'first_name') as founder_first_name,
+        JSONExtractString(founder_json, 'Person', 'person', 'middle_name') as founder_middle_name,
+        JSONExtractString(founder_json, 'ForeignLegalEntity', 'country') as founder_country,
+        if(JSONExtractFloat(founder_json, 'Person', 'share', 'nominal_value') != 0,
+           JSONExtractFloat(founder_json, 'Person', 'share', 'nominal_value'),
+           if(JSONExtractFloat(founder_json, 'RussianLegalEntity', 'share', 'nominal_value') != 0,
+              JSONExtractFloat(founder_json, 'RussianLegalEntity', 'share', 'nominal_value'),
+              JSONExtractFloat(founder_json, 'ForeignLegalEntity', 'share', 'nominal_value'))) as share_nominal_value,
+        if(JSONExtractFloat(founder_json, 'Person', 'share', 'percent') != 0,
+           JSONExtractFloat(founder_json, 'Person', 'share', 'percent'),
+           if(JSONExtractFloat(founder_json, 'RussianLegalEntity', 'share', 'percent') != 0,
+              JSONExtractFloat(founder_json, 'RussianLegalEntity', 'share', 'percent'),
+              JSONExtractFloat(founder_json, 'ForeignLegalEntity', 'share', 'percent'))) as share_percent,
+        today() as version_date
+    FROM ${CLICKHOUSE_DATABASE}.founders_temp_single
+    ARRAY JOIN JSONExtractArrayRaw(founders_json) as founder_json
+    "
+    
+    clickhouse_query "DROP TABLE IF EXISTS ${CLICKHOUSE_DATABASE}.founders_temp_single"
+    
+    # Импорт истории изменений из этого файла (ЕГРЮЛ)
+    log_info "  → Импорт истории изменений..."
+    local buckets="${HISTORY_BUCKETS:-100}"
+    local memory_limit="${HISTORY_MAX_MEMORY:-2000000000}" # 2 ГБ по умолчанию
+    
+    log_info "  → Настройки памяти: $buckets батчей, лимит $memory_limit байт ($(($memory_limit / 1024 / 1024)) МБ)"
+    
+    for ((bucket=0; bucket<buckets; bucket++)); do
+        clickhouse_query "
+        INSERT INTO ${CLICKHOUSE_DATABASE}.company_history (
+            entity_type, entity_id, inn,
+            grn, grn_date,
+            reason_code, reason_description,
+            authority_code, authority_name,
+            certificate_series, certificate_number, certificate_date,
+            source_files, extract_date, file_hash,
+            created_at, updated_at
+        )
+        SELECT 
+            'company' as entity_type,
+            ogrn as entity_id,
+            inn,
+            JSONExtractString(history_json, 'grn') as grn,
+            toDateOrNull(JSONExtractString(history_json, 'date')) as grn_date,
+            JSONExtractString(history_json, 'reason_code') as reason_code,
+            JSONExtractString(history_json, 'reason_description') as reason_description,
+            JSONExtractString(history_json, 'authority_code') as authority_code,
+            JSONExtractString(history_json, 'authority_name') as authority_name,
+            JSONExtractString(history_json, 'certificate_series') as certificate_series,
+            JSONExtractString(history_json, 'certificate_number') as certificate_number,
+            toDateOrNull(JSONExtractString(history_json, 'certificate_date')) as certificate_date,
+            ['parquet_import'] as source_files,
+            coalesce(toDateOrNull(extract_date), today()) as extract_date,
+            'parquet_' || toString(cityHash64(ogrn || JSONExtractString(history_json, 'grn'))) as file_hash,
+            now64(3) as created_at,
+            now64(3) as updated_at
+        FROM (
+            SELECT ogrn, inn, history, extract_date
+            FROM ${CLICKHOUSE_DATABASE}.companies_import_single
+            WHERE length(history) > 2
+              AND cityHash64(ogrn) % $buckets = $bucket
+        )
+        ARRAY JOIN JSONExtractArrayRaw(history) as history_json
+        SETTINGS max_memory_usage=$memory_limit, max_partitions_per_insert_block = 1000
+        " 2>/dev/null || true
+    done
+    
+    # Очищаем временную таблицу
+    clickhouse_query "DROP TABLE IF EXISTS ${CLICKHOUSE_DATABASE}.companies_import_single"
+    
+    log_success "  → Файл $file_basename обработан успешно"
+}
+
+# Функция для создания промежуточной таблицы и трансформации данных
+import_egrul_with_transform() {
+    local file_pattern="$1"
+    
+    # Находим все файлы ЕГРЮЛ (включая разбитые на части)
+    local files=($(find "$DATA_DIR" -name "*egrul*.parquet" 2>/dev/null | sort))
+    
+    if [ ${#files[@]} -eq 0 ]; then
+        log_warning "Файлы ЕГРЮЛ не найдены в $DATA_DIR"
+        return 1
+    fi
+    
+    log_info "Найдено ${#files[@]} файлов ЕГРЮЛ для последовательной обработки"
+    
+    # Обрабатываем каждый файл по отдельности
+    local processed_files=0
+    for file in "${files[@]}"; do
+        import_single_egrul_file "$file"
+        if [ $? -eq 0 ]; then
+            ((processed_files++))
+        fi
+    done
+    
+    # Получаем итоговую статистику
+    local total_companies=$(clickhouse_query "SELECT count() FROM ${CLICKHOUSE_DATABASE}.companies")
+    local total_founders=$(clickhouse_query "SELECT count() FROM ${CLICKHOUSE_DATABASE}.founders")
+    local total_history=$(clickhouse_query "SELECT count() FROM ${CLICKHOUSE_DATABASE}.company_history WHERE entity_type = 'company'")
+    
+    log_success "Импорт ЕГРЮЛ завершен:"
+    log_success "  → Обработано файлов: $processed_files/${#files[@]}"
+    log_success "  → Компаний: $total_companies"
+    log_success "  → Учредителей: $total_founders" 
+    log_success "  → История изменений: $total_history"
 
     # region agent log: итоговое количество записей ЕГРЮЛ (H1)
-    echo '{"sessionId":"debug-session","runId":"pre-fix","hypothesisId":"H1","location":"import-data.sh:companies_total","message":"companies_total_count","data":{"total_count":'"$total_count"'},"timestamp":'$(date +%s%3N)'}' >> "$DEBUG_LOG_PATH" || true
+    echo '{"sessionId":"debug-session","runId":"sequential-fix","hypothesisId":"H1","location":"import-data.sh:companies_total","message":"companies_total_count","data":{"total_count":'"$total_companies"'},"timestamp":'$(date +%s%3N)'}' >> "$DEBUG_LOG_PATH" || true
     # endregion agent log
 
     # region agent log: количество уникальных ОГРН в основной таблице (H3)
     local uniq_ogrn_total=$(clickhouse_query "SELECT uniqExact(ogrn) FROM ${CLICKHOUSE_DATABASE}.companies")
-    echo '{"sessionId":"debug-session","runId":"pre-fix","hypothesisId":"H3","location":"import-data.sh:companies_total","message":"companies_total_uniq_ogrn","data":{"uniq_ogrn":'"$uniq_ogrn_total"'},"timestamp":'$(date +%s%3N)'}' >> "$DEBUG_LOG_PATH" || true
+    echo '{"sessionId":"debug-session","runId":"sequential-fix","hypothesisId":"H3","location":"import-data.sh:companies_total","message":"companies_total_uniq_ogrn","data":{"uniq_ogrn":'"$uniq_ogrn_total"'},"timestamp":'$(date +%s%3N)'}' >> "$DEBUG_LOG_PATH" || true
     # endregion agent log
     
-    # Принудительное слияние для удаления дублей (опционально, может быть медленно для больших таблиц)
+    # Принудительное слияние для удаления дублей (опционально)
     if [ "${OPTIMIZE_AFTER_IMPORT:-false}" = "true" ]; then
         log_info "Выполнение принудительного слияния для удаления дублей..."
         clickhouse_query "OPTIMIZE TABLE ${CLICKHOUSE_DATABASE}.companies FINAL"
+        clickhouse_query "OPTIMIZE TABLE ${CLICKHOUSE_DATABASE}.founders FINAL"
+        clickhouse_query "OPTIMIZE TABLE ${CLICKHOUSE_DATABASE}.company_history FINAL"
     fi
-    
-    # Импорт учредителей
-    import_founders_from_companies_import
-    
-    # Импорт истории изменений
-    import_history_from_companies_import
-    
-    # Удаляем временную таблицу
-    clickhouse_query "DROP TABLE IF EXISTS ${CLICKHOUSE_DATABASE}.companies_import"
 }
 
-# Функция для импорта ЕГРИП
-import_egrip_with_transform() {
+# Функция для импорта одного файла ЕГРИП с полной обработкой
+import_single_egrip_file() {
     local file="$1"
     
     if [ ! -f "$file" ]; then
-        log_warning "Файл ЕГРИП не найден: $file"
+        log_warning "Файл не найден: $file"
         return 1
     fi
     
     local file_size=$(du -h "$file" | cut -f1)
-    log_info "Импорт ЕГРИП из $file ($file_size)..."
+    local file_basename=$(basename "$file")
+    log_info "Обработка файла $file_basename ($file_size)..."
     
-    # Создаем временную таблицу для импорта
-    clickhouse_query "DROP TABLE IF EXISTS ${CLICKHOUSE_DATABASE}.entrepreneurs_import"
+    # Создаем временную таблицу для одного файла
+    clickhouse_query "DROP TABLE IF EXISTS ${CLICKHOUSE_DATABASE}.entrepreneurs_import_single"
     
     clickhouse_query "
-    CREATE TABLE ${CLICKHOUSE_DATABASE}.entrepreneurs_import (
+    CREATE TABLE ${CLICKHOUSE_DATABASE}.entrepreneurs_import_single (
         ogrnip String,
         ogrnip_date Nullable(String),
         inn String,
@@ -517,38 +459,23 @@ import_egrip_with_transform() {
     ) ENGINE = Memory
     "
     
-    # Загружаем Parquet во временную таблицу
-    curl -s "http://${CLICKHOUSE_HOST}:${CLICKHOUSE_PORT}/?query=INSERT%20INTO%20${CLICKHOUSE_DATABASE}.entrepreneurs_import%20FORMAT%20Parquet" \
+    # Загружаем файл во временную таблицу
+    log_info "  → Загрузка данных..."
+    curl -s "http://${CLICKHOUSE_HOST}:${CLICKHOUSE_PORT}/?query=INSERT%20INTO%20${CLICKHOUSE_DATABASE}.entrepreneurs_import_single%20FORMAT%20Parquet" \
         --user "${CLICKHOUSE_USER}:${CLICKHOUSE_PASSWORD}" \
         --data-binary "@$file"
     
-    # Получаем количество загруженных записей
-    local imported_count=$(clickhouse_query "SELECT count() FROM ${CLICKHOUSE_DATABASE}.entrepreneurs_import")
-    log_info "Загружено во временную таблицу: $imported_count записей"
-
-    # region agent log: счетчик импортированных записей ЕГРИП (H2)
-    echo '{"sessionId":"debug-session","runId":"pre-fix","hypothesisId":"H2","location":"import-data.sh:egrip_import","message":"entrepreneurs_import_count","data":{"imported_count":'"$imported_count"'},"timestamp":'$(date +%s%3N)'}' >> "$DEBUG_LOG_PATH" || true
-    # endregion agent log
-
-    # region agent log: количество уникальных ОГРНИП в временной таблице (H4)
-    local uniq_ogrnip_import=$(clickhouse_query "SELECT uniqExact(ogrnip) FROM ${CLICKHOUSE_DATABASE}.entrepreneurs_import")
-    echo '{"sessionId":"debug-session","runId":"pre-fix","hypothesisId":"H4","location":"import-data.sh:egrip_import","message":"entrepreneurs_import_uniq_ogrnip","data":{"uniq_ogrnip":'"$uniq_ogrnip_import"'},"timestamp":'$(date +%s%3N)'}' >> "$DEBUG_LOG_PATH" || true
-    # endregion agent log
-
-    # region agent log: схема временной таблицы ЕГРИП (H2)
-    clickhouse_query "DESCRIBE TABLE ${CLICKHOUSE_DATABASE}.entrepreneurs_import FORMAT JSONEachRow" >> "$DEBUG_LOG_PATH" || true
-    # endregion agent log
-
-    # region agent log: схема основной таблицы ЕГРИП (H2)
-    clickhouse_query "DESCRIBE TABLE ${CLICKHOUSE_DATABASE}.entrepreneurs FORMAT JSONEachRow" >> "$DEBUG_LOG_PATH" || true
-    # endregion agent log
-
-    # Для MVP не удаляем старые записи здесь, а просто вставляем новые.
-    # Дедупликация по extract_date будет реализована позже через отдельный процесс.
-    # Сейчас важно убедиться, что весь объём данных корректно загружается в таблицу entrepreneurs.
+    if [ $? -ne 0 ]; then
+        log_error "Ошибка загрузки файла $file"
+        clickhouse_query "DROP TABLE IF EXISTS ${CLICKHOUSE_DATABASE}.entrepreneurs_import_single"
+        return 1
+    fi
     
-    # Трансформируем и вставляем в основную таблицу
-    # Заполняем как базовые, так и основные аналитические поля (регион, ОКВЭД, email).
+    local imported_count=$(clickhouse_query "SELECT count() FROM ${CLICKHOUSE_DATABASE}.entrepreneurs_import_single")
+    log_info "  → Загружено записей: $imported_count"
+    
+    # Импорт основных данных предпринимателей
+    log_info "  → Импорт основных данных..."
     clickhouse_query "
     INSERT INTO ${CLICKHOUSE_DATABASE}.entrepreneurs (
         ogrnip, ogrnip_date, inn,
@@ -592,33 +519,109 @@ import_egrip_with_transform() {
         email,
         coalesce(toDateOrNull(extract_date), toDate('1970-01-01')) AS extract_date,
         today()
-    FROM ${CLICKHOUSE_DATABASE}.entrepreneurs_import
+    FROM ${CLICKHOUSE_DATABASE}.entrepreneurs_import_single
     "
     
-    # Получаем количество записей в основной таблице
-    local total_count=$(clickhouse_query "SELECT count() FROM ${CLICKHOUSE_DATABASE}.entrepreneurs")
-    log_success "Импорт ЕГРИП завершен. Всего записей в таблице: $total_count"
+    # Импорт истории изменений из этого файла (ЕГРИП)
+    log_info "  → Импорт истории изменений..."
+    local buckets="${HISTORY_BUCKETS:-100}"
+    local memory_limit="${HISTORY_MAX_MEMORY:-2000000000}" # 2 ГБ по умолчанию
+    
+    log_info "  → Настройки памяти: $buckets батчей, лимит $memory_limit байт ($(($memory_limit / 1024 / 1024)) МБ)"
+    
+    for ((bucket=0; bucket<buckets; bucket++)); do
+        clickhouse_query "
+        INSERT INTO ${CLICKHOUSE_DATABASE}.company_history (
+            entity_type, entity_id, inn,
+            grn, grn_date,
+            reason_code, reason_description,
+            authority_code, authority_name,
+            certificate_series, certificate_number, certificate_date,
+            source_files, extract_date, file_hash,
+            created_at, updated_at
+        )
+        SELECT 
+            'entrepreneur' as entity_type,
+            ogrnip as entity_id,
+            inn,
+            JSONExtractString(history_json, 'grn') as grn,
+            toDateOrNull(JSONExtractString(history_json, 'date')) as grn_date,
+            JSONExtractString(history_json, 'reason_code') as reason_code,
+            JSONExtractString(history_json, 'reason_description') as reason_description,
+            JSONExtractString(history_json, 'authority_code') as authority_code,
+            JSONExtractString(history_json, 'authority_name') as authority_name,
+            JSONExtractString(history_json, 'certificate_series') as certificate_series,
+            JSONExtractString(history_json, 'certificate_number') as certificate_number,
+            toDateOrNull(JSONExtractString(history_json, 'certificate_date')) as certificate_date,
+            ['parquet_import'] as source_files,
+            coalesce(toDateOrNull(extract_date), today()) as extract_date,
+            'parquet_' || toString(cityHash64(ogrnip || JSONExtractString(history_json, 'grn'))) as file_hash,
+            now64(3) as created_at,
+            now64(3) as updated_at
+        FROM (
+            SELECT ogrnip, inn, history, extract_date
+            FROM ${CLICKHOUSE_DATABASE}.entrepreneurs_import_single
+            WHERE length(history) > 2
+              AND cityHash64(ogrnip) % $buckets = $bucket
+        )
+        ARRAY JOIN JSONExtractArrayRaw(history) as history_json
+        SETTINGS max_memory_usage=$memory_limit, max_partitions_per_insert_block = 1000
+        " 2>/dev/null || true
+    done
+    
+    # Очищаем временную таблицу
+    clickhouse_query "DROP TABLE IF EXISTS ${CLICKHOUSE_DATABASE}.entrepreneurs_import_single"
+    
+    log_success "  → Файл $file_basename обработан успешно"
+}
+
+# Функция для импорта ЕГРИП
+import_egrip_with_transform() {
+    local file_pattern="$1"
+    
+    # Находим все файлы ЕГРИП (включая разбитые на части)
+    local files=($(find "$DATA_DIR" -name "*egrip*.parquet" 2>/dev/null | sort))
+    
+    if [ ${#files[@]} -eq 0 ]; then
+        log_warning "Файлы ЕГРИП не найдены в $DATA_DIR"
+        return 1
+    fi
+    
+    log_info "Найдено ${#files[@]} файлов ЕГРИП для последовательной обработки"
+    
+    # Обрабатываем каждый файл по отдельности
+    local processed_files=0
+    for file in "${files[@]}"; do
+        import_single_egrip_file "$file"
+        if [ $? -eq 0 ]; then
+            ((processed_files++))
+        fi
+    done
+    
+    # Получаем итоговую статистику
+    local total_entrepreneurs=$(clickhouse_query "SELECT count() FROM ${CLICKHOUSE_DATABASE}.entrepreneurs")
+    local total_history=$(clickhouse_query "SELECT count() FROM ${CLICKHOUSE_DATABASE}.company_history WHERE entity_type = 'entrepreneur'")
+    
+    log_success "Импорт ЕГРИП завершен:"
+    log_success "  → Обработано файлов: $processed_files/${#files[@]}"
+    log_success "  → Предпринимателей: $total_entrepreneurs"
+    log_success "  → История изменений: $total_history"
 
     # region agent log: итоговое количество записей ЕГРИП (H2)
-    echo '{"sessionId":"debug-session","runId":"pre-fix","hypothesisId":"H2","location":"import-data.sh:egrip_total","message":"entrepreneurs_total_count","data":{"total_count":'"$total_count"'},"timestamp":'$(date +%s%3N)'}' >> "$DEBUG_LOG_PATH" || true
+    echo '{"sessionId":"debug-session","runId":"sequential-fix","hypothesisId":"H2","location":"import-data.sh:egrip_total","message":"entrepreneurs_total_count","data":{"total_count":'"$total_entrepreneurs"'},"timestamp":'$(date +%s%3N)'}' >> "$DEBUG_LOG_PATH" || true
     # endregion agent log
 
     # region agent log: количество уникальных ОГРНИП в основной таблице (H4)
     local uniq_ogrnip_total=$(clickhouse_query "SELECT uniqExact(ogrnip) FROM ${CLICKHOUSE_DATABASE}.entrepreneurs")
-    echo '{"sessionId":"debug-session","runId":"pre-fix","hypothesisId":"H4","location":"import-data.sh:egrip_total","message":"entrepreneurs_total_uniq_ogrnip","data":{"uniq_ogrnip":'"$uniq_ogrnip_total"'},"timestamp":'$(date +%s%3N)'}' >> "$DEBUG_LOG_PATH" || true
+    echo '{"sessionId":"debug-session","runId":"sequential-fix","hypothesisId":"H4","location":"import-data.sh:egrip_total","message":"entrepreneurs_total_uniq_ogrnip","data":{"uniq_ogrnip":'"$uniq_ogrnip_total"'},"timestamp":'$(date +%s%3N)'}' >> "$DEBUG_LOG_PATH" || true
     # endregion agent log
     
-    # Принудительное слияние для удаления дублей (опционально, может быть медленно для больших таблиц)
+    # Принудительное слияние для удаления дублей (опционально)
     if [ "${OPTIMIZE_AFTER_IMPORT:-false}" = "true" ]; then
         log_info "Выполнение принудительного слияния для удаления дублей..."
         clickhouse_query "OPTIMIZE TABLE ${CLICKHOUSE_DATABASE}.entrepreneurs FINAL"
+        clickhouse_query "OPTIMIZE TABLE ${CLICKHOUSE_DATABASE}.company_history FINAL"
     fi
-    
-    # Импорт истории изменений
-    import_history_from_entrepreneurs_import
-    
-    # Удаляем временную таблицу
-    clickhouse_query "DROP TABLE IF EXISTS ${CLICKHOUSE_DATABASE}.entrepreneurs_import"
 }
 
 # Проверка подключения к ClickHouse
@@ -628,6 +631,16 @@ check_connection() {
     local result=$(clickhouse_query "SELECT 1")
     if [ "$result" == "1" ]; then
         log_success "Подключение к ClickHouse успешно"
+        
+        # Проверяем текущие лимиты памяти
+        log_info "Проверка лимитов памяти ClickHouse..."
+        local max_memory_usage=$(clickhouse_query "SELECT value FROM system.settings WHERE name = 'max_memory_usage'" 2>/dev/null || echo "0")
+        
+        log_info "Текущий лимит памяти для запросов: $max_memory_usage байт"
+        if [ -n "$max_memory_usage" ] && [ "$max_memory_usage" -gt 0 ]; then
+            log_info "  → $(($max_memory_usage / 1024 / 1024)) МБ"
+        fi
+        
         return 0
     else
         log_error "Не удалось подключиться к ClickHouse"
@@ -694,26 +707,32 @@ main() {
     # Проверяем подключение
     check_connection || exit 1
     
+    # Устанавливаем более высокие лимиты памяти для сессии
+    local session_memory_limit="${HISTORY_MAX_MEMORY:-2000000000}"
+    log_info "Установка лимитов памяти для сессии: $(($session_memory_limit / 1024 / 1024)) МБ"
+    
+    clickhouse_query "SET max_memory_usage = $session_memory_limit" || log_warning "Не удалось установить max_memory_usage"
+    
     # Очищаем таблицу истории перед импортом (для MVP - полная перезагрузка)
     log_info "Очистка таблицы истории изменений..."
     clickhouse_query "TRUNCATE TABLE ${CLICKHOUSE_DATABASE}.company_history"
     
     # Импорт ЕГРЮЛ
-    local egrul_file="${DATA_DIR}/egrul_egrul.parquet"
-    if [ -f "$egrul_file" ]; then
-        import_egrul_with_transform "$egrul_file"
+    local egrul_files=($(find "$DATA_DIR" -name "*egrul*.parquet" 2>/dev/null))
+    if [ ${#egrul_files[@]} -gt 0 ]; then
+        import_egrul_with_transform
     else
-        log_warning "Файл ЕГРЮЛ не найден: $egrul_file"
+        log_warning "Файлы ЕГРЮЛ не найдены в $DATA_DIR"
     fi
     
     echo ""
     
     # Импорт ЕГРИП
-    local egrip_file="${DATA_DIR}/egrip_egrip.parquet"
-    if [ -f "$egrip_file" ]; then
-        import_egrip_with_transform "$egrip_file"
+    local egrip_files=($(find "$DATA_DIR" -name "*egrip*.parquet" 2>/dev/null))
+    if [ ${#egrip_files[@]} -gt 0 ]; then
+        import_egrip_with_transform
     else
-        log_warning "Файл ЕГРИП не найден: $egrip_file"
+        log_warning "Файлы ЕГРИП не найдены в $DATA_DIR"
     fi
     
     echo ""
@@ -739,11 +758,13 @@ case "${1:-}" in
         echo "Переменные окружения:"
         echo "  CLICKHOUSE_HOST      Хост ClickHouse (default: localhost)"
         echo "  CLICKHOUSE_PORT      HTTP порт (default: 8123)"
-        echo "  CLICKHOUSE_USER      Пользователь (default: admin)"
-        echo "  CLICKHOUSE_PASSWORD  Пароль (default: admin)"
+        echo "  CLICKHOUSE_USER      Пользователь (default: egrul_import)"
+        echo "  CLICKHOUSE_PASSWORD  Пароль (default: 123)"
         echo "  CLICKHOUSE_DATABASE  База данных (default: egrul)"
         echo "  DATA_DIR             Директория с Parquet файлами (default: ./output)"
         echo "  OPTIMIZE_AFTER_IMPORT Выполнить OPTIMIZE после импорта (default: false)"
+        echo "  HISTORY_BUCKETS      Количество батчей для истории (default: 100)"
+        echo "  HISTORY_MAX_MEMORY   Лимит памяти для батчей истории в байтах (default: 2000000000)"
         exit 0
         ;;
     --stats)

@@ -63,6 +63,14 @@ pub struct OutputSettings {
     /// Сжатие для Parquet
     #[serde(default = "default_compression")]
     pub compression: String,
+    
+    /// Максимальный размер файла в МБ (0 = без ограничений)
+    #[serde(default)]
+    pub max_file_size_mb: usize,
+    
+    /// Максимальное количество записей в файле (0 = без ограничений)
+    #[serde(default)]
+    pub max_records_per_file: usize,
 }
 
 /// Настройки логирования
@@ -126,6 +134,8 @@ impl Default for OutputSettings {
             format: default_format(),
             output_dir: default_output_dir(),
             compression: default_compression(),
+            max_file_size_mb: 0, // Без ограничений по умолчанию
+            max_records_per_file: 0, // Без ограничений по умолчанию
         }
     }
 }
@@ -250,6 +260,18 @@ impl AppConfig {
         
         if let Ok(val) = std::env::var("EGRUL_COMPRESSION") {
             self.output.compression = val;
+        }
+        
+        if let Ok(val) = std::env::var("EGRUL_MAX_FILE_SIZE_MB") {
+            if let Ok(size) = val.parse() {
+                self.output.max_file_size_mb = size;
+            }
+        }
+        
+        if let Ok(val) = std::env::var("EGRUL_MAX_RECORDS_PER_FILE") {
+            if let Ok(records) = val.parse() {
+                self.output.max_records_per_file = records;
+            }
         }
         
         // Logging settings

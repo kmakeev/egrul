@@ -247,9 +247,16 @@ impl ParallelProcessor {
         let egrul_writer_handle = std::thread::spawn({
             let output_dir = output_dir_clone.clone();
             let batch_size = config.batch_size;
+            let max_file_size_mb = config.max_file_size_mb;
+            let max_records_per_file = config.max_records_per_file;
             move || -> Result<()> {
                 let output_path = output_dir.join(format!("egrul.{}", format.extension()));
-                let mut writer = OutputWriter::new(&output_path, format)?;
+                let mut writer = OutputWriter::with_limits(
+                    &output_path,
+                    format,
+                    max_file_size_mb,
+                    max_records_per_file,
+                )?;
                 let mut batch = Vec::with_capacity(batch_size);
                 
                 for record in egrul_rx {
@@ -273,9 +280,16 @@ impl ParallelProcessor {
         let egrip_writer_handle = std::thread::spawn({
             let output_dir = output_dir_clone;
             let batch_size = config.batch_size;
+            let max_file_size_mb = config.max_file_size_mb;
+            let max_records_per_file = config.max_records_per_file;
             move || -> Result<()> {
                 let output_path = output_dir.join(format!("egrip.{}", format.extension()));
-                let mut writer = OutputWriter::new(&output_path, format)?;
+                let mut writer = OutputWriter::with_limits(
+                    &output_path,
+                    format,
+                    max_file_size_mb,
+                    max_records_per_file,
+                )?;
                 let mut batch = Vec::with_capacity(batch_size);
                 
                 for record in egrip_rx {

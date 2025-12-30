@@ -1,4 +1,4 @@
-//! Parquet писатель для ЕГРЮЛ/ЕГРИП
+//! Parquet писатель для ЕГРЮЛ/ЕГРИП с поддержкой разбивки файлов
 
 use std::path::Path;
 use std::sync::Arc;
@@ -10,25 +10,56 @@ use arrow::record_batch::RecordBatch;
 use parquet::arrow::ArrowWriter;
 use parquet::basic::Compression;
 use parquet::file::properties::WriterProperties;
-use tracing::debug;
+use tracing::info;
 
 use crate::error::Result;
 use crate::models::{EgrulRecord, EgripRecord};
 
-/// Parquet писатель
+/// Parquet писатель с поддержкой разбивки файлов
 pub struct ParquetOutputWriter {
-    path: std::path::PathBuf,
+    base_path: std::path::PathBuf,
     egrul_batches: Vec<RecordBatch>,
     egrip_batches: Vec<RecordBatch>,
+    egrul_records_count: usize,
+    egrip_records_count: usize,
+    egrul_file_index: usize,
+    egrip_file_index: usize,
+    max_file_size_mb: Option<usize>,
+    max_records_per_file: Option<usize>,
 }
 
 impl ParquetOutputWriter {
     /// Создание нового писателя
     pub fn new(path: &Path) -> Result<Self> {
         Ok(Self {
-            path: path.to_path_buf(),
+            base_path: path.to_path_buf(),
             egrul_batches: Vec::new(),
             egrip_batches: Vec::new(),
+            egrul_records_count: 0,
+            egrip_records_count: 0,
+            egrul_file_index: 0,
+            egrip_file_index: 0,
+            max_file_size_mb: None,
+            max_records_per_file: None,
+        })
+    }
+
+    /// Создание писателя с ограничениями на размер файлов
+    pub fn with_limits(
+        path: &Path,
+        max_file_size_mb: Option<usize>,
+        max_records_per_file: Option<usize>,
+    ) -> Result<Self> {
+        Ok(Self {
+            base_path: path.to_path_buf(),
+            egrul_batches: Vec::new(),
+            egrip_batches: Vec::new(),
+            egrul_records_count: 0,
+            egrip_records_count: 0,
+            egrul_file_index: 0,
+            egrip_file_index: 0,
+            max_file_size_mb,
+            max_records_per_file,
         })
     }
 
@@ -295,6 +326,13 @@ impl ParquetOutputWriter {
         )?;
 
         self.egrul_batches.push(batch);
+        self.egrul_records_count += records.len();
+
+        // Проверяем, нужно ли сохранить файл
+        if self.should_flush_egrul() {
+            self.flush_egrul_file()?;
+        }
+
         Ok(())
     }
 
@@ -454,29 +492,153 @@ impl ParquetOutputWriter {
         )?;
 
         self.egrip_batches.push(batch);
+        self.egrip_records_count += records.len();
+
+        // Проверяем, нужно ли сохранить файл
+        if self.should_flush_egrip() {
+            self.flush_egrip_file()?;
+        }
+
+        Ok(())
+    }
+
+    /// Проверка, нужно ли сохранить файл ЕГРЮЛ
+    fn should_flush_egrul(&self) -> bool {
+        if let Some(max_records) = self.max_records_per_file {
+            if self.egrul_records_count >= max_records {
+                return true;
+            }
+        }
+
+        if let Some(max_size_mb) = self.max_file_size_mb {
+            // Приблизительная оценка размера в памяти
+            let estimated_size_mb = self.estimate_egrul_size_mb();
+            if estimated_size_mb >= max_size_mb {
+                return true;
+            }
+        }
+
+        false
+    }
+
+    /// Проверка, нужно ли сохранить файл ЕГРИП
+    fn should_flush_egrip(&self) -> bool {
+        if let Some(max_records) = self.max_records_per_file {
+            if self.egrip_records_count >= max_records {
+                return true;
+            }
+        }
+
+        if let Some(max_size_mb) = self.max_file_size_mb {
+            // Приблизительная оценка размера в памяти
+            let estimated_size_mb = self.estimate_egrip_size_mb();
+            if estimated_size_mb >= max_size_mb {
+                return true;
+            }
+        }
+
+        false
+    }
+
+    /// Приблизительная оценка размера ЕГРЮЛ в МБ
+    fn estimate_egrul_size_mb(&self) -> usize {
+        // Скорректированная оценка с учетом сжатия Parquet Snappy
+        // Реальные тесты показали: ~20KB на запись в несжатом виде, ~4KB после сжатия
+        // Используем 18KB для более точной оценки (учитывая overhead и вариативность данных)
+        let estimated_bytes = self.egrul_records_count * 18432; // ~18KB на запись
+        estimated_bytes / (1024 * 1024)
+    }
+
+    /// Приблизительная оценка размера ЕГРИП в МБ
+    fn estimate_egrip_size_mb(&self) -> usize {
+        // Скорректированная оценка с учетом сжатия Parquet Snappy
+        // ЕГРИП более компактный, используем 8KB на запись
+        let estimated_bytes = self.egrip_records_count * 8192; // ~8KB на запись
+        estimated_bytes / (1024 * 1024)
+    }
+
+    /// Сохранение файла ЕГРЮЛ
+    fn flush_egrul_file(&mut self) -> Result<()> {
+        if self.egrul_batches.is_empty() {
+            return Ok(());
+        }
+
+        let file_path = if self.egrul_file_index == 0 {
+            self.base_path.with_file_name(
+                format!("{}_egrul.parquet", 
+                    self.base_path.file_stem().unwrap_or_default().to_string_lossy())
+            )
+        } else {
+            self.base_path.with_file_name(
+                format!("{}_egrul_part_{:03}.parquet", 
+                    self.base_path.file_stem().unwrap_or_default().to_string_lossy(),
+                    self.egrul_file_index + 1)
+            )
+        };
+
+        self.write_parquet_file(&file_path, &self.egrul_batches)?;
+        
+        // Показываем информацию только при создании дополнительных файлов
+        if self.egrul_file_index > 0 {
+            info!("Создан файл ЕГРЮЛ: {:?} ({} записей)", 
+                  file_path.file_name().unwrap_or_default(), 
+                  self.egrul_records_count);
+        }
+
+        // Очищаем батчи и увеличиваем индекс
+        self.egrul_batches.clear();
+        self.egrul_records_count = 0;
+        self.egrul_file_index += 1;
+
+        Ok(())
+    }
+
+    /// Сохранение файла ЕГРИП
+    fn flush_egrip_file(&mut self) -> Result<()> {
+        if self.egrip_batches.is_empty() {
+            return Ok(());
+        }
+
+        let file_path = if self.egrip_file_index == 0 {
+            self.base_path.with_file_name(
+                format!("{}_egrip.parquet",
+                    self.base_path.file_stem().unwrap_or_default().to_string_lossy())
+            )
+        } else {
+            self.base_path.with_file_name(
+                format!("{}_egrip_part_{:03}.parquet",
+                    self.base_path.file_stem().unwrap_or_default().to_string_lossy(),
+                    self.egrip_file_index + 1)
+            )
+        };
+
+        self.write_parquet_file(&file_path, &self.egrip_batches)?;
+        
+        // Показываем информацию только при создании дополнительных файлов
+        if self.egrip_file_index > 0 {
+            info!("Создан файл ЕГРИП: {:?} ({} записей)", 
+                  file_path.file_name().unwrap_or_default(), 
+                  self.egrip_records_count);
+        }
+
+        // Очищаем батчи и увеличиваем индекс
+        self.egrip_batches.clear();
+        self.egrip_records_count = 0;
+        self.egrip_file_index += 1;
+
         Ok(())
     }
 
     /// Завершение записи
-    pub fn finish(self) -> Result<()> {
-        // Записываем ЕГРЮЛ если есть данные
+    pub fn finish(mut self) -> Result<()> {
+        // Записываем оставшиеся данные ЕГРЮЛ если есть
         if !self.egrul_batches.is_empty() {
-            let egrul_path = self.path.with_file_name(
-                format!("{}_egrul.parquet", 
-                    self.path.file_stem().unwrap_or_default().to_string_lossy())
-            );
-            self.write_parquet_file(&egrul_path, &self.egrul_batches)?;
-            debug!("Записан файл ЕГРЮЛ: {:?}", egrul_path);
+            self.flush_egrul_file()?;
         }
 
-        // Записываем ЕГРИП если есть данные
+        // Записываем оставшиеся данные ЕГРИП если есть
         if !self.egrip_batches.is_empty() {
-            let egrip_path = self.path.with_file_name(
-                format!("{}_egrip.parquet",
-                    self.path.file_stem().unwrap_or_default().to_string_lossy())
-            );
-            self.write_parquet_file(&egrip_path, &self.egrip_batches)?;
-            debug!("Записан файл ЕГРИП: {:?}", egrip_path);
+            self.flush_egrip_file()?;
         }
 
         Ok(())

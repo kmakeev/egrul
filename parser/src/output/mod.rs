@@ -68,9 +68,23 @@ enum WriterInner {
 impl OutputWriter {
     /// Создание нового писателя
     pub fn new(path: &Path, format: OutputFormat) -> Result<Self> {
+        Self::with_limits(path, format, None, None)
+    }
+
+    /// Создание писателя с ограничениями на размер файлов
+    pub fn with_limits(
+        path: &Path,
+        format: OutputFormat,
+        max_file_size_mb: Option<usize>,
+        max_records_per_file: Option<usize>,
+    ) -> Result<Self> {
         let inner = match format {
             OutputFormat::Parquet => {
-                WriterInner::Parquet(ParquetOutputWriter::new(path)?)
+                WriterInner::Parquet(ParquetOutputWriter::with_limits(
+                    path,
+                    max_file_size_mb,
+                    max_records_per_file,
+                )?)
             }
             OutputFormat::JsonLines => {
                 WriterInner::JsonLines(JsonLinesWriter::new(path)?)

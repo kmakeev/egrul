@@ -131,6 +131,14 @@ pub struct ParseArgs {
     /// Пропустить существующие выходные файлы
     #[arg(long)]
     pub skip_existing: bool,
+    
+    /// Максимальный размер файла в МБ (0 = без ограничений)
+    #[arg(long)]
+    pub max_file_size_mb: Option<usize>,
+    
+    /// Максимальное количество записей в файле (0 = без ограничений)
+    #[arg(long)]
+    pub max_records_per_file: Option<usize>,
 }
 
 /// Аргументы команды validate

@@ -9,6 +9,17 @@ DOCKER_COMPOSE = docker compose
 CARGO = cargo
 GO = go
 PNPM = pnpm
+HISTORY_MAX_MEMORY=10000000000 
+HISTORY_BUCKETS=10
+
+# Переменные окружения для импорта данных:
+# HISTORY_MAX_MEMORY - лимит памяти для батчей истории в байтах 
+# HISTORY_BUCKETS - количество батчей для обработки истории 
+# 
+# Примеры использования:
+# make import-basic HISTORY_MAX_MEMORY=4000000000 HISTORY_BUCKETS=200
+# make import-low-memory    # 4 ГБ лимит, 200 батчей
+# make import-high-memory   # 8 ГБ лимит, 50 батчей
 
 # Цвета
 CYAN = \033[0;36m
@@ -204,9 +215,19 @@ ch-reset: ## Полное пересоздание всех таблиц ClickHo
 
 # ==================== Импорт данных ====================
 
-import: ## Импорт данных из Parquet в ClickHouse
-	@echo "$(CYAN)📥 Импорт данных в ClickHouse...$(NC)"
-	@./infrastructure/scripts/import-data.sh
+import: ## Импорт данных из Parquet в ClickHouse с дополнительными ОКВЭД
+	@echo "$(CYAN)📥 Полный импорт данных в ClickHouse...$(NC)"
+	@HISTORY_MAX_MEMORY=${HISTORY_MAX_MEMORY} HISTORY_BUCKETS=${HISTORY_BUCKETS} ./infrastructure/scripts/import-data.sh
+	@echo ""
+	@echo "$(CYAN)📊 Выгрузка дополнительных ОКВЭД...$(NC)"
+	@chmod +x infrastructure/scripts/import-okved-extra.sh
+	@./infrastructure/scripts/import-okved-extra.sh
+	@echo ""
+	@echo "$(GREEN)✅ Полный импорт данных завершен!$(NC)"
+
+import-basic: ## Базовый импорт данных из Parquet в ClickHouse (без дополнительных ОКВЭД)
+	@echo "$(CYAN)📥 Базовый импорт данных в ClickHouse...$(NC)"
+	@HISTORY_MAX_MEMORY=${HISTORY_MAX_MEMORY} HISTORY_BUCKETS=${HISTORY_BUCKETS} ./infrastructure/scripts/import-data.sh
 
 import-docker: ## Импорт данных через Docker
 	@echo "$(CYAN)🐳 Импорт данных через Docker...$(NC)"
@@ -227,11 +248,17 @@ okved-extra: ## Батч-выгрузка дополнительных ОКВЭ�
 
 # ==================== Полный пайплайн ====================
 
-pipeline: ## Полный пайплайн: парсинг -> импорт
+pipeline: ## Полный пайплайн: парсинг -> импорт с ОКВЭД
 	@echo "$(CYAN)🚀 Запуск полного пайплайна...$(NC)"
 	@make parser-run INPUT=$(INPUT)
 	@make import
 	@echo "$(GREEN)✅ Пайплайн завершен$(NC)"
+
+pipeline-basic: ## Базовый пайплайн: парсинг -> импорт без ОКВЭД
+	@echo "$(CYAN)🚀 Запуск базового пайплайна...$(NC)"
+	@make parser-run INPUT=$(INPUT)
+	@make import-basic
+	@echo "$(GREEN)✅ Базовый пайплайн завершен$(NC)"
 
 # ==================== Утилиты ====================
 
