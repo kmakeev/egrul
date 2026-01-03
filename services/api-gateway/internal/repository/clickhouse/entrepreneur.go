@@ -49,6 +49,10 @@ type entrepreneurRow struct {
 	District               sql.NullString  `ch:"district"`
 	City                   sql.NullString  `ch:"city"`
 	Locality               sql.NullString  `ch:"locality"`
+	Street                 sql.NullString  `ch:"street"`
+	House                  sql.NullString  `ch:"house"`
+	Building               sql.NullString  `ch:"building"`
+	Flat                   sql.NullString  `ch:"flat"`
 	FullAddress            sql.NullString  `ch:"full_address"`
 	FiasID                 sql.NullString  `ch:"fias_id"`
 	KladrCode              sql.NullString  `ch:"kladr_code"`
@@ -170,6 +174,18 @@ func (r *entrepreneurRow) toModel() *model.Entrepreneur {
 	}
 	if r.Locality.Valid {
 		entrepreneur.Address.Locality = &r.Locality.String
+	}
+	if r.Street.Valid {
+		entrepreneur.Address.Street = &r.Street.String
+	}
+	if r.House.Valid {
+		entrepreneur.Address.House = &r.House.String
+	}
+	if r.Building.Valid {
+		entrepreneur.Address.Building = &r.Building.String
+	}
+	if r.Flat.Valid {
+		entrepreneur.Address.Flat = &r.Flat.String
 	}
 	if r.FullAddress.Valid {
 		entrepreneur.Address.FullAddress = &r.FullAddress.String

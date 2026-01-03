@@ -93,14 +93,33 @@ export interface RelatedCompany {
 export interface IndividualEntrepreneur {
   id: string;
   ogrnip: string;
+  ogrnipDate?: string;
   inn: string;
   lastName: string;
   firstName: string;
   middleName?: string;
   registrationDate?: string;
+  terminationDate?: string;
   address?: Address;
-  status: string;
+  status?: string;
+  statusCode?: string;
+  citizenshipType?: string;
+  citizenshipCountryCode?: string;
+  citizenshipCountryName?: string;
   mainActivity?: Activity;
+  activities?: Activity[];
+  regAuthority?: Authority;
+  taxAuthority?: Authority;
+  history?: HistoryRecord[];
+  historyCount?: number;
+  licensesCount?: number;
+  extractDate?: string;
+  lastGrn?: string;
+  lastGrnDate?: string;
+  sourceFile?: string;
+  versionDate?: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface Address {
@@ -114,10 +133,14 @@ export interface Address {
   house?: string;
   building?: string;
   flat?: string;
-  office?: string;
   fullAddress?: string;
   fiasId?: string;
   kladrCode?: string;
+}
+
+export interface Authority {
+  code?: string;
+  name?: string;
 }
 
 export interface Activity {

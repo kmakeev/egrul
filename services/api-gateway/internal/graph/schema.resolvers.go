@@ -173,7 +173,7 @@ func (r *companyResolver) RelatedCompanies(ctx context.Context, obj *model.Compa
 	var relatedCompanies []*model.RelatedCompany
 
 	// 1. Получаем компании-учредители (юридические лица в учредителях)
-	founderCompanies, err := r.CompanyService.GetFounderCompanies(ctx, obj.Ogrn, l/3, o)
+	founderCompanies, err := r.CompanyService.GetFounderCompanies(ctx, obj.Ogrn, l/6, o)
 	if err != nil {
 		r.Logger.Error("failed to get founder companies", zap.String("ogrn", obj.Ogrn), zap.Error(err))
 	} else {
@@ -187,22 +187,242 @@ func (r *companyResolver) RelatedCompanies(ctx context.Context, obj *model.Compa
 	}
 
 	// 2. Получаем компании с общими учредителями-физлицами
-	commonFounderCompanies, err := r.CompanyService.GetCompaniesWithCommonFounders(ctx, obj.Ogrn, l/3, o)
+	commonFounderCompanies, err := r.CompanyService.GetCompaniesWithCommonFounders(ctx, obj.Ogrn, l/6, o)
 	if err != nil {
 		r.Logger.Error("failed to get companies with common founders", zap.String("ogrn", obj.Ogrn), zap.Error(err))
 	} else {
 		for _, company := range commonFounderCompanies {
+			// Получаем детальную информацию об общих учредителях
+			commonFounders, err := r.CompanyService.GetCommonFoundersDetails(ctx, obj.Ogrn, company.Ogrn)
+			if err != nil {
+				r.Logger.Warn("failed to get common founders details",
+					zap.String("ogrn1", obj.Ogrn),
+					zap.String("ogrn2", company.Ogrn),
+					zap.Error(err))
+				commonFounders = []*model.Founder{} // Пустой список при ошибке
+			}
+
+			// Формируем описание с именами общих учредителей
+			description := "Общие учредители-физлица"
+			if len(commonFounders) > 0 {
+				var names []string
+				for _, founder := range commonFounders {
+					if len(names) >= 3 { // Ограничиваем до 3 имен в описании
+						names = append(names, "...")
+						break
+					}
+
+					// Формируем ФИО с ИНН
+					var fullName string
+					if founder.LastName != nil && founder.FirstName != nil {
+						fullName = *founder.LastName + " " + *founder.FirstName
+						if founder.MiddleName != nil && *founder.MiddleName != "" {
+							fullName += " " + *founder.MiddleName
+						}
+					} else {
+						fullName = founder.Name
+					}
+
+					// Добавляем ИНН в скобках
+					if founder.Inn != nil && *founder.Inn != "" {
+						fullName += " (ИНН: " + *founder.Inn + ")"
+					}
+
+					names = append(names, fullName)
+				}
+
+				if len(names) > 0 {
+					description = "Общие учредители: " + strings.Join(names, ", ")
+				}
+			}
+
 			relatedCompanies = append(relatedCompanies, &model.RelatedCompany{
 				Company:          company,
 				RelationshipType: model.RelationshipTypeCommonFounders,
-				Description:      stringPtr("Общие учредители-физлица"),
+				Description:      stringPtr(description),
+				CommonFounders:   commonFounders,
 			})
 		}
 	}
 
-	// 3. Получаем дочерние компании (где данная компания учредитель)
+	// 2.5. Получаем компании с общими руководителями-физлицами
+	commonDirectorCompanies, err := r.CompanyService.GetCompaniesWithCommonDirectors(ctx, obj.Ogrn, l/6, o)
+	if err != nil {
+		r.Logger.Error("failed to get companies with common directors", zap.String("ogrn", obj.Ogrn), zap.Error(err))
+	} else {
+		for _, company := range commonDirectorCompanies {
+			// Получаем детальную информацию об общих руководителях
+			commonDirectors, err := r.CompanyService.GetCommonDirectorsDetails(ctx, obj.Ogrn, company.Ogrn)
+			if err != nil {
+				r.Logger.Warn("failed to get common directors details",
+					zap.String("ogrn1", obj.Ogrn),
+					zap.String("ogrn2", company.Ogrn),
+					zap.Error(err))
+				commonDirectors = []*model.Person{} // Пустой список при ошибке
+			}
+
+			// Формируем описание с именами общих руководителей
+			description := "Общие руководители-физлица"
+			if len(commonDirectors) > 0 {
+				var names []string
+				for _, director := range commonDirectors {
+					if len(names) >= 3 { // Ограничиваем до 3 имен в описании
+						names = append(names, "...")
+						break
+					}
+
+					// Формируем ФИО с ИНН
+					var fullName string
+					if director.LastName != "" && director.FirstName != "" {
+						fullName = director.LastName + " " + director.FirstName
+						if director.MiddleName != nil && *director.MiddleName != "" {
+							fullName += " " + *director.MiddleName
+						}
+					}
+
+					// Добавляем ИНН в скобках
+					if director.Inn != nil && *director.Inn != "" {
+						fullName += " (ИНН: " + *director.Inn + ")"
+					}
+
+					if fullName != "" {
+						names = append(names, fullName)
+					}
+				}
+
+				if len(names) > 0 {
+					description = "Общие руководители: " + strings.Join(names, ", ")
+				}
+			}
+
+			relatedCompanies = append(relatedCompanies, &model.RelatedCompany{
+				Company:          company,
+				RelationshipType: model.RelationshipTypeCommonDirectors,
+				Description:      stringPtr(description),
+				CommonDirectors:  commonDirectors,
+			})
+		}
+	}
+
+	// 3. Получаем компании, где учредители основной компании являются руководителями
+	founderToDirectorCompanies, err := r.CompanyService.GetCompaniesWhereFounderIsDirector(ctx, obj.Ogrn, l/6, o)
+	if err != nil {
+		r.Logger.Error("failed to get companies where founder is director", zap.String("ogrn", obj.Ogrn), zap.Error(err))
+	} else {
+		for _, company := range founderToDirectorCompanies {
+			// Получаем детальную информацию о перекрестных связях
+			crossPersons, err := r.CompanyService.GetCrossPersonDetails(ctx, obj.Ogrn, company.Ogrn, "founder_to_director")
+			if err != nil {
+				r.Logger.Warn("failed to get cross person details",
+					zap.String("ogrn1", obj.Ogrn),
+					zap.String("ogrn2", company.Ogrn),
+					zap.Error(err))
+				crossPersons = []*model.Person{} // Пустой список при ошибке
+			}
+
+			// Формируем описание
+			description := "Учредитель → Руководитель"
+			if len(crossPersons) > 0 {
+				var names []string
+				for _, person := range crossPersons {
+					if len(names) >= 3 {
+						names = append(names, "...")
+						break
+					}
+
+					var fullName string
+					if person.LastName != "" && person.FirstName != "" {
+						fullName = person.LastName + " " + person.FirstName
+						if person.MiddleName != nil && *person.MiddleName != "" {
+							fullName += " " + *person.MiddleName
+						}
+					}
+
+					// Добавляем ИНН в скобках
+					if person.Inn != nil && *person.Inn != "" {
+						fullName += " (ИНН: " + *person.Inn + ")"
+					}
+
+					if fullName != "" {
+						names = append(names, fullName)
+					}
+				}
+
+				if len(names) > 0 {
+					description = "Учредитель → Руководитель: " + strings.Join(names, ", ")
+				}
+			}
+
+			relatedCompanies = append(relatedCompanies, &model.RelatedCompany{
+				Company:          company,
+				RelationshipType: model.RelationshipTypeFounderToDirector,
+				Description:      stringPtr(description),
+				CommonDirectors:  crossPersons, // Используем поле CommonDirectors для отображения
+			})
+		}
+	}
+
+	// 4. Получаем компании, где руководитель основной компании является учредителем
+	directorToFounderCompanies, err := r.CompanyService.GetCompaniesWhereDirectorIsFounder(ctx, obj.Ogrn, l/6, o)
+	if err != nil {
+		r.Logger.Error("failed to get companies where director is founder", zap.String("ogrn", obj.Ogrn), zap.Error(err))
+	} else {
+		for _, company := range directorToFounderCompanies {
+			// Получаем детальную информацию о перекрестных связях
+			crossPersons, err := r.CompanyService.GetCrossPersonDetails(ctx, obj.Ogrn, company.Ogrn, "director_to_founder")
+			if err != nil {
+				r.Logger.Warn("failed to get cross person details",
+					zap.String("ogrn1", obj.Ogrn),
+					zap.String("ogrn2", company.Ogrn),
+					zap.Error(err))
+				crossPersons = []*model.Person{} // Пустой список при ошибке
+			}
+
+			// Формируем описание
+			description := "Руководитель → Учредитель"
+			if len(crossPersons) > 0 {
+				var names []string
+				for _, person := range crossPersons {
+					if len(names) >= 3 {
+						names = append(names, "...")
+						break
+					}
+
+					var fullName string
+					if person.LastName != "" && person.FirstName != "" {
+						fullName = person.LastName + " " + person.FirstName
+						if person.MiddleName != nil && *person.MiddleName != "" {
+							fullName += " " + *person.MiddleName
+						}
+					}
+
+					// Добавляем ИНН в скобках
+					if person.Inn != nil && *person.Inn != "" {
+						fullName += " (ИНН: " + *person.Inn + ")"
+					}
+
+					if fullName != "" {
+						names = append(names, fullName)
+					}
+				}
+
+				if len(names) > 0 {
+					description = "Руководитель → Учредитель: " + strings.Join(names, ", ")
+				}
+			}
+
+			relatedCompanies = append(relatedCompanies, &model.RelatedCompany{
+				Company:          company,
+				RelationshipType: model.RelationshipTypeDirectorToFounder,
+				Description:      stringPtr(description),
+				CommonDirectors:  crossPersons, // Используем поле CommonDirectors для отображения
+			})
+		}
+	}
+
+	// 5. Получаем дочерние компании (где данная компания учредитель)
 	if obj.Inn != "" {
-		subsidiaryCompanies, err := r.CompanyService.GetRelatedCompanies(ctx, obj.Inn, l/3, o)
+		subsidiaryCompanies, err := r.CompanyService.GetRelatedCompanies(ctx, obj.Inn, l/6, o)
 		if err != nil {
 			r.Logger.Error("failed to get subsidiary companies", zap.String("ogrn", obj.Ogrn), zap.Error(err))
 		} else {
@@ -213,6 +433,41 @@ func (r *companyResolver) RelatedCompanies(ctx context.Context, obj *model.Compa
 					Description:      stringPtr("Дочерняя компания"),
 				})
 			}
+		}
+	}
+
+	// 6. Получаем компании с общим адресом регистрации
+	commonAddressCompanies, err := r.CompanyService.GetCompaniesWithCommonAddress(ctx, obj.Ogrn, l/6, o)
+	if err != nil {
+		r.Logger.Error("failed to get companies with common address", zap.String("ogrn", obj.Ogrn), zap.Error(err))
+	} else {
+		for _, company := range commonAddressCompanies {
+			// Получаем детальную информацию об общем адресе
+			commonAddress, err := r.CompanyService.GetCommonAddressDetails(ctx, obj.Ogrn, company.Ogrn)
+			if err != nil {
+				r.Logger.Warn("failed to get common address details",
+					zap.String("ogrn1", obj.Ogrn),
+					zap.String("ogrn2", company.Ogrn),
+					zap.Error(err))
+				commonAddress = nil
+			}
+
+			// Формируем описание с адресом
+			description := "Общий адрес регистрации"
+			if commonAddress != nil && commonAddress.FullAddress != nil {
+				shortAddress := *commonAddress.FullAddress
+				if len(shortAddress) > 100 {
+					shortAddress = shortAddress[:97] + "..."
+				}
+				description = "Общий адрес: " + shortAddress
+			}
+
+			relatedCompanies = append(relatedCompanies, &model.RelatedCompany{
+				Company:          company,
+				RelationshipType: model.RelationshipTypeCommonAddress,
+				Description:      stringPtr(description),
+				CommonAddress:    commonAddress,
+			})
 		}
 	}
 
@@ -252,24 +507,28 @@ func (r *entrepreneurResolver) History(ctx context.Context, obj *model.Entrepren
 		o = *offset
 	}
 
+	r.Logger.Info("🔥 SCHEMA.RESOLVERS - History resolver called", zap.String("ogrnip", obj.Ogrnip))
+
 	history, err := r.EntrepreneurService.GetHistory(ctx, obj.Ogrnip, l, o)
 	if err != nil {
 		r.Logger.Error("failed to get history", zap.String("ogrnip", obj.Ogrnip), zap.Error(err))
 		return nil, err
 	}
+	
+	r.Logger.Info("🔥 SCHEMA.RESOLVERS - History loaded", zap.String("ogrnip", obj.Ogrnip), zap.Int("count", len(history)))
 	return history, nil
 }
 
 // HistoryCount is the resolver for the historyCount field on Entrepreneur.
 func (r *entrepreneurResolver) HistoryCount(ctx context.Context, obj *model.Entrepreneur) (int, error) {
-	r.Logger.Info("HistoryCount resolver called", zap.String("ogrnip", obj.Ogrnip))
+	r.Logger.Info("🔥 SCHEMA.RESOLVERS - HistoryCount resolver called", zap.String("ogrnip", obj.Ogrnip))
 
 	count, err := r.EntrepreneurService.GetHistoryCount(ctx, obj.Ogrnip)
 	if err != nil {
 		r.Logger.Error("failed to get history count", zap.String("ogrnip", obj.Ogrnip), zap.Error(err))
 		return 0, err
 	}
-	r.Logger.Info("HistoryCount loaded", zap.String("ogrnip", obj.Ogrnip), zap.Int("count", count))
+	r.Logger.Info("🔥 SCHEMA.RESOLVERS - HistoryCount loaded", zap.String("ogrnip", obj.Ogrnip), zap.Int("count", count))
 	return count, nil
 }
 
@@ -313,11 +572,18 @@ func (r *queryResolver) SearchCompanies(ctx context.Context, query string, limit
 
 // Entrepreneur is the resolver for the entrepreneur field.
 func (r *queryResolver) Entrepreneur(ctx context.Context, ogrnip string) (*model.Entrepreneur, error) {
+	r.Logger.Info("🔍 Entrepreneur query resolver called", zap.String("ogrnip", ogrnip))
+
 	entrepreneur, err := r.EntrepreneurService.GetByOGRNIP(ctx, ogrnip)
 	if err != nil {
 		r.Logger.Error("failed to get entrepreneur by ogrnip", zap.String("ogrnip", ogrnip), zap.Error(err))
 		return nil, err
 	}
+
+	r.Logger.Info("✅ Entrepreneur loaded successfully",
+		zap.String("ogrnip", ogrnip),
+		zap.String("name", entrepreneur.FirstName+" "+entrepreneur.LastName))
+
 	return entrepreneur, nil
 }
 
@@ -481,3 +747,395 @@ func (r *Resolver) Query() generated.QueryResolver { return &queryResolver{r} }
 type companyResolver struct{ *Resolver }
 type entrepreneurResolver struct{ *Resolver }
 type queryResolver struct{ *Resolver }
+
+// !!! WARNING !!!
+// The code below was going to be deleted when updating resolvers. It has been copied here so you have
+// one last chance to move it out of harms way if you want. There are two reasons this happens:
+//  - When renaming or deleting a resolver the old code will be put in here. You can safely delete
+//    it when you're done.
+//  - You have helper methods in this file. Move them out to keep these resolver files clean.
+/*
+	func (r *companyResolver) Founders(ctx context.Context, obj *model.Company, limit *int, offset *int) ([]*model.Founder, error) {
+	r.Logger.Info("Founders resolver called", zap.String("ogrn", obj.Ogrn))
+
+	l := 100
+	if limit != nil {
+		l = *limit
+	}
+	o := 0
+	if offset != nil {
+		o = *offset
+	}
+
+	// Сначала пробуем использовать DataLoader (per-request cache)
+	if loader := foundersLoaderFromContext(ctx); loader != nil {
+		founders, err := loader.Load(ctx, obj.Ogrn, l, o)
+		if err != nil {
+			r.Logger.Error("failed to get founders via dataloader", zap.String("ogrn", obj.Ogrn), zap.Error(err))
+			return nil, err
+		}
+		r.Logger.Info("Founders loaded via dataloader", zap.String("ogrn", obj.Ogrn), zap.Int("count", len(founders)))
+		return founders, nil
+	}
+
+	// Fallback к прямому вызову сервиса
+	founders, err := r.CompanyService.GetFounders(ctx, obj.Ogrn, l, o)
+	if err != nil {
+		r.Logger.Error("failed to get founders", zap.String("ogrn", obj.Ogrn), zap.Error(err))
+		return nil, err
+	}
+	r.Logger.Info("Founders loaded directly", zap.String("ogrn", obj.Ogrn), zap.Int("count", len(founders)))
+	return founders, nil
+}
+func (r *companyResolver) Licenses(ctx context.Context, obj *model.Company) ([]*model.License, error) {
+	licenses, err := r.CompanyService.GetLicenses(ctx, obj.Ogrn)
+	if err != nil {
+		r.Logger.Error("failed to get licenses", zap.String("ogrn", obj.Ogrn), zap.Error(err))
+		return nil, err
+	}
+	return licenses, nil
+}
+func (r *companyResolver) Branches(ctx context.Context, obj *model.Company) ([]*model.Branch, error) {
+	branches, err := r.CompanyService.GetBranches(ctx, obj.Ogrn)
+	if err != nil {
+		r.Logger.Error("failed to get branches", zap.String("ogrn", obj.Ogrn), zap.Error(err))
+		return nil, err
+	}
+	return branches, nil
+}
+func (r *companyResolver) History(ctx context.Context, obj *model.Company, limit *int, offset *int) ([]*model.HistoryRecord, error) {
+	// Попробуем извлечь параметры из GraphQL контекста
+	fc := graphql.GetFieldContext(ctx)
+	var l, o int = 50, 0
+
+	r.Logger.Error("🔥 CRITICAL DEBUG - History resolver called",
+		zap.String("ogrn", obj.Ogrn),
+		zap.Any("limit_ptr", limit),
+		zap.Any("offset_ptr", offset),
+		zap.Bool("limit_is_nil", limit == nil),
+		zap.Bool("offset_is_nil", offset == nil),
+		zap.Any("field_context", fc),
+	)
+
+	// Пробуем извлечь из контекста GraphQL
+	if fc != nil && fc.Args != nil {
+		r.Logger.Info("🔍 Checking GraphQL field context args", zap.Any("args", fc.Args))
+
+		if limitArg, ok := fc.Args["limit"]; ok && limitArg != nil {
+			if limitPtr, ok := limitArg.(*int); ok && limitPtr != nil {
+				l = *limitPtr
+				r.Logger.Info("✅ Extracted limit from GraphQL context", zap.Int("limit", l))
+			}
+		}
+
+		if offsetArg, ok := fc.Args["offset"]; ok && offsetArg != nil {
+			if offsetPtr, ok := offsetArg.(*int); ok && offsetPtr != nil {
+				o = *offsetPtr
+				r.Logger.Info("✅ Extracted offset from GraphQL context", zap.Int("offset", o))
+			}
+		}
+	}
+
+	// Fallback к параметрам функции
+	if limit != nil {
+		l = *limit
+		r.Logger.Info("✅ Using limit from function parameter", zap.Int("limit", l))
+	}
+
+	if offset != nil {
+		o = *offset
+		r.Logger.Info("✅ Using offset from function parameter", zap.Int("offset", o))
+	}
+
+	r.Logger.Info("🔍 Final parameters for CompanyService.GetHistory",
+		zap.String("ogrn", obj.Ogrn),
+		zap.Int("final_limit", l),
+		zap.Int("final_offset", o))
+
+	history, err := r.CompanyService.GetHistory(ctx, obj.Ogrn, l, o)
+	if err != nil {
+		r.Logger.Error("failed to get history", zap.String("ogrn", obj.Ogrn), zap.Error(err))
+		return nil, err
+	}
+
+	r.Logger.Info("📊 History loaded successfully",
+		zap.String("ogrn", obj.Ogrn),
+		zap.Int("requested_limit", l),
+		zap.Int("requested_offset", o),
+		zap.Int("returned_count", len(history)),
+		zap.String("first_grn", func() string {
+			if len(history) > 0 {
+				return history[0].Grn
+			}
+			return "none"
+		}()),
+		zap.String("last_grn", func() string {
+			if len(history) > 0 {
+				return history[len(history)-1].Grn
+			}
+			return "none"
+		}()),
+	)
+	return history, nil
+}
+func (r *companyResolver) HistoryCount(ctx context.Context, obj *model.Company) (int, error) {
+	r.Logger.Info("HistoryCount resolver called", zap.String("ogrn", obj.Ogrn))
+
+	count, err := r.CompanyService.GetHistoryCount(ctx, obj.Ogrn)
+	if err != nil {
+		r.Logger.Error("failed to get history count", zap.String("ogrn", obj.Ogrn), zap.Error(err))
+		return 0, err
+	}
+	r.Logger.Info("HistoryCount loaded", zap.String("ogrn", obj.Ogrn), zap.Int("count", count))
+	return count, nil
+}
+func (r *companyResolver) RelatedCompanies(ctx context.Context, obj *model.Company, limit *int, offset *int) ([]*model.RelatedCompany, error) {
+	r.Logger.Info("RelatedCompanies resolver called", zap.String("ogrn", obj.Ogrn))
+
+	l := 50
+	if limit != nil {
+		l = *limit
+	}
+	o := 0
+	if offset != nil {
+		o = *offset
+	}
+
+	var relatedCompanies []*model.RelatedCompany
+
+	// 1. Получаем компании-учредители (юридические лица в учредителях)
+	founderCompanies, err := r.CompanyService.GetFounderCompanies(ctx, obj.Ogrn, l/3, o)
+	if err != nil {
+		r.Logger.Error("failed to get founder companies", zap.String("ogrn", obj.Ogrn), zap.Error(err))
+	} else {
+		for _, company := range founderCompanies {
+			relatedCompanies = append(relatedCompanies, &model.RelatedCompany{
+				Company:          company,
+				RelationshipType: model.RelationshipTypeFounderCompany,
+				Description:      stringPtr("Компания-учредитель"),
+			})
+		}
+	}
+
+	// 2. Получаем компании с общими учредителями-физлицами
+	commonFounderCompanies, err := r.CompanyService.GetCompaniesWithCommonFounders(ctx, obj.Ogrn, l/3, o)
+	if err != nil {
+		r.Logger.Error("failed to get companies with common founders", zap.String("ogrn", obj.Ogrn), zap.Error(err))
+	} else {
+		for _, company := range commonFounderCompanies {
+			relatedCompanies = append(relatedCompanies, &model.RelatedCompany{
+				Company:          company,
+				RelationshipType: model.RelationshipTypeCommonFounders,
+				Description:      stringPtr("Общие учредители-физлица"),
+			})
+		}
+	}
+
+	// 3. Получаем дочерние компании (где данная компания учредитель)
+	if obj.Inn != "" {
+		subsidiaryCompanies, err := r.CompanyService.GetRelatedCompanies(ctx, obj.Inn, l/3, o)
+		if err != nil {
+			r.Logger.Error("failed to get subsidiary companies", zap.String("ogrn", obj.Ogrn), zap.Error(err))
+		} else {
+			for _, company := range subsidiaryCompanies {
+				relatedCompanies = append(relatedCompanies, &model.RelatedCompany{
+					Company:          company,
+					RelationshipType: model.RelationshipTypeSubsidiaryCompany,
+					Description:      stringPtr("Дочерняя компания"),
+				})
+			}
+		}
+	}
+
+	// Ограничиваем результат до запрошенного лимита
+	if len(relatedCompanies) > l {
+		relatedCompanies = relatedCompanies[:l]
+	}
+
+	r.Logger.Info("RelatedCompanies loaded",
+		zap.String("ogrn", obj.Ogrn),
+		zap.Int("count", len(relatedCompanies)),
+		zap.Int("founder_companies", len(founderCompanies)),
+		zap.Int("common_founder_companies", len(commonFounderCompanies)),
+	)
+
+	return relatedCompanies, nil
+}
+func (r *queryResolver) Company(ctx context.Context, ogrn string) (*model.Company, error) {
+	company, err := r.CompanyService.GetByOGRN(ctx, ogrn)
+	if err != nil {
+		r.Logger.Error("failed to get company by ogrn", zap.String("ogrn", ogrn), zap.Error(err))
+		return nil, err
+	}
+	return company, nil
+}
+func (r *queryResolver) CompanyByInn(ctx context.Context, inn string) (*model.Company, error) {
+	company, err := r.CompanyService.GetByINN(ctx, inn)
+	if err != nil {
+		r.Logger.Error("failed to get company by inn", zap.String("inn", inn), zap.Error(err))
+		return nil, err
+	}
+	return company, nil
+}
+func (r *queryResolver) Companies(ctx context.Context, filter *model.CompanyFilter, pagination *model.Pagination, sort *model.CompanySort) (*model.CompanyConnection, error) {
+	return r.CompanyService.List(ctx, filter, pagination, sort)
+}
+func (r *queryResolver) SearchCompanies(ctx context.Context, query string, limit *int, offset *int) ([]*model.Company, error) {
+	l := 20
+	if limit != nil {
+		l = *limit
+	}
+	o := 0
+	if offset != nil {
+		o = *offset
+	}
+	return r.CompanyService.Search(ctx, query, l, o)
+}
+func (r *queryResolver) Entrepreneur(ctx context.Context, ogrnip string) (*model.Entrepreneur, error) {
+	r.Logger.Info("🔍 Entrepreneur query resolver called", zap.String("ogrnip", ogrnip))
+
+	entrepreneur, err := r.EntrepreneurService.GetByOGRNIP(ctx, ogrnip)
+	if err != nil {
+		r.Logger.Error("failed to get entrepreneur by ogrnip", zap.String("ogrnip", ogrnip), zap.Error(err))
+		return nil, err
+	}
+
+	r.Logger.Info("✅ Entrepreneur loaded successfully",
+		zap.String("ogrnip", ogrnip),
+		zap.String("name", entrepreneur.FirstName+" "+entrepreneur.LastName))
+
+	return entrepreneur, nil
+}
+func (r *queryResolver) EntrepreneurByInn(ctx context.Context, inn string) (*model.Entrepreneur, error) {
+	entrepreneur, err := r.EntrepreneurService.GetByINN(ctx, inn)
+	if err != nil {
+		r.Logger.Error("failed to get entrepreneur by inn", zap.String("inn", inn), zap.Error(err))
+		return nil, err
+	}
+	return entrepreneur, nil
+}
+func (r *queryResolver) Entrepreneurs(ctx context.Context, filter *model.EntrepreneurFilter, pagination *model.Pagination, sort *model.EntrepreneurSort) (*model.EntrepreneurConnection, error) {
+	return r.EntrepreneurService.List(ctx, filter, pagination, sort)
+}
+func (r *queryResolver) SearchEntrepreneurs(ctx context.Context, query string, limit *int, offset *int) ([]*model.Entrepreneur, error) {
+	l := 20
+	if limit != nil {
+		l = *limit
+	}
+	o := 0
+	if offset != nil {
+		o = *offset
+	}
+	return r.EntrepreneurService.Search(ctx, query, l, o)
+}
+func (r *queryResolver) Search(ctx context.Context, query string, limit *int) (*model.SearchResult, error) {
+	l := 10
+	if limit != nil {
+		l = *limit
+	}
+	return r.SearchService.Search(ctx, query, l)
+}
+func (r *queryResolver) Statistics(ctx context.Context, filter *model.StatsFilter) (*model.Statistics, error) {
+	return r.StatisticsService.GetStatistics(ctx, filter)
+}
+func (r *queryResolver) EntityHistory(ctx context.Context, entityType model.EntityType, entityID string, limit *int, offset *int) ([]*model.HistoryRecord, error) {
+	r.Logger.Info("EntityHistory resolver called - DIRECT QUERY",
+		zap.String("entityType", string(entityType)),
+		zap.String("entityID", entityID),
+		zap.Any("limit", limit),
+		zap.Any("offset", offset),
+	)
+
+	l := 50
+	if limit != nil {
+		l = *limit
+	}
+	o := 0
+	if offset != nil {
+		o = *offset
+	}
+
+	r.Logger.Info("EntityHistory parameters",
+		zap.String("entityType", string(entityType)),
+		zap.String("entityID", entityID),
+		zap.Int("resolved_limit", l),
+		zap.Int("resolved_offset", o),
+	)
+
+	// Используем CompanyService для компаний и EntrepreneurService для ИП
+	if entityType == model.EntityTypeCompany {
+		history, err := r.CompanyService.GetHistory(ctx, entityID, l, o)
+		if err != nil {
+			r.Logger.Error("failed to get company history", zap.String("entityID", entityID), zap.Error(err))
+			return nil, err
+		}
+		r.Logger.Info("EntityHistory loaded for company",
+			zap.String("entityID", entityID),
+			zap.Int("count", len(history)),
+			zap.String("first_grn", func() string {
+				if len(history) > 0 {
+					return history[0].Grn
+				}
+				return "none"
+			}()),
+			zap.String("last_grn", func() string {
+				if len(history) > 0 {
+					return history[len(history)-1].Grn
+				}
+				return "none"
+			}()),
+		)
+		return history, nil
+	} else if entityType == model.EntityTypeEntrepreneur {
+		return r.EntrepreneurService.GetHistory(ctx, entityID, l, o)
+	}
+	return nil, fmt.Errorf("unsupported entity type: %v", entityType)
+}
+func (r *queryResolver) EntityHistoryCount(ctx context.Context, entityType model.EntityType, entityID string) (int, error) {
+	r.Logger.Info("EntityHistoryCount resolver called - DIRECT QUERY",
+		zap.String("entityType", string(entityType)),
+		zap.String("entityID", entityID),
+	)
+
+	// Используем CompanyService для компаний и EntrepreneurService для ИП
+	if entityType == model.EntityTypeCompany {
+		count, err := r.CompanyService.GetHistoryCount(ctx, entityID)
+		if err != nil {
+			r.Logger.Error("failed to get company history count", zap.String("entityID", entityID), zap.Error(err))
+			return 0, err
+		}
+		r.Logger.Info("EntityHistoryCount loaded for company",
+			zap.String("entityID", entityID),
+			zap.Int("count", count),
+		)
+		return count, nil
+	} else if entityType == model.EntityTypeEntrepreneur {
+		return r.EntrepreneurService.GetHistoryCount(ctx, entityID)
+	}
+	return 0, fmt.Errorf("unsupported entity type: %v", entityType)
+}
+func (r *queryResolver) CompanyFounders(ctx context.Context, ogrn string, limit *int, offset *int) ([]*model.Founder, error) {
+	l := 100
+	if limit != nil {
+		l = *limit
+	}
+	o := 0
+	if offset != nil {
+		o = *offset
+	}
+	return r.CompanyService.GetFounders(ctx, ogrn, l, o)
+}
+func (r *queryResolver) RelatedCompanies(ctx context.Context, inn string, limit *int, offset *int) ([]*model.Company, error) {
+	l := 50
+	if limit != nil {
+		l = *limit
+	}
+	o := 0
+	if offset != nil {
+		o = *offset
+	}
+	return r.CompanyService.GetRelatedCompanies(ctx, inn, l, o)
+}
+func (r *Resolver) Company() generated.CompanyResolver { return &companyResolver{r} }
+func (r *Resolver) Query() generated.QueryResolver { return &queryResolver{r} }
+*/

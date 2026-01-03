@@ -291,6 +291,8 @@ type ComplexityRoot struct {
 	}
 
 	RelatedCompany struct {
+		CommonAddress    func(childComplexity int) int
+		CommonDirectors  func(childComplexity int) int
 		CommonFounders   func(childComplexity int) int
 		Company          func(childComplexity int) int
 		Description      func(childComplexity int) int
@@ -1736,6 +1738,20 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 
 		return e.complexity.RegionStatistics.RegionName(childComplexity), true
 
+	case "RelatedCompany.commonAddress":
+		if e.complexity.RelatedCompany.CommonAddress == nil {
+			break
+		}
+
+		return e.complexity.RelatedCompany.CommonAddress(childComplexity), true
+
+	case "RelatedCompany.commonDirectors":
+		if e.complexity.RelatedCompany.CommonDirectors == nil {
+			break
+		}
+
+		return e.complexity.RelatedCompany.CommonDirectors(childComplexity), true
+
 	case "RelatedCompany.commonFounders":
 		if e.complexity.RelatedCompany.CommonFounders == nil {
 			break
@@ -2001,6 +2017,10 @@ enum RelationshipType {
   FOUNDER_COMPANY      # Компания-учредитель
   SUBSIDIARY_COMPANY   # Дочерняя компания (где данная компания учредитель)
   COMMON_FOUNDERS      # Компания с общими учредителями-физлицами
+  COMMON_DIRECTORS     # Компания с общими руководителями-физлицами
+  COMMON_ADDRESS       # Компания с общим адресом регистрации
+  FOUNDER_TO_DIRECTOR  # Учредитель основной компании является руководителем связанной
+  DIRECTOR_TO_FOUNDER  # Руководитель основной компании является учредителем связанной
   RELATED_BY_PERSON    # Связанная через физическое лицо
 }
 
@@ -2179,6 +2199,8 @@ type RelatedCompany {
   relationshipType: RelationshipType!
   description: String
   commonFounders: [Founder!]  # Общие учредители (для типа COMMON_FOUNDERS)
+  commonDirectors: [Person!]  # Общие руководители (для типа COMMON_DIRECTORS)
+  commonAddress: Address      # Общий адрес (для типа COMMON_ADDRESS)
 }
 
 """
@@ -6862,6 +6884,10 @@ func (ec *executionContext) fieldContext_Company_relatedCompanies(ctx context.Co
 				return ec.fieldContext_RelatedCompany_description(ctx, field)
 			case "commonFounders":
 				return ec.fieldContext_RelatedCompany_commonFounders(ctx, field)
+			case "commonDirectors":
+				return ec.fieldContext_RelatedCompany_commonDirectors(ctx, field)
+			case "commonAddress":
+				return ec.fieldContext_RelatedCompany_commonAddress(ctx, field)
 			}
 			return nil, fmt.Errorf("no field named %q was found under type RelatedCompany", field.Name)
 		},
@@ -13408,6 +13434,128 @@ func (ec *executionContext) fieldContext_RelatedCompany_commonFounders(_ context
 	return fc, nil
 }
 
+func (ec *executionContext) _RelatedCompany_commonDirectors(ctx context.Context, field graphql.CollectedField, obj *model.RelatedCompany) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_RelatedCompany_commonDirectors(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.CommonDirectors, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		return graphql.Null
+	}
+	res := resTmp.([]*model.Person)
+	fc.Result = res
+	return ec.marshalOPerson2ᚕᚖgithubᚗcomᚋegrulᚑsystemᚋservicesᚋapiᚑgatewayᚋinternalᚋgraphᚋmodelᚐPersonᚄ(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_RelatedCompany_commonDirectors(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "RelatedCompany",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "lastName":
+				return ec.fieldContext_Person_lastName(ctx, field)
+			case "firstName":
+				return ec.fieldContext_Person_firstName(ctx, field)
+			case "middleName":
+				return ec.fieldContext_Person_middleName(ctx, field)
+			case "inn":
+				return ec.fieldContext_Person_inn(ctx, field)
+			case "position":
+				return ec.fieldContext_Person_position(ctx, field)
+			case "positionCode":
+				return ec.fieldContext_Person_positionCode(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type Person", field.Name)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _RelatedCompany_commonAddress(ctx context.Context, field graphql.CollectedField, obj *model.RelatedCompany) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_RelatedCompany_commonAddress(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.CommonAddress, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		return graphql.Null
+	}
+	res := resTmp.(*model.Address)
+	fc.Result = res
+	return ec.marshalOAddress2ᚖgithubᚗcomᚋegrulᚑsystemᚋservicesᚋapiᚑgatewayᚋinternalᚋgraphᚋmodelᚐAddress(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_RelatedCompany_commonAddress(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "RelatedCompany",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "postalCode":
+				return ec.fieldContext_Address_postalCode(ctx, field)
+			case "regionCode":
+				return ec.fieldContext_Address_regionCode(ctx, field)
+			case "region":
+				return ec.fieldContext_Address_region(ctx, field)
+			case "district":
+				return ec.fieldContext_Address_district(ctx, field)
+			case "city":
+				return ec.fieldContext_Address_city(ctx, field)
+			case "locality":
+				return ec.fieldContext_Address_locality(ctx, field)
+			case "street":
+				return ec.fieldContext_Address_street(ctx, field)
+			case "house":
+				return ec.fieldContext_Address_house(ctx, field)
+			case "building":
+				return ec.fieldContext_Address_building(ctx, field)
+			case "flat":
+				return ec.fieldContext_Address_flat(ctx, field)
+			case "fullAddress":
+				return ec.fieldContext_Address_fullAddress(ctx, field)
+			case "fiasId":
+				return ec.fieldContext_Address_fiasId(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type Address", field.Name)
+		},
+	}
+	return fc, nil
+}
+
 func (ec *executionContext) _SearchResult_companies(ctx context.Context, field graphql.CollectedField, obj *model.SearchResult) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_SearchResult_companies(ctx, field)
 	if err != nil {
@@ -18363,6 +18511,10 @@ func (ec *executionContext) _RelatedCompany(ctx context.Context, sel ast.Selecti
 			out.Values[i] = ec._RelatedCompany_description(ctx, field, obj)
 		case "commonFounders":
 			out.Values[i] = ec._RelatedCompany_commonFounders(ctx, field, obj)
+		case "commonDirectors":
+			out.Values[i] = ec._RelatedCompany_commonDirectors(ctx, field, obj)
+		case "commonAddress":
+			out.Values[i] = ec._RelatedCompany_commonAddress(ctx, field, obj)
 		default:
 			panic("unknown field " + strconv.Quote(field.Name))
 		}
@@ -19623,6 +19775,16 @@ func (ec *executionContext) marshalNPageInfo2ᚖgithubᚗcomᚋegrulᚑsystemᚋ
 	return ec._PageInfo(ctx, sel, v)
 }
 
+func (ec *executionContext) marshalNPerson2ᚖgithubᚗcomᚋegrulᚑsystemᚋservicesᚋapiᚑgatewayᚋinternalᚋgraphᚋmodelᚐPerson(ctx context.Context, sel ast.SelectionSet, v *model.Person) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			ec.Errorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._Person(ctx, sel, v)
+}
+
 func (ec *executionContext) marshalNRegionStatistics2ᚕᚖgithubᚗcomᚋegrulᚑsystemᚋservicesᚋapiᚑgatewayᚋinternalᚋgraphᚋmodelᚐRegionStatisticsᚄ(ctx context.Context, sel ast.SelectionSet, v []*model.RegionStatistics) graphql.Marshaler {
 	ret := make(graphql.Array, len(v))
 	var wg sync.WaitGroup
@@ -20335,6 +20497,53 @@ func (ec *executionContext) unmarshalOPagination2ᚖgithubᚗcomᚋegrulᚑsyste
 	}
 	res, err := ec.unmarshalInputPagination(ctx, v)
 	return &res, graphql.ErrorOnPath(ctx, err)
+}
+
+func (ec *executionContext) marshalOPerson2ᚕᚖgithubᚗcomᚋegrulᚑsystemᚋservicesᚋapiᚑgatewayᚋinternalᚋgraphᚋmodelᚐPersonᚄ(ctx context.Context, sel ast.SelectionSet, v []*model.Person) graphql.Marshaler {
+	if v == nil {
+		return graphql.Null
+	}
+	ret := make(graphql.Array, len(v))
+	var wg sync.WaitGroup
+	isLen1 := len(v) == 1
+	if !isLen1 {
+		wg.Add(len(v))
+	}
+	for i := range v {
+		i := i
+		fc := &graphql.FieldContext{
+			Index:  &i,
+			Result: &v[i],
+		}
+		ctx := graphql.WithFieldContext(ctx, fc)
+		f := func(i int) {
+			defer func() {
+				if r := recover(); r != nil {
+					ec.Error(ctx, ec.Recover(ctx, r))
+					ret = nil
+				}
+			}()
+			if !isLen1 {
+				defer wg.Done()
+			}
+			ret[i] = ec.marshalNPerson2ᚖgithubᚗcomᚋegrulᚑsystemᚋservicesᚋapiᚑgatewayᚋinternalᚋgraphᚋmodelᚐPerson(ctx, sel, v[i])
+		}
+		if isLen1 {
+			f(i)
+		} else {
+			go f(i)
+		}
+
+	}
+	wg.Wait()
+
+	for _, e := range ret {
+		if e == graphql.Null {
+			return graphql.Null
+		}
+	}
+
+	return ret
 }
 
 func (ec *executionContext) marshalOPerson2ᚖgithubᚗcomᚋegrulᚑsystemᚋservicesᚋapiᚑgatewayᚋinternalᚋgraphᚋmodelᚐPerson(ctx context.Context, sel ast.SelectionSet, v *model.Person) graphql.Marshaler {

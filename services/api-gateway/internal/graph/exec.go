@@ -478,6 +478,135 @@ func (h *ManualHandler) handleEntrepreneurQuery(ctx context.Context, req *GraphQ
 		return &GraphQLResponse{Errors: []GraphQLError{{Message: err.Error()}}}, nil
 	}
 
+	// Если в запросе есть поля history или historyCount, загружаем их
+	hasHistory := strings.Contains(req.Query, "history")
+	hasHistoryCount := strings.Contains(req.Query, "historyCount")
+	
+	if (hasHistory || hasHistoryCount) && entrepreneur != nil {
+		var history []*model.HistoryRecord
+		var historyCount int
+		
+		// Загружаем историю если запрошена
+		if hasHistory {
+			// Извлекаем параметры limit и offset для истории из GraphQL запроса
+			var historyLimit, historyOffset *int
+			
+			// Сначала пробуем из variables
+			if limitVar, ok := req.Variables["limit"].(float64); ok {
+				l := int(limitVar)
+				historyLimit = &l
+			}
+			if offsetVar, ok := req.Variables["offset"].(float64); ok {
+				o := int(offsetVar)
+				historyOffset = &o
+			}
+			
+			// Если не нашли в variables, пробуем извлечь из строки запроса
+			if historyLimit == nil || historyOffset == nil {
+				// Ищем паттерн history(limit: X, offset: Y)
+				historyIdx := strings.Index(req.Query, "history(")
+				if historyIdx != -1 {
+					// Находим закрывающую скобку
+					start := historyIdx + len("history(")
+					end := strings.Index(req.Query[start:], ")")
+					if end != -1 {
+						argsStr := req.Query[start : start+end]
+						
+						// Парсим limit
+						if limitIdx := strings.Index(argsStr, "limit:"); limitIdx != -1 {
+							limitStart := limitIdx + len("limit:")
+							for limitStart < len(argsStr) && (argsStr[limitStart] == ' ' || argsStr[limitStart] == '\t') {
+								limitStart++
+							}
+							var limitVal int
+							if n, err := fmt.Sscanf(argsStr[limitStart:], "%d", &limitVal); err == nil && n == 1 {
+								historyLimit = &limitVal
+							}
+						}
+						
+						// Парсим offset
+						if offsetIdx := strings.Index(argsStr, "offset:"); offsetIdx != -1 {
+							offsetStart := offsetIdx + len("offset:")
+							for offsetStart < len(argsStr) && (argsStr[offsetStart] == ' ' || argsStr[offsetStart] == '\t') {
+								offsetStart++
+							}
+							var offsetVal int
+							if n, err := fmt.Sscanf(argsStr[offsetStart:], "%d", &offsetVal); err == nil && n == 1 {
+								historyOffset = &offsetVal
+							}
+						}
+					}
+				}
+			}
+			
+			historyResult, err := h.resolver.Entrepreneur().History(ctx, entrepreneur, historyLimit, historyOffset)
+			if err == nil {
+				history = historyResult
+			}
+		}
+		
+		// Загружаем количество записей истории если запрошено
+		if hasHistoryCount {
+			historyCountResult, err := h.resolver.Entrepreneur().HistoryCount(ctx, entrepreneur)
+			if err == nil {
+				historyCount = historyCountResult
+			}
+		}
+		
+		// Создаем map с данными ИП
+		entrepreneurData := map[string]interface{}{
+			"ogrnip":                 entrepreneur.Ogrnip,
+			"ogrnipDate":             entrepreneur.OgrnipDate,
+			"inn":                    entrepreneur.Inn,
+			"lastName":               entrepreneur.LastName,
+			"firstName":              entrepreneur.FirstName,
+			"middleName":             entrepreneur.MiddleName,
+			"gender":                 entrepreneur.Gender,
+			"citizenshipType":        entrepreneur.CitizenshipType,
+			"citizenshipCountryCode": entrepreneur.CitizenshipCountryCode,
+			"citizenshipCountryName": entrepreneur.CitizenshipCountryName,
+			"status":                 entrepreneur.Status,
+			"statusCode":             entrepreneur.StatusCode,
+			"terminationMethod":      entrepreneur.TerminationMethod,
+			"registrationDate":       entrepreneur.RegistrationDate,
+			"terminationDate":        entrepreneur.TerminationDate,
+			"extractDate":            entrepreneur.ExtractDate,
+			"address":                entrepreneur.Address,
+			"email":                  entrepreneur.Email,
+			"mainActivity":           entrepreneur.MainActivity,
+			"activities":             entrepreneur.Activities,
+			"regAuthority":           entrepreneur.RegAuthority,
+			"taxAuthority":           entrepreneur.TaxAuthority,
+			"pfrRegNumber":           entrepreneur.PfrRegNumber,
+			"fssRegNumber":           entrepreneur.FssRegNumber,
+			"licensesCount":          entrepreneur.LicensesCount,
+			"isBankrupt":             entrepreneur.IsBankrupt,
+			"bankruptcyDate":         entrepreneur.BankruptcyDate,
+			"bankruptcyCaseNumber":   entrepreneur.BankruptcyCaseNumber,
+			"lastGrn":                entrepreneur.LastGrn,
+			"lastGrnDate":            entrepreneur.LastGrnDate,
+			"sourceFile":             entrepreneur.SourceFile,
+			"versionDate":            entrepreneur.VersionDate,
+			"createdAt":              entrepreneur.CreatedAt,
+			"updatedAt":              entrepreneur.UpdatedAt,
+		}
+		
+		// Добавляем history если она была загружена
+		if history != nil {
+			entrepreneurData["history"] = history
+		}
+		
+		// Добавляем historyCount если он был загружен
+		if hasHistoryCount {
+			entrepreneurData["historyCount"] = historyCount
+		}
+		
+		result := map[string]interface{}{
+			"entrepreneur": entrepreneurData,
+		}
+		return &GraphQLResponse{Data: result}, nil
+	}
+
 	return &GraphQLResponse{Data: map[string]interface{}{"entrepreneur": entrepreneur}}, nil
 }
 

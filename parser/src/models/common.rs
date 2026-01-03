@@ -65,7 +65,7 @@ pub struct Address {
     pub house: Option<String>,
     /// Корпус
     pub building: Option<String>,
-    /// Квартира/Офис
+    /// Квартира
     pub flat: Option<String>,
     /// Полный адрес одной строкой
     pub full_address: Option<String>,

@@ -18,8 +18,7 @@ HISTORY_BUCKETS=10
 # 
 # Примеры использования:
 # make import-basic HISTORY_MAX_MEMORY=4000000000 HISTORY_BUCKETS=200
-# make import-low-memory    # 4 ГБ лимит, 200 батчей
-# make import-high-memory   # 8 ГБ лимит, 50 батчей
+
 
 # Цвета
 CYAN = \033[0;36m

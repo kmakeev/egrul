@@ -34,11 +34,15 @@ func (r *entrepreneurResolver) History(ctx context.Context, obj *model.Entrepren
 		o = *offset
 	}
 
+	r.Logger.Info("History resolver called", zap.String("ogrnip", obj.Ogrnip))
+
 	history, err := r.EntrepreneurService.GetHistory(ctx, obj.Ogrnip, l, o)
 	if err != nil {
 		r.Logger.Error("failed to get history", zap.String("ogrnip", obj.Ogrnip), zap.Error(err))
 		return nil, err
 	}
+	
+	r.Logger.Info("History loaded", zap.String("ogrnip", obj.Ogrnip), zap.Int("count", len(history)))
 	return history, nil
 }
 

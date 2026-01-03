@@ -57,11 +57,18 @@ func (r *queryResolver) SearchCompanies(ctx context.Context, query string, limit
 
 // Entrepreneur is the resolver for the entrepreneur field.
 func (r *queryResolver) Entrepreneur(ctx context.Context, ogrnip string) (*model.Entrepreneur, error) {
+	r.Logger.Info("🔍 Entrepreneur query resolver called", zap.String("ogrnip", ogrnip))
+	
 	entrepreneur, err := r.EntrepreneurService.GetByOGRNIP(ctx, ogrnip)
 	if err != nil {
 		r.Logger.Error("failed to get entrepreneur by ogrnip", zap.String("ogrnip", ogrnip), zap.Error(err))
 		return nil, err
 	}
+	
+	r.Logger.Info("✅ Entrepreneur loaded successfully", 
+		zap.String("ogrnip", ogrnip), 
+		zap.String("name", entrepreneur.FirstName+" "+entrepreneur.LastName))
+	
 	return entrepreneur, nil
 }
 
@@ -208,4 +215,5 @@ func (r *queryResolver) RelatedCompanies(ctx context.Context, inn string, limit 
 	}
 	return r.CompanyService.GetRelatedCompanies(ctx, inn, l, o)
 }
+
 

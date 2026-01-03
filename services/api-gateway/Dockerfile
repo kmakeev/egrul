@@ -21,6 +21,7 @@ RUN go run github.com/99designs/gqlgen generate || true
 # Удаляем конфликтующие файлы ПОСЛЕ генерации
 RUN rm -f internal/graph/schema.resolvers.go
 RUN rm -f internal/graph/company.resolvers.go
+RUN rm -f internal/graph/entrepreneur.resolvers.go
 
 # Проверяем какие файлы остались
 RUN ls -la internal/graph/*.go

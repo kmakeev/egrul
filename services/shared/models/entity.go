@@ -43,7 +43,6 @@ type Address struct {
 	City        string `json:"city,omitempty"`
 	Street      string `json:"street,omitempty"`
 	House       string `json:"house,omitempty"`
-	Office      string `json:"office,omitempty"`
 	FullAddress string `json:"full_address,omitempty"`
 }
 

@@ -33,6 +33,8 @@ impl EgripXmlParser {
         None
     }
 
+
+
     /// Парсинг XML контента
     pub fn parse(&self, content: &str) -> Result<Vec<EgripRecord>> {
         let mut reader = Reader::from_str(content);
@@ -186,6 +188,22 @@ impl EgripXmlParser {
                                 }
                             }
                         }
+                        
+                        // Сохраняем адрес регистрирующего органа как строку
+                        if let Some(adro) = e.get_attr("АдрРО".as_bytes()) {
+                            // Если у нас еще нет адреса, создаем новый с полным адресом из АдрРО
+                            if record.address.is_none() {
+                                let mut address = Address::default();
+                                address.full_address = Some(adro);
+                                record.address = Some(address);
+                            } else if let Some(ref mut address) = record.address {
+                                // Дополняем существующий адрес полным адресом из АдрРО
+                                if address.full_address.is_none() {
+                                    address.full_address = Some(adro);
+                                }
+                            }
+                        }
+                        
                         record.registration = Some(self.parse_registration(reader, e)?);
                         depth -= 1;
                     }
@@ -418,6 +436,37 @@ impl EgripXmlParser {
                         address.kladr_code = e.get_attr("КодАдрКладр".as_bytes())
                             .or_else(|| e.get_attr("КодКладр".as_bytes()));
                     }
+                    // Улица
+                    else if tag_matches(tag, "Улица".as_bytes()) {
+                        // Собираем улицу из типа и названия: "УЛ. БОЛЬШАЯ"
+                        let typ = e.get_attr("ТипУлица".as_bytes())
+                            .or_else(|| e.get_attr("Тип".as_bytes()));
+                        let name = e.get_attr("НаимУлица".as_bytes())
+                            .or_else(|| e.get_attr("Наименов".as_bytes()))
+                            .or_else(|| e.get_attr("Наименование".as_bytes()));
+                        
+                        address.street = match (typ, name) {
+                            (Some(t), Some(n)) => Some(format!("{} {}", t, n)),
+                            (None, Some(n)) => Some(n),
+                            (Some(t), None) => Some(t),
+                            _ => None,
+                        };
+                    }
+                    // Район
+                    else if tag_matches(tag, "Район".as_bytes()) {
+                        address.district = e.get_attr("НаимРайон".as_bytes())
+                            .or_else(|| e.get_attr("Наименов".as_bytes()))
+                            .or_else(|| e.get_attr("Наименование".as_bytes()));
+                    }
+                    
+                    // Дом, корпус, квартира, офис - из атрибутов адреса
+                    address.house = address.house.take().or_else(|| e.get_attr("Дом".as_bytes()));
+                    address.building = address.building.take().or_else(|| e.get_attr("Корп".as_bytes())
+                        .or_else(|| e.get_attr("Корпус".as_bytes())));
+                    address.flat = address.flat.take().or_else(|| e.get_attr("Кварт".as_bytes())
+                        .or_else(|| e.get_attr("Квартира".as_bytes())));
+                    address.fias_id = address.fias_id.take().or_else(|| e.get_attr("ИдНом".as_bytes())
+                        .or_else(|| e.get_attr("ФИАС".as_bytes())));
 
                     if is_start {
                         depth += 1;
