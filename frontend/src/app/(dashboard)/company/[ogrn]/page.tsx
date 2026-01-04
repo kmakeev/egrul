@@ -97,27 +97,49 @@ function CompanyPageLoading() {
         {/* Skeleton для заголовка */}
         <div className="bg-muted rounded-lg border p-6">
           <div className="animate-pulse">
-            <div className="h-8 bg-muted-foreground/20 rounded w-3/4 mb-4"></div>
-            <div className="h-4 bg-muted-foreground/20 rounded w-1/2 mb-6"></div>
+            <div className="flex items-start justify-between mb-4">
+              <div className="flex-1">
+                <div className="h-8 bg-muted-foreground/20 rounded w-3/4 mb-2"></div>
+                <div className="h-6 bg-muted-foreground/20 rounded w-1/2 mb-4"></div>
+              </div>
+              <div className="flex gap-2">
+                <div className="h-8 w-24 bg-muted-foreground/20 rounded"></div>
+                <div className="h-8 w-32 bg-muted-foreground/20 rounded"></div>
+                <div className="h-8 w-28 bg-muted-foreground/20 rounded"></div>
+              </div>
+            </div>
             <div className="grid grid-cols-3 gap-6">
-              <div className="h-16 bg-muted-foreground/20 rounded"></div>
-              <div className="h-16 bg-muted-foreground/20 rounded"></div>
-              <div className="h-16 bg-muted-foreground/20 rounded"></div>
+              <div className="space-y-2">
+                <div className="h-4 bg-muted-foreground/20 rounded w-16"></div>
+                <div className="h-6 bg-muted-foreground/20 rounded w-32"></div>
+              </div>
+              <div className="space-y-2">
+                <div className="h-4 bg-muted-foreground/20 rounded w-12"></div>
+                <div className="h-6 bg-muted-foreground/20 rounded w-28"></div>
+              </div>
+              <div className="space-y-2">
+                <div className="h-4 bg-muted-foreground/20 rounded w-14"></div>
+                <div className="h-6 bg-muted-foreground/20 rounded w-24"></div>
+              </div>
             </div>
           </div>
         </div>
         
         {/* Skeleton для табов */}
-        <div className="bg-muted rounded-lg border p-6">
+        <div className="bg-muted rounded-lg border">
           <div className="animate-pulse">
-            <div className="flex space-x-4 mb-6">
+            <div className="flex border-b">
               {[1, 2, 3, 4, 5].map((i) => (
-                <div key={i} className="h-10 bg-muted-foreground/20 rounded w-32"></div>
+                <div key={i} className="flex-1 p-4">
+                  <div className="h-4 bg-muted-foreground/20 rounded"></div>
+                </div>
               ))}
             </div>
-            <div className="space-y-4">
-              <div className="h-32 bg-muted-foreground/20 rounded"></div>
-              <div className="h-32 bg-muted-foreground/20 rounded"></div>
+            <div className="p-6 space-y-4">
+              <div className="grid gap-6 md:grid-cols-2">
+                <div className="h-48 bg-muted-foreground/20 rounded"></div>
+                <div className="h-48 bg-muted-foreground/20 rounded"></div>
+              </div>
             </div>
           </div>
         </div>
