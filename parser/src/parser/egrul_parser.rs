@@ -7,10 +7,10 @@ use tracing::{debug, warn};
 use crate::error::{Error, Result};
 use crate::models::{
     EgrulRecord, Address, Capital, Activity, Person, Founder, Share,
-    HistoryRecord, RegistrationAuthority, TaxAuthority, 
-    PensionFund, SocialInsurance,
+    HistoryRecord, RegistrationAuthority, TaxAuthority,
+    PensionFund, SocialInsurance, License,
 };
-use crate::models::egrul::{HeadInfo, RegistrationInfo};
+use crate::models::egrul::{HeadInfo, RegistrationInfo, Branch, BranchType};
 use super::attributes::{AttributeExt, attr_names, tag_names, tag_matches, normalize_string};
 
 /// Парсер XML для ЕГРЮЛ
@@ -212,6 +212,18 @@ impl EgrulXmlParser {
                         if let Some(c) = code {
                             record.status_code = Some(c);
                         }
+                    }
+                    // Лицензии
+                    else if tag_matches(tag, "СвЛицензия".as_bytes()) {
+                        if let Ok(license) = self.parse_license(reader, e) {
+                            record.licenses.push(license);
+                        }
+                        depth -= 1;
+                    }
+                    // Подразделения (филиалы и представительства)
+                    else if tag_matches(tag, "СвПодразд".as_bytes()) {
+                        self.parse_podrazd(reader, e, &mut record)?;
+                        depth -= 1;
                     }
                 }
                 Ok(Event::Empty(ref e)) => {
@@ -1162,6 +1174,217 @@ impl EgrulXmlParser {
         }
 
         Ok(())
+    }
+
+    /// Парсинг лицензии
+    fn parse_license(&self, reader: &mut Reader<&[u8]>, start: &BytesStart) -> Result<License> {
+        let mut license = License::default();
+
+        // Атрибуты корневого элемента СвЛицензия
+        license.number = start.get_attr("НомЛиц".as_bytes())
+            .unwrap_or_default();
+        license.series = start.get_attr("СерЛиц".as_bytes());
+        license.start_date = start.get_date_attr("ДатаНачЛиц".as_bytes())
+            .or_else(|| start.get_date_attr("ДатаЛиц".as_bytes()));
+        license.end_date = start.get_date_attr("ДатаОкончЛиц".as_bytes());
+
+        let mut buf = Vec::new();
+        let mut depth = 1;
+        let mut activities: Vec<String> = Vec::new();
+
+        loop {
+            match reader.read_event_into(&mut buf) {
+                Ok(Event::Start(ref e)) => {
+                    depth += 1;
+                    let name = e.name();
+                    let tag = name.as_ref();
+
+                    // Вид деятельности (может быть несколько)
+                    if tag_matches(tag, "НаимЛицВидДеят".as_bytes()) {
+                        // Получаем текстовое содержимое
+                        let mut inner_buf = Vec::new();
+                        if let Ok(Event::Text(text)) = reader.read_event_into(&mut inner_buf) {
+                            let activity_text = String::from_utf8_lossy(&text).trim().to_string();
+                            if !activity_text.is_empty() {
+                                activities.push(activity_text);
+                            }
+                        }
+                    }
+                    // Лицензирующий орган
+                    else if tag_matches(tag, "ЛицОргВыдЛиц".as_bytes()) {
+                        let mut inner_buf = Vec::new();
+                        if let Ok(Event::Text(text)) = reader.read_event_into(&mut inner_buf) {
+                            license.authority = Some(String::from_utf8_lossy(&text).trim().to_string());
+                        }
+                    }
+                }
+                Ok(Event::Empty(ref e)) => {
+                    let name = e.name();
+                    let tag = name.as_ref();
+
+                    // ГРН дата (для дополнительной информации)
+                    if tag_matches(tag, "ГРНДата".as_bytes()) || tag_matches(tag, "ГРНДатаПерв".as_bytes()) {
+                        // Можно извлечь ГРН если нужно
+                    }
+                }
+                Ok(Event::End(_)) => {
+                    depth -= 1;
+                    if depth == 0 {
+                        break;
+                    }
+                }
+                Ok(Event::Eof) => break,
+                Err(e) => return Err(Error::Xml(e)),
+                _ => {}
+            }
+            buf.clear();
+        }
+
+        // Объединяем виды деятельности
+        if !activities.is_empty() {
+            license.activity = Some(activities.join("; "));
+        }
+
+        // Определяем статус лицензии на основе дат
+        if let Some(end_date) = license.end_date {
+            let today = chrono::Local::now().date_naive();
+            if end_date < today {
+                license.status = Some("expired".to_string());
+            } else {
+                license.status = Some("active".to_string());
+            }
+        } else {
+            license.status = Some("active".to_string());
+        }
+
+        Ok(license)
+    }
+
+    /// Парсинг подразделений (филиалы и представительства)
+    fn parse_podrazd(&self, reader: &mut Reader<&[u8]>, _start: &BytesStart, record: &mut EgrulRecord) -> Result<()> {
+        let mut buf = Vec::new();
+        let mut depth = 1;
+
+        loop {
+            match reader.read_event_into(&mut buf) {
+                Ok(Event::Start(ref e)) => {
+                    depth += 1;
+                    let name = e.name();
+                    let tag = name.as_ref();
+
+                    // Филиал
+                    if tag_matches(tag, "СвФилиал".as_bytes()) {
+                        if let Ok(branch) = self.parse_branch(reader, e, BranchType::Branch) {
+                            record.branches.push(branch);
+                        }
+                        depth -= 1;
+                    }
+                    // Представительство
+                    else if tag_matches(tag, "СвПред662".as_bytes()) || tag_matches(tag, "СвПредстав".as_bytes()) {
+                        if let Ok(branch) = self.parse_branch(reader, e, BranchType::Representative) {
+                            record.branches.push(branch);
+                        }
+                        depth -= 1;
+                    }
+                }
+                Ok(Event::End(_)) => {
+                    depth -= 1;
+                    if depth == 0 {
+                        break;
+                    }
+                }
+                Ok(Event::Eof) => break,
+                Err(e) => return Err(Error::Xml(e)),
+                _ => {}
+            }
+            buf.clear();
+        }
+
+        Ok(())
+    }
+
+    /// Парсинг филиала или представительства
+    fn parse_branch(&self, reader: &mut Reader<&[u8]>, _start: &BytesStart, branch_type: BranchType) -> Result<Branch> {
+        let mut branch = Branch {
+            branch_type,
+            ..Default::default()
+        };
+
+        let mut buf = Vec::new();
+        let mut depth = 1;
+
+        loop {
+            match reader.read_event_into(&mut buf) {
+                Ok(Event::Start(ref e)) => {
+                    depth += 1;
+                    let name = e.name();
+                    let tag = name.as_ref();
+
+                    // Наименование
+                    if tag_matches(tag, "СвНаим".as_bytes()) {
+                        branch.name = e.get_attr("НаимПолн".as_bytes());
+                    }
+                    // Адрес (АдрМНРФ или СвАдрМН или АдрМН)
+                    else if tag_matches(tag, "АдрМНРФ".as_bytes()) || tag_matches(tag, "СвАдрМН".as_bytes()) || tag_matches(tag, "АдрМН".as_bytes()) {
+                        branch.address = Some(self.parse_address(reader, e)?);
+                        depth -= 1;
+                    }
+                    // Адрес в формате ФИАС
+                    else if tag_matches(tag, "АдрМНФИАС".as_bytes()) {
+                        // Если уже есть адрес от предыдущего блока, не перезаписываем
+                        if branch.address.is_none() {
+                            branch.address = Some(self.parse_address(reader, e)?);
+                        } else {
+                            self.skip_element(reader)?;
+                        }
+                        depth -= 1;
+                    }
+                    // Учет в налоговом органе филиала
+                    else if tag_matches(tag, "СвУчетНОФилиал".as_bytes()) || tag_matches(tag, "СвУчетНО".as_bytes()) {
+                        branch.kpp = e.get_attr("КПП".as_bytes());
+                    }
+                    // ГРН дата
+                    else if tag_matches(tag, "ГРНДатаПерв".as_bytes()) || tag_matches(tag, "ГРНДата".as_bytes()) {
+                        if branch.grn.is_none() {
+                            branch.grn = e.get_attr("ГРН".as_bytes());
+                            branch.grn_date = e.get_date_attr("ДатаЗаписи".as_bytes());
+                        }
+                    }
+                }
+                Ok(Event::Empty(ref e)) => {
+                    let name = e.name();
+                    let tag = name.as_ref();
+
+                    // Наименование (empty element)
+                    if tag_matches(tag, "СвНаим".as_bytes()) {
+                        branch.name = e.get_attr("НаимПолн".as_bytes());
+                    }
+                    // КПП
+                    else if tag_matches(tag, "СвУчетНОФилиал".as_bytes()) || tag_matches(tag, "СвУчетНО".as_bytes()) {
+                        branch.kpp = e.get_attr("КПП".as_bytes());
+                    }
+                    // ГРН
+                    else if tag_matches(tag, "ГРНДатаПерв".as_bytes()) || tag_matches(tag, "ГРНДата".as_bytes()) {
+                        if branch.grn.is_none() {
+                            branch.grn = e.get_attr("ГРН".as_bytes());
+                            branch.grn_date = e.get_date_attr("ДатаЗаписи".as_bytes());
+                        }
+                    }
+                }
+                Ok(Event::End(_)) => {
+                    depth -= 1;
+                    if depth == 0 {
+                        break;
+                    }
+                }
+                Ok(Event::Eof) => break,
+                Err(e) => return Err(Error::Xml(e)),
+                _ => {}
+            }
+            buf.clear();
+        }
+
+        Ok(branch)
     }
 }
 

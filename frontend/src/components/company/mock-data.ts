@@ -150,6 +150,92 @@ export function getMockCompanyByOgrn(ogrn: string): LegalEntity | null {
     return mockCompanyData;
   }
   
+  // Для компании САО "ВСК" с филиалами
+  if (ogrn === "1027700186062") {
+    return {
+      ...mockCompanyData,
+      ogrn: "1027700186062",
+      inn: "7710026574",
+      kpp: "773101001",
+      fullName: "СТРАХОВОЕ АКЦИОНЕРНОЕ ОБЩЕСТВО \"ВСК\"",
+      shortName: "САО \"ВСК\"",
+      status: "Действующая",
+      registrationDate: "2002-09-04",
+      address: {
+        postalCode: "121552",
+        regionCode: "77",
+        region: "г. Москва",
+        city: "Москва",
+        street: "ул. Островная",
+        house: "4",
+        fullAddress: "121552, г. Москва, ул. Островная, д. 4"
+      },
+      mainActivity: {
+        code: "65.12",
+        name: "Страхование, кроме страхования жизни"
+      },
+      capital: {
+        amount: 12118000000,
+        currency: "RUB"
+      },
+      head: {
+        lastName: "ТАРНОВСКИЙ",
+        firstName: "АЛЕКСАНДР",
+        middleName: "ЯКОВЛЕВИЧ",
+        inn: "690139782188",
+        position: "ГЕНЕРАЛЬНЫЙ ДИРЕКТОР"
+      }
+    };
+  }
+  
+  // Для компании с лицензиями (из примера)
+  if (ogrn === "1022301598549") {
+    return {
+      ...mockCompanyData,
+      ogrn: "1022301598549",
+      inn: "2310031475",
+      kpp: "231001001",
+      fullName: "ПРЕДСТАВИТЕЛЬСТВО В КИТАЙСКОЙ НАРОДНОЙ РЕСПУБЛИКЕ",
+      shortName: undefined,
+      status: "Действующая",
+      registrationDate: "2002-08-12",
+      address: {
+        postalCode: "350002",
+        regionCode: "23",
+        region: "КРАСНОДАРСКИЙ",
+        city: "КРАСНОДАР",
+        street: "УЛИЦА ИМ. ЛЕВАНЕВСКОГО",
+        house: "ДОМ 185",
+        fullAddress: "350002, г. КРАСНОДАР, ул. УЛИЦА ИМ. ЛЕВАНЕВСКОГО, д. ДОМ 185"
+      },
+      mainActivity: {
+        code: "47.11",
+        name: "Торговля розничная преимущественно пищевыми продуктами, включая напитки, и табачными изделиями в неспециализированных магазинах"
+      },
+      capital: {
+        amount: 100000000,
+        currency: "RUB"
+      },
+      head: {
+        lastName: "МЕЛЕШИНА",
+        firstName: "АННА",
+        middleName: "ЮРЬЕВНА",
+        inn: "781313541151",
+        position: "ГЕНЕРАЛЬНЫЙ ДИРЕКТОР"
+      },
+      founders: [
+        {
+          type: "RUSSIAN_COMPANY",
+          name: "ПУБЛИЧНОЕ АКЦИОНЕРНОЕ ОБЩЕСТВО \"МАГНИТ\"",
+          inn: "2309085638",
+          ogrn: "1032304945947",
+          sharePercent: 100,
+          shareNominalValue: 100000000
+        }
+      ]
+    };
+  }
+  
   // Возвращаем модифицированную версию для других ОГРН
   return {
     ...mockCompanyData,

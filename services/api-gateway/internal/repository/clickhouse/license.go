@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"time"
 
 	"github.com/egrul-system/services/api-gateway/internal/graph/model"
 	"go.uber.org/zap"
@@ -37,6 +38,8 @@ type licenseRow struct {
 	EndDate       sql.NullTime   `ch:"end_date"`
 	Authority     sql.NullString `ch:"authority"`
 	Status        string         `ch:"status"`
+	VersionDate   time.Time      `ch:"version_date"`
+	CreatedAt     time.Time      `ch:"created_at"`
 }
 
 func (r *licenseRow) toModel() *model.License {

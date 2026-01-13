@@ -103,6 +103,8 @@ impl ParquetOutputWriter {
             Field::new("founders_count", DataType::Int32, true),
             Field::new("founders", DataType::Utf8, true), // JSON массив учредителей
             Field::new("history", DataType::Utf8, true), // JSON массив истории изменений
+            Field::new("licenses", DataType::Utf8, true), // JSON массив лицензий
+            Field::new("branches", DataType::Utf8, true), // JSON массив филиалов
             Field::new("extract_date", DataType::Utf8, true),
         ])
     }
@@ -277,6 +279,24 @@ impl ParquetOutputWriter {
                 }
             })
             .collect();
+        let licenses: StringArray = records.iter()
+            .map(|r| {
+                if r.licenses.is_empty() {
+                    None
+                } else {
+                    serde_json::to_string(&r.licenses).ok()
+                }
+            })
+            .collect();
+        let branches: StringArray = records.iter()
+            .map(|r| {
+                if r.branches.is_empty() {
+                    None
+                } else {
+                    serde_json::to_string(&r.branches).ok()
+                }
+            })
+            .collect();
         let extract_date: StringArray = records.iter()
             .map(|r| r.extract_date.map(|d| d.to_string()))
             .collect();
@@ -321,6 +341,8 @@ impl ParquetOutputWriter {
                 Arc::new(founders_count),
                 Arc::new(founders),
                 Arc::new(history),
+                Arc::new(licenses),
+                Arc::new(branches),
                 Arc::new(extract_date),
             ],
         )?;

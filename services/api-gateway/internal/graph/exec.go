@@ -165,25 +165,43 @@ func (h *ManualHandler) handleCompanyQuery(ctx context.Context, req *GraphQLRequ
 		return &GraphQLResponse{Errors: []GraphQLError{{Message: err.Error()}}}, nil
 	}
 
-	// Если в запросе есть поля founders, history или relatedCompanies, загружаем их
+	// Если в запросе есть поля founders, history, relatedCompanies, licenses или branches, загружаем их
 	hasFounders := strings.Contains(req.Query, "founders")
 	hasHistory := strings.Contains(req.Query, "history")
 	hasRelatedCompanies := strings.Contains(req.Query, "relatedCompanies")
-	
+	hasLicenses := strings.Contains(req.Query, "licenses")
+	hasBranches := strings.Contains(req.Query, "branches")
+
+	// TEMPORARY DEBUG LOGGING
+	fmt.Printf("=== COMPANY QUERY DEBUG ===\n")
+	fmt.Printf("OGRN: %s\n", ogrn)
+	fmt.Printf("Query: %s\n", req.Query)
+	fmt.Printf("hasFounders: %v\n", hasFounders)
+	fmt.Printf("hasHistory: %v\n", hasHistory)
+	fmt.Printf("hasRelatedCompanies: %v\n", hasRelatedCompanies)
+	fmt.Printf("hasLicenses: %v\n", hasLicenses)
+	fmt.Printf("hasBranches: %v\n", hasBranches)
+	fmt.Printf("company != nil: %v\n", company != nil)
+	fmt.Printf("===========================\n")
+
 	// #region agent log
-	agentLog("history-debug", "exec.go:handleCompanyQuery", "checking for founders, history and relatedCompanies fields", map[string]interface{}{
+	agentLog("history-debug", "exec.go:handleCompanyQuery", "checking for founders, history, relatedCompanies, licenses and branches fields", map[string]interface{}{
 		"hasFounders": hasFounders,
 		"hasHistory": hasHistory,
 		"hasRelatedCompanies": hasRelatedCompanies,
+		"hasLicenses": hasLicenses,
+		"hasBranches": hasBranches,
 		"query": req.Query,
 	})
 	// #endregion
-	
-	if (hasFounders || hasHistory || hasRelatedCompanies) && company != nil {
+
+	if (hasFounders || hasHistory || hasRelatedCompanies || hasLicenses || hasBranches) && company != nil {
 		var founders []*model.Founder
 		var history []*model.HistoryRecord
 		var relatedCompanies []*model.RelatedCompany
-		
+		var licenses []*model.License
+		var branches []*model.Branch
+
 		// Загружаем учредителей если запрошены
 		if hasFounders {
 			agentLog("history-debug", "exec.go:handleCompanyQuery", "loading founders", map[string]interface{}{"ogrn": company.Ogrn})
@@ -274,7 +292,7 @@ func (h *ManualHandler) handleCompanyQuery(ctx context.Context, req *GraphQLRequ
 		// Загружаем связанные компании если запрошены
 		if hasRelatedCompanies {
 			agentLog("history-debug", "exec.go:handleCompanyQuery", "loading related companies", map[string]interface{}{"ogrn": company.Ogrn})
-			
+
 			// Для связанных компаний используем стандартные параметры
 			relatedResult, err := h.resolver.Company().RelatedCompanies(ctx, company, nil, nil)
 			if err == nil {
@@ -286,7 +304,35 @@ func (h *ManualHandler) handleCompanyQuery(ctx context.Context, req *GraphQLRequ
 				agentLog("history-debug", "exec.go:handleCompanyQuery", "related companies error", map[string]interface{}{"error": err.Error()})
 			}
 		}
-		
+
+		// Загружаем лицензии если запрошены
+		if hasLicenses {
+			agentLog("history-debug", "exec.go:handleCompanyQuery", "loading licenses", map[string]interface{}{"ogrn": company.Ogrn})
+			licensesResult, err := h.resolver.Company().Licenses(ctx, company)
+			if err == nil {
+				licenses = licensesResult
+				agentLog("history-debug", "exec.go:handleCompanyQuery", "licenses loaded", map[string]interface{}{
+					"count": len(licenses),
+				})
+			} else {
+				agentLog("history-debug", "exec.go:handleCompanyQuery", "licenses error", map[string]interface{}{"error": err.Error()})
+			}
+		}
+
+		// Загружаем филиалы если запрошены
+		if hasBranches {
+			agentLog("history-debug", "exec.go:handleCompanyQuery", "loading branches", map[string]interface{}{"ogrn": company.Ogrn})
+			branchesResult, err := h.resolver.Company().Branches(ctx, company)
+			if err == nil {
+				branches = branchesResult
+				agentLog("history-debug", "exec.go:handleCompanyQuery", "branches loaded", map[string]interface{}{
+					"count": len(branches),
+				})
+			} else {
+				agentLog("history-debug", "exec.go:handleCompanyQuery", "branches error", map[string]interface{}{"error": err.Error()})
+			}
+		}
+
 		// Создаем map с данными компании
 		companyData := map[string]interface{}{
 			"ogrn":          company.Ogrn,
@@ -354,7 +400,23 @@ func (h *ManualHandler) handleCompanyQuery(ctx context.Context, req *GraphQLRequ
 			}
 			companyData["relatedCompanies"] = relatedCompanies
 		}
-		
+
+		// Добавляем licenses если они были запрошены
+		if hasLicenses {
+			if licenses == nil {
+				licenses = []*model.License{}
+			}
+			companyData["licenses"] = licenses
+		}
+
+		// Добавляем branches если они были запрошены
+		if hasBranches {
+			if branches == nil {
+				branches = []*model.Branch{}
+			}
+			companyData["branches"] = branches
+		}
+
 		result := map[string]interface{}{
 			"company": companyData,
 		}
@@ -478,14 +540,16 @@ func (h *ManualHandler) handleEntrepreneurQuery(ctx context.Context, req *GraphQ
 		return &GraphQLResponse{Errors: []GraphQLError{{Message: err.Error()}}}, nil
 	}
 
-	// Если в запросе есть поля history или historyCount, загружаем их
+	// Если в запросе есть поля history, historyCount или licenses, загружаем их
 	hasHistory := strings.Contains(req.Query, "history")
 	hasHistoryCount := strings.Contains(req.Query, "historyCount")
-	
-	if (hasHistory || hasHistoryCount) && entrepreneur != nil {
+	hasLicenses := strings.Contains(req.Query, "licenses")
+
+	if (hasHistory || hasHistoryCount || hasLicenses) && entrepreneur != nil {
 		var history []*model.HistoryRecord
 		var historyCount int
-		
+		var licenses []*model.License
+
 		// Загружаем историю если запрошена
 		if hasHistory {
 			// Извлекаем параметры limit и offset для истории из GraphQL запроса
@@ -552,7 +616,15 @@ func (h *ManualHandler) handleEntrepreneurQuery(ctx context.Context, req *GraphQ
 				historyCount = historyCountResult
 			}
 		}
-		
+
+		// Загружаем лицензии если запрошены
+		if hasLicenses {
+			licensesResult, err := h.resolver.Entrepreneur().Licenses(ctx, entrepreneur)
+			if err == nil {
+				licenses = licensesResult
+			}
+		}
+
 		// Создаем map с данными ИП
 		entrepreneurData := map[string]interface{}{
 			"ogrnip":                 entrepreneur.Ogrnip,
@@ -600,7 +672,15 @@ func (h *ManualHandler) handleEntrepreneurQuery(ctx context.Context, req *GraphQ
 		if hasHistoryCount {
 			entrepreneurData["historyCount"] = historyCount
 		}
-		
+
+		// Добавляем licenses если они были запрошены
+		if hasLicenses {
+			if licenses == nil {
+				licenses = []*model.License{}
+			}
+			entrepreneurData["licenses"] = licenses
+		}
+
 		result := map[string]interface{}{
 			"entrepreneur": entrepreneurData,
 		}

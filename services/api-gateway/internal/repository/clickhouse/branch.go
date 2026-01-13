@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"time"
 
 	"github.com/egrul-system/services/api-gateway/internal/graph/model"
 	"go.uber.org/zap"
@@ -37,6 +38,10 @@ type branchRow struct {
 	Region      sql.NullString `ch:"region"`
 	City        sql.NullString `ch:"city"`
 	FullAddress sql.NullString `ch:"full_address"`
+	Grn         sql.NullString `ch:"grn"`
+	GrnDate     sql.NullTime   `ch:"grn_date"`
+	VersionDate time.Time      `ch:"version_date"`
+	CreatedAt   time.Time      `ch:"created_at"`
 }
 
 func (r *branchRow) toModel() *model.Branch {

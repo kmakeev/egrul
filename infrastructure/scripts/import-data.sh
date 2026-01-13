@@ -145,6 +145,8 @@ import_single_egrul_file() {
         founders_count Nullable(Int32),
         founders String DEFAULT '',
         history String DEFAULT '',
+        licenses String DEFAULT '',
+        branches String DEFAULT '',
         extract_date Nullable(String)
     ) ENGINE = Memory
     "
@@ -299,7 +301,64 @@ import_single_egrul_file() {
     "
     
     clickhouse_query "DROP TABLE IF EXISTS ${CLICKHOUSE_DATABASE}.founders_temp_single"
-    
+
+    # Импорт лицензий из этого файла
+    log_info "  → Импорт лицензий..."
+    clickhouse_query "
+    INSERT INTO ${CLICKHOUSE_DATABASE}.licenses (
+        entity_type, entity_ogrn, entity_inn, entity_name,
+        license_number, license_series, activity,
+        start_date, end_date, authority, status,
+        version_date
+    )
+    SELECT
+        'company' as entity_type,
+        ogrn as entity_ogrn,
+        inn as entity_inn,
+        full_name as entity_name,
+        JSONExtractString(license_json, 'number') as license_number,
+        JSONExtractString(license_json, 'series') as license_series,
+        JSONExtractString(license_json, 'activity') as activity,
+        toDateOrNull(JSONExtractString(license_json, 'start_date')) as start_date,
+        toDateOrNull(JSONExtractString(license_json, 'end_date')) as end_date,
+        JSONExtractString(license_json, 'authority') as authority,
+        coalesce(JSONExtractString(license_json, 'status'), 'active') as status,
+        today() as version_date
+    FROM ${CLICKHOUSE_DATABASE}.companies_import_single
+    ARRAY JOIN JSONExtractArrayRaw(licenses) as license_json
+    WHERE licenses != '' AND licenses != '[]'
+    "
+
+    # Импорт филиалов из этого файла
+    log_info "  → Импорт филиалов..."
+    clickhouse_query "
+    INSERT INTO ${CLICKHOUSE_DATABASE}.branches (
+        company_ogrn, company_inn, company_name,
+        branch_type, branch_name, branch_kpp,
+        postal_code, region_code, region, city, full_address,
+        grn, grn_date,
+        version_date
+    )
+    SELECT
+        ogrn as company_ogrn,
+        inn as company_inn,
+        full_name as company_name,
+        if(JSONExtractString(branch_json, 'branch_type') = 'Representative', 'representative', 'branch') as branch_type,
+        JSONExtractString(branch_json, 'name') as branch_name,
+        JSONExtractString(branch_json, 'kpp') as branch_kpp,
+        JSONExtractString(branch_json, 'address', 'postal_code') as postal_code,
+        JSONExtractString(branch_json, 'address', 'region_code') as region_code,
+        JSONExtractString(branch_json, 'address', 'region') as region,
+        JSONExtractString(branch_json, 'address', 'city') as city,
+        JSONExtractString(branch_json, 'address', 'full_address') as full_address,
+        JSONExtractString(branch_json, 'grn') as grn,
+        toDateOrNull(JSONExtractString(branch_json, 'grn_date')) as grn_date,
+        today() as version_date
+    FROM ${CLICKHOUSE_DATABASE}.companies_import_single
+    ARRAY JOIN JSONExtractArrayRaw(branches) as branch_json
+    WHERE branches != '' AND branches != '[]'
+    "
+
     # Импорт истории изменений из этого файла (ЕГРЮЛ)
     log_info "  → Импорт истории изменений..."
     local buckets="${HISTORY_BUCKETS:-100}"
@@ -664,11 +723,26 @@ show_stats() {
     FROM ${CLICKHOUSE_DATABASE}.companies FORMAT Pretty"
     echo ""
     echo "ИП (ЕГРИП):"
-    clickhouse_query "SELECT 
+    clickhouse_query "SELECT
         count() as total,
         countIf(status = 'active') as active,
         countIf(status = 'liquidated') as liquidated
     FROM ${CLICKHOUSE_DATABASE}.entrepreneurs FORMAT Pretty"
+    echo ""
+    echo "Лицензии:"
+    clickhouse_query "SELECT
+        count() as total,
+        countIf(status = 'active') as active,
+        countIf(status = 'expired') as expired
+    FROM ${CLICKHOUSE_DATABASE}.licenses FORMAT Pretty"
+    echo ""
+    echo "Филиалы и представительства:"
+    clickhouse_query "SELECT
+        branch_type,
+        count() as total
+    FROM ${CLICKHOUSE_DATABASE}.branches
+    GROUP BY branch_type
+    FORMAT Pretty"
     echo ""
     echo "История изменений (с дедупликацией):"
     clickhouse_query "SELECT 

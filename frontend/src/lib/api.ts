@@ -163,6 +163,25 @@ export interface Person {
   positionCode?: string;
 }
 
+export interface License {
+  id: string;
+  number: string;
+  series?: string;
+  activity?: string;
+  startDate?: string;
+  endDate?: string;
+  authority?: string;
+  status?: string;
+}
+
+export interface Branch {
+  id: string;
+  type: 'BRANCH' | 'REPRESENTATIVE';
+  name?: string;
+  kpp?: string;
+  address?: Address;
+}
+
 export interface SearchResult {
   legalEntities: LegalEntity[];
   entrepreneurs: IndividualEntrepreneur[];
@@ -231,6 +250,87 @@ class ApiClient {
     query: string
   ): Promise<{ results: IndividualEntrepreneur[] }> {
     return this.request(`/entrepreneurs/search?q=${encodeURIComponent(query)}`);
+  }
+
+  // Лицензии компании
+  async getCompanyLicenses(ogrn: string): Promise<License[]> {
+    const query = `
+      query GetCompanyLicenses($ogrn: ID!) {
+        company(ogrn: $ogrn) {
+          licenses {
+            id
+            number
+            series
+            activity
+            startDate
+            endDate
+            authority
+            status
+          }
+        }
+      }
+    `;
+    
+    const response = await this.graphqlRequest<{ company: { licenses: License[] } }>(query, { ogrn });
+    return response.company?.licenses || [];
+  }
+
+  // Филиалы компании
+  async getCompanyBranches(ogrn: string): Promise<Branch[]> {
+    const query = `
+      query GetCompanyBranches($ogrn: ID!) {
+        company(ogrn: $ogrn) {
+          branches {
+            id
+            type
+            name
+            kpp
+            address {
+              postalCode
+              regionCode
+              region
+              district
+              city
+              locality
+              street
+              house
+              building
+              flat
+              fullAddress
+              fiasId
+            }
+          }
+        }
+      }
+    `;
+    
+    const response = await this.graphqlRequest<{ company: { branches: Branch[] } }>(query, { ogrn });
+    return response.company?.branches || [];
+  }
+
+  private async graphqlRequest<T>(query: string, variables?: Record<string, unknown>): Promise<T> {
+    const response = await fetch(`${this.baseUrl.replace('/api/v1', '')}/graphql`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        query,
+        variables,
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`GraphQL Error: ${response.status} ${response.statusText}`);
+    }
+
+    const result = await response.json();
+    
+    if (result.errors) {
+      throw new Error(`GraphQL Error: ${result.errors[0].message}`);
+    }
+
+    return result.data;
   }
 
   // Глобальный поиск
