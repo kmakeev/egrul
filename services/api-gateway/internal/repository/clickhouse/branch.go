@@ -37,11 +37,12 @@ type branchRow struct {
 	RegionCode  sql.NullString `ch:"region_code"`
 	Region      sql.NullString `ch:"region"`
 	City        sql.NullString `ch:"city"`
-	FullAddress sql.NullString `ch:"full_address"`
+	FullAddress string         `ch:"full_address"`
 	Grn         sql.NullString `ch:"grn"`
 	GrnDate     sql.NullTime   `ch:"grn_date"`
 	VersionDate time.Time      `ch:"version_date"`
 	CreatedAt   time.Time      `ch:"created_at"`
+	UpdatedAt   time.Time      `ch:"updated_at"`
 }
 
 func (r *branchRow) toModel() *model.Branch {
@@ -74,8 +75,8 @@ func (r *branchRow) toModel() *model.Branch {
 	if r.City.Valid {
 		branch.Address.City = &r.City.String
 	}
-	if r.FullAddress.Valid {
-		branch.Address.FullAddress = &r.FullAddress.String
+	if r.FullAddress != "" {
+		branch.Address.FullAddress = &r.FullAddress
 	}
 
 	return branch
@@ -84,7 +85,7 @@ func (r *branchRow) toModel() *model.Branch {
 // GetByCompanyOGRN получает филиалы компании по ОГРН
 func (r *BranchRepository) GetByCompanyOGRN(ctx context.Context, ogrn string) ([]*model.Branch, error) {
 	query := `
-		SELECT * FROM egrul.branches
+		SELECT * FROM egrul.branches FINAL
 		WHERE company_ogrn = ?
 		ORDER BY branch_type, branch_name NULLS LAST
 	`

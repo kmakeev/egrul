@@ -309,7 +309,7 @@ import_single_egrul_file() {
         entity_type, entity_ogrn, entity_inn, entity_name,
         license_number, license_series, activity,
         start_date, end_date, authority, status,
-        version_date
+        version_date, updated_at
     )
     SELECT
         'company' as entity_type,
@@ -318,12 +318,13 @@ import_single_egrul_file() {
         full_name as entity_name,
         JSONExtractString(license_json, 'number') as license_number,
         JSONExtractString(license_json, 'series') as license_series,
-        JSONExtractString(license_json, 'activity') as activity,
+        coalesce(JSONExtractString(license_json, 'activity'), '') as activity,
         toDateOrNull(JSONExtractString(license_json, 'start_date')) as start_date,
         toDateOrNull(JSONExtractString(license_json, 'end_date')) as end_date,
         JSONExtractString(license_json, 'authority') as authority,
         coalesce(JSONExtractString(license_json, 'status'), 'active') as status,
-        today() as version_date
+        today() as version_date,
+        now64(3) as updated_at
     FROM ${CLICKHOUSE_DATABASE}.companies_import_single
     ARRAY JOIN JSONExtractArrayRaw(licenses) as license_json
     WHERE licenses != '' AND licenses != '[]'
@@ -337,7 +338,7 @@ import_single_egrul_file() {
         branch_type, branch_name, branch_kpp,
         postal_code, region_code, region, city, full_address,
         grn, grn_date,
-        version_date
+        version_date, updated_at
     )
     SELECT
         ogrn as company_ogrn,
@@ -350,10 +351,11 @@ import_single_egrul_file() {
         JSONExtractString(branch_json, 'address', 'region_code') as region_code,
         JSONExtractString(branch_json, 'address', 'region') as region,
         JSONExtractString(branch_json, 'address', 'city') as city,
-        JSONExtractString(branch_json, 'address', 'full_address') as full_address,
+        coalesce(JSONExtractString(branch_json, 'address', 'full_address'), '') as full_address,
         JSONExtractString(branch_json, 'grn') as grn,
         toDateOrNull(JSONExtractString(branch_json, 'grn_date')) as grn_date,
-        today() as version_date
+        today() as version_date,
+        now64(3) as updated_at
     FROM ${CLICKHOUSE_DATABASE}.companies_import_single
     ARRAY JOIN JSONExtractArrayRaw(branches) as branch_json
     WHERE branches != '' AND branches != '[]'

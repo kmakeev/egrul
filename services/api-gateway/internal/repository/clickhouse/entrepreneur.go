@@ -665,7 +665,7 @@ func (r *EntrepreneurRepository) buildWhereClause(filter *model.EntrepreneurFilt
 func (r *EntrepreneurRepository) loadAdditionalActivities(ctx context.Context, row *entrepreneurRow) error {
 	const q = `
 		SELECT okved_code, okved_name
-		FROM egrul.entrepreneurs_okved_additional
+		FROM egrul.entrepreneurs_okved_additional FINAL
 		WHERE ogrnip = ?
 	`
 

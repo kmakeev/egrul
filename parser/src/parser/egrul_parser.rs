@@ -422,12 +422,28 @@ impl EgrulXmlParser {
             address.kladr_code = e.get_attr("КодАдрКладр".as_bytes())
                 .or_else(|| e.get_attr("КодКладр".as_bytes()));
         }
+        // СвАдрЮЛФИАС и СвМНЮЛ - контейнеры адреса ФИАС, извлекаем индекс и ИдНом
+        else if tag_matches(tag, "СвАдрЮЛФИАС".as_bytes()) || tag_matches(tag, "СвМНЮЛ".as_bytes()) {
+            if address.postal_code.is_none() {
+                address.postal_code = e.get_attr("Индекс".as_bytes());
+            }
+            if address.fias_id.is_none() {
+                address.fias_id = e.get_attr("ИдНом".as_bytes());
+            }
+        }
         else if tag_matches(tag, "Регион".as_bytes()) {
             // Извлекаем название региона
             address.region = e.get_attr("НаимРегион".as_bytes())
                 .or_else(|| e.get_attr("Наименов".as_bytes()))
                 .or_else(|| e.get_attr(attr_names::NAIMENOV))
                 .or_else(|| e.get_attr("Наименование".as_bytes()));
+        }
+        // МуниципРайон - муниципальный район (ФИАС формат)
+        else if tag_matches(tag, "МуниципРайон".as_bytes()) {
+            if address.district.is_none() {
+                address.district = e.get_attr("Наим".as_bytes())
+                    .or_else(|| e.get_attr("Наименов".as_bytes()));
+            }
         }
         else if tag_matches(tag, "Район".as_bytes()) {
             address.district = e.get_attr("НаименРай".as_bytes())
@@ -442,8 +458,10 @@ impl EgrulXmlParser {
                 .or_else(|| e.get_attr(attr_names::NAIMENOV))
                 .or_else(|| e.get_attr("Наименование".as_bytes()));
         }
-        else if tag_matches(tag, "НаселПункт".as_bytes()) {
+        // НаселенПункт - добавлен атрибут Наим для ФИАС формата
+        else if tag_matches(tag, "НаселенПункт".as_bytes()) || tag_matches(tag, "НаселПункт".as_bytes()) {
             address.locality = e.get_attr("НаименНП".as_bytes())
+                .or_else(|| e.get_attr("Наим".as_bytes()))
                 .or_else(|| e.get_attr("Наименов".as_bytes()))
                 .or_else(|| e.get_attr(attr_names::NAIMENOV))
                 .or_else(|| e.get_attr("Наименование".as_bytes()));
@@ -453,10 +471,9 @@ impl EgrulXmlParser {
             let typ = e.get_attr("ТипУлица".as_bytes())
                 .or_else(|| e.get_attr("Тип".as_bytes()));
             let name = e.get_attr("НаимУлица".as_bytes())
-                .or_else(|| e.get_attr("НаимУлица".as_bytes()))
                 .or_else(|| e.get_attr("Наименов".as_bytes()))
                 .or_else(|| e.get_attr(attr_names::NAIMENOV));
-            
+
             address.street = match (typ, name) {
                 (Some(t), Some(n)) => Some(format!("{} {}", t, n)),
                 (None, Some(n)) => Some(n),
@@ -464,7 +481,69 @@ impl EgrulXmlParser {
                 (None, None) => None,
             };
         }
-        // Дом, корпус, квартира - из атрибутов адреса
+        // ЭлУлДорСети - улица в ФИАС формате (Тип + Наим)
+        else if tag_matches(tag, "ЭлУлДорСети".as_bytes()) {
+            if address.street.is_none() {
+                let typ = e.get_attr("Тип".as_bytes());
+                let name = e.get_attr("Наим".as_bytes());
+
+                address.street = match (typ, name) {
+                    (Some(t), Some(n)) => Some(format!("{} {}", t, n)),
+                    (None, Some(n)) => Some(n),
+                    (Some(t), None) => Some(t),
+                    (None, None) => None,
+                };
+            }
+        }
+        // Здание - дом в ФИАС формате (Тип + Номер)
+        else if tag_matches(tag, "Здание".as_bytes()) {
+            if address.house.is_none() {
+                let typ = e.get_attr("Тип".as_bytes());
+                let num = e.get_attr("Номер".as_bytes());
+
+                address.house = match (typ, num) {
+                    (Some(t), Some(n)) => Some(format!("{}{}", t, n)),
+                    (None, Some(n)) => Some(n),
+                    (Some(t), None) => Some(t),
+                    (None, None) => None,
+                };
+            }
+        }
+        // ПомещЗдания - помещение в ФИАС формате
+        else if tag_matches(tag, "ПомещЗдания".as_bytes()) {
+            if address.flat.is_none() {
+                let typ = e.get_attr("Тип".as_bytes());
+                let num = e.get_attr("Номер".as_bytes());
+
+                address.flat = match (typ, num) {
+                    (Some(t), Some(n)) => Some(format!("{}{}", t, n)),
+                    (None, Some(n)) => Some(n),
+                    (Some(t), None) => Some(t),
+                    (None, None) => None,
+                };
+            }
+        }
+        // ПомещКвартиры - комната/офис в ФИАС формате
+        else if tag_matches(tag, "ПомещКвартиры".as_bytes()) {
+            // Добавляем к flat если уже есть, или устанавливаем новое
+            let typ = e.get_attr("Тип".as_bytes());
+            let num = e.get_attr("Номер".as_bytes());
+
+            let room = match (typ, num) {
+                (Some(t), Some(n)) => Some(format!("{}{}", t, n)),
+                (None, Some(n)) => Some(n),
+                (Some(t), None) => Some(t),
+                (None, None) => None,
+            };
+
+            if let Some(r) = room {
+                address.flat = match address.flat.take() {
+                    Some(existing) => Some(format!("{}, {}", existing, r)),
+                    None => Some(r),
+                };
+            }
+        }
+        // Дом, корпус, квартира - из атрибутов адреса (классический формат)
         address.house = address.house.take().or_else(|| e.get_attr("Дом".as_bytes()));
         address.building = address.building.take().or_else(|| e.get_attr("Корп".as_bytes()));
         address.flat = address.flat.take().or_else(|| e.get_attr("Кварт".as_bytes())
@@ -716,7 +795,10 @@ impl EgrulXmlParser {
                         person = self.parse_person(e);
                     }
                     else if tag_matches(tag, "ДоляУстКап".as_bytes()) {
-                        share = Some(self.parse_share(e));
+                        if let Ok(s) = self.parse_share_full(reader, e) {
+                            share = Some(s);
+                        }
+                        depth -= 1; // parse_share_full читает закрывающий тег
                     }
                 }
                 Ok(Event::Empty(ref e)) => {
@@ -784,7 +866,10 @@ impl EgrulXmlParser {
                         }
                     }
                     else if tag_matches(tag, "ДоляУстКап".as_bytes()) {
-                        share = Some(self.parse_share(e));
+                        if let Ok(s) = self.parse_share_full(reader, e) {
+                            share = Some(s);
+                        }
+                        depth -= 1; // parse_share_full читает закрывающий тег
                     }
                 }
                 Ok(Event::Empty(ref e)) => {
@@ -849,7 +934,10 @@ impl EgrulXmlParser {
                     let tag = name.as_ref();
 
                     if tag_matches(tag, "ДоляУстКап".as_bytes()) {
-                        share = Some(self.parse_share(e));
+                        if let Ok(s) = self.parse_share_full(reader, e) {
+                            share = Some(s);
+                        }
+                        depth -= 1; // parse_share_full читает закрывающий тег
                     }
                 }
                 Ok(Event::Empty(ref e)) => {
@@ -881,15 +969,109 @@ impl EgrulXmlParser {
         })
     }
 
-    /// Парсинг доли
+    /// Парсинг доли (простой вариант - только атрибуты)
     fn parse_share(&self, e: &BytesStart) -> Share {
         Share {
-            nominal_value: e.get_f64_attr("НоминСтоим".as_bytes())
-                .or_else(|| e.get_f64_attr("НоминСтоим".as_bytes())),
+            nominal_value: e.get_f64_attr("НоминСтоим".as_bytes()),
             numerator: e.get_i64_attr("Числит".as_bytes()),
             denominator: e.get_i64_attr("Знамен".as_bytes()),
             percent: e.get_f64_attr("Процент".as_bytes()),
         }
+    }
+
+    /// Парсинг доли с вложенными тегами РазмерДоли/Процент/ДробьДоли
+    fn parse_share_full(&self, reader: &mut Reader<&[u8]>, start: &BytesStart) -> Result<Share> {
+        let mut share = Share {
+            nominal_value: start.get_f64_attr("НоминСтоим".as_bytes()),
+            numerator: start.get_i64_attr("Числит".as_bytes()),
+            denominator: start.get_i64_attr("Знамен".as_bytes()),
+            percent: start.get_f64_attr("Процент".as_bytes()),
+        };
+
+        let mut buf = Vec::new();
+        let mut depth = 1;
+
+        loop {
+            match reader.read_event_into(&mut buf) {
+                Ok(Event::Start(ref e)) => {
+                    depth += 1;
+                    let name = e.name();
+                    let tag = name.as_ref();
+
+                    // РазмерДоли содержит вложенные Процент или ДробьДоли
+                    if tag_matches(tag, "РазмерДоли".as_bytes()) {
+                        // Атрибуты могут быть и здесь
+                        if share.percent.is_none() {
+                            share.percent = e.get_f64_attr("Процент".as_bytes());
+                        }
+                    }
+                    // ДробьДоли содержит Числит и Знамен как атрибуты
+                    else if tag_matches(tag, "ДробьДоли".as_bytes()) {
+                        if share.numerator.is_none() {
+                            share.numerator = e.get_i64_attr("Числит".as_bytes());
+                        }
+                        if share.denominator.is_none() {
+                            share.denominator = e.get_i64_attr("Знамен".as_bytes());
+                        }
+                    }
+                    // Процент как вложенный тег с текстовым содержимым
+                    else if tag_matches(tag, "Процент".as_bytes()) {
+                        let mut inner_buf = Vec::new();
+                        if let Ok(Event::Text(text)) = reader.read_event_into(&mut inner_buf) {
+                            let text_str = String::from_utf8_lossy(&text).trim().to_string();
+                            if let Ok(val) = text_str.parse::<f64>() {
+                                share.percent = Some(val);
+                            }
+                        }
+                    }
+                    // Числит как вложенный тег с текстовым содержимым
+                    else if tag_matches(tag, "Числит".as_bytes()) {
+                        let mut inner_buf = Vec::new();
+                        if let Ok(Event::Text(text)) = reader.read_event_into(&mut inner_buf) {
+                            let text_str = String::from_utf8_lossy(&text).trim().to_string();
+                            if let Ok(val) = text_str.parse::<i64>() {
+                                share.numerator = Some(val);
+                            }
+                        }
+                    }
+                    // Знамен как вложенный тег с текстовым содержимым
+                    else if tag_matches(tag, "Знамен".as_bytes()) {
+                        let mut inner_buf = Vec::new();
+                        if let Ok(Event::Text(text)) = reader.read_event_into(&mut inner_buf) {
+                            let text_str = String::from_utf8_lossy(&text).trim().to_string();
+                            if let Ok(val) = text_str.parse::<i64>() {
+                                share.denominator = Some(val);
+                            }
+                        }
+                    }
+                }
+                Ok(Event::Empty(ref e)) => {
+                    let name = e.name();
+                    let tag = name.as_ref();
+
+                    if tag_matches(tag, "ДробьДоли".as_bytes()) {
+                        if share.numerator.is_none() {
+                            share.numerator = e.get_i64_attr("Числит".as_bytes());
+                        }
+                        if share.denominator.is_none() {
+                            share.denominator = e.get_i64_attr("Знамен".as_bytes());
+                        }
+                    }
+                }
+                Ok(Event::End(_)) => {
+                    depth -= 1;
+                    if depth == 0 {
+                        break;
+                    }
+                }
+                Ok(Event::Eof) => break,
+                Err(e) => return Err(Error::Xml(e)),
+                _ => {}
+            }
+            buf.clear();
+        }
+
+        Ok(share)
     }
 
     /// Парсинг регистрации

@@ -39,7 +39,8 @@ for kind in companies entrepreneurs; do
           ogrn,
           inn,
           JSONExtractString(x, 'code') AS okved_code,
-          JSONExtractString(x, 'name') AS okved_name
+          JSONExtractString(x, 'name') AS okved_name,
+          now64(3) AS updated_at
       FROM
       (
           SELECT
@@ -60,7 +61,8 @@ for kind in companies entrepreneurs; do
           ogrnip,
           inn,
           JSONExtractString(x, 'code') AS okved_code,
-          JSONExtractString(x, 'name') AS okved_name
+          JSONExtractString(x, 'name') AS okved_name,
+          now64(3) AS updated_at
       FROM
       (
           SELECT

@@ -401,76 +401,19 @@ impl EgripXmlParser {
         // Из корневого элемента
         address.region_code = start.get_attr("КодРегион".as_bytes())
             .or_else(|| start.get_attr(attr_names::KOD_REGION));
-        
+
         if let Some(full) = start.get_attr("Адрес".as_bytes()) {
             address.full_address = Some(normalize_string(&full));
         }
 
         loop {
             match reader.read_event_into(&mut buf) {
-                Ok(Event::Start(ref e)) | Ok(Event::Empty(ref e)) => {
-                    let is_start = matches!(reader.read_event_into(&mut Vec::new()), Ok(Event::Start(_)));
-                    let name = e.name();
-                    let tag = name.as_ref();
-
-                    if tag_matches(tag, "Регион".as_bytes()) {
-                        // Извлекаем название региона
-                        address.region = e.get_attr("НаимРегион".as_bytes())
-                            .or_else(|| e.get_attr("Наименов".as_bytes()))
-                            .or_else(|| e.get_attr("Наименование".as_bytes()));
-                        address.region_code = address.region_code.or_else(|| e.get_attr("Код".as_bytes()));
-                    }
-                    else if tag_matches(tag, "Город".as_bytes()) {
-                        address.city = e.get_attr("НаимГород".as_bytes())
-                            .or_else(|| e.get_attr("НаименГор".as_bytes()))
-                            .or_else(|| e.get_attr("Наименов".as_bytes()))
-                            .or_else(|| e.get_attr("Наименование".as_bytes()));
-                    }
-                    else if tag_matches(tag, "НаселПункт".as_bytes()) {
-                        address.locality = e.get_attr("Наименование".as_bytes())
-                            .or_else(|| e.get_attr("Наименов".as_bytes()));
-                    }
-                    else if tag_matches(tag, "АдресРФ".as_bytes()) {
-                        address.postal_code = e.get_attr("Индекс".as_bytes());
-                        address.region_code = address.region_code.or_else(|| e.get_attr("КодРегион".as_bytes()));
-                        address.kladr_code = e.get_attr("КодАдрКладр".as_bytes())
-                            .or_else(|| e.get_attr("КодКладр".as_bytes()));
-                    }
-                    // Улица
-                    else if tag_matches(tag, "Улица".as_bytes()) {
-                        // Собираем улицу из типа и названия: "УЛ. БОЛЬШАЯ"
-                        let typ = e.get_attr("ТипУлица".as_bytes())
-                            .or_else(|| e.get_attr("Тип".as_bytes()));
-                        let name = e.get_attr("НаимУлица".as_bytes())
-                            .or_else(|| e.get_attr("Наименов".as_bytes()))
-                            .or_else(|| e.get_attr("Наименование".as_bytes()));
-                        
-                        address.street = match (typ, name) {
-                            (Some(t), Some(n)) => Some(format!("{} {}", t, n)),
-                            (None, Some(n)) => Some(n),
-                            (Some(t), None) => Some(t),
-                            _ => None,
-                        };
-                    }
-                    // Район
-                    else if tag_matches(tag, "Район".as_bytes()) {
-                        address.district = e.get_attr("НаимРайон".as_bytes())
-                            .or_else(|| e.get_attr("Наименов".as_bytes()))
-                            .or_else(|| e.get_attr("Наименование".as_bytes()));
-                    }
-                    
-                    // Дом, корпус, квартира, офис - из атрибутов адреса
-                    address.house = address.house.take().or_else(|| e.get_attr("Дом".as_bytes()));
-                    address.building = address.building.take().or_else(|| e.get_attr("Корп".as_bytes())
-                        .or_else(|| e.get_attr("Корпус".as_bytes())));
-                    address.flat = address.flat.take().or_else(|| e.get_attr("Кварт".as_bytes())
-                        .or_else(|| e.get_attr("Квартира".as_bytes())));
-                    address.fias_id = address.fias_id.take().or_else(|| e.get_attr("ИдНом".as_bytes())
-                        .or_else(|| e.get_attr("ФИАС".as_bytes())));
-
-                    if is_start {
-                        depth += 1;
-                    }
+                Ok(Event::Start(ref e)) => {
+                    depth += 1;
+                    self.process_address_element_ip(e, e.name().as_ref(), &mut address);
+                }
+                Ok(Event::Empty(ref e)) => {
+                    self.process_address_element_ip(e, e.name().as_ref(), &mut address);
                 }
                 Ok(Event::End(_)) => {
                     depth -= 1;
@@ -491,6 +434,130 @@ impl EgripXmlParser {
         }
 
         Ok(address)
+    }
+
+    /// Обработка элемента адреса для ИП
+    fn process_address_element_ip(&self, e: &BytesStart, tag: &[u8], address: &mut Address) {
+        if tag_matches(tag, "АдресРФ".as_bytes()) {
+            address.postal_code = e.get_attr("Индекс".as_bytes());
+            address.region_code = address.region_code.take().or_else(|| e.get_attr("КодРегион".as_bytes()));
+            address.kladr_code = e.get_attr("КодАдрКладр".as_bytes())
+                .or_else(|| e.get_attr("КодКладр".as_bytes()));
+        }
+        else if tag_matches(tag, "Регион".as_bytes()) {
+            address.region = e.get_attr("НаимРегион".as_bytes())
+                .or_else(|| e.get_attr("Наименов".as_bytes()))
+                .or_else(|| e.get_attr("Наименование".as_bytes()));
+            address.region_code = address.region_code.take().or_else(|| e.get_attr("Код".as_bytes()));
+        }
+        // МуниципРайон - муниципальный район (ФИАС формат)
+        else if tag_matches(tag, "МуниципРайон".as_bytes()) {
+            if address.district.is_none() {
+                address.district = e.get_attr("Наим".as_bytes())
+                    .or_else(|| e.get_attr("Наименов".as_bytes()));
+            }
+        }
+        else if tag_matches(tag, "Район".as_bytes()) {
+            address.district = e.get_attr("НаимРайон".as_bytes())
+                .or_else(|| e.get_attr("Наименов".as_bytes()))
+                .or_else(|| e.get_attr("Наименование".as_bytes()));
+        }
+        else if tag_matches(tag, "Город".as_bytes()) {
+            address.city = e.get_attr("НаимГород".as_bytes())
+                .or_else(|| e.get_attr("НаименГор".as_bytes()))
+                .or_else(|| e.get_attr("Наименов".as_bytes()))
+                .or_else(|| e.get_attr("Наименование".as_bytes()));
+        }
+        // НаселенПункт - добавлен атрибут Наим для ФИАС формата
+        else if tag_matches(tag, "НаселенПункт".as_bytes()) || tag_matches(tag, "НаселПункт".as_bytes()) {
+            address.locality = e.get_attr("НаименНП".as_bytes())
+                .or_else(|| e.get_attr("Наим".as_bytes()))
+                .or_else(|| e.get_attr("Наименов".as_bytes()))
+                .or_else(|| e.get_attr("Наименование".as_bytes()));
+        }
+        else if tag_matches(tag, "Улица".as_bytes()) {
+            let typ = e.get_attr("ТипУлица".as_bytes())
+                .or_else(|| e.get_attr("Тип".as_bytes()));
+            let name = e.get_attr("НаимУлица".as_bytes())
+                .or_else(|| e.get_attr("Наименов".as_bytes()))
+                .or_else(|| e.get_attr("Наименование".as_bytes()));
+
+            address.street = match (typ, name) {
+                (Some(t), Some(n)) => Some(format!("{} {}", t, n)),
+                (None, Some(n)) => Some(n),
+                (Some(t), None) => Some(t),
+                (None, None) => None,
+            };
+        }
+        // ЭлУлДорСети - улица в ФИАС формате (Тип + Наим)
+        else if tag_matches(tag, "ЭлУлДорСети".as_bytes()) {
+            if address.street.is_none() {
+                let typ = e.get_attr("Тип".as_bytes());
+                let name = e.get_attr("Наим".as_bytes());
+
+                address.street = match (typ, name) {
+                    (Some(t), Some(n)) => Some(format!("{} {}", t, n)),
+                    (None, Some(n)) => Some(n),
+                    (Some(t), None) => Some(t),
+                    (None, None) => None,
+                };
+            }
+        }
+        // Здание - дом в ФИАС формате (Тип + Номер)
+        else if tag_matches(tag, "Здание".as_bytes()) {
+            if address.house.is_none() {
+                let typ = e.get_attr("Тип".as_bytes());
+                let num = e.get_attr("Номер".as_bytes());
+
+                address.house = match (typ, num) {
+                    (Some(t), Some(n)) => Some(format!("{}{}", t, n)),
+                    (None, Some(n)) => Some(n),
+                    (Some(t), None) => Some(t),
+                    (None, None) => None,
+                };
+            }
+        }
+        // ПомещЗдания - помещение в ФИАС формате
+        else if tag_matches(tag, "ПомещЗдания".as_bytes()) {
+            if address.flat.is_none() {
+                let typ = e.get_attr("Тип".as_bytes());
+                let num = e.get_attr("Номер".as_bytes());
+
+                address.flat = match (typ, num) {
+                    (Some(t), Some(n)) => Some(format!("{}{}", t, n)),
+                    (None, Some(n)) => Some(n),
+                    (Some(t), None) => Some(t),
+                    (None, None) => None,
+                };
+            }
+        }
+        // ПомещКвартиры - комната/офис в ФИАС формате
+        else if tag_matches(tag, "ПомещКвартиры".as_bytes()) {
+            let typ = e.get_attr("Тип".as_bytes());
+            let num = e.get_attr("Номер".as_bytes());
+
+            let room = match (typ, num) {
+                (Some(t), Some(n)) => Some(format!("{}{}", t, n)),
+                (None, Some(n)) => Some(n),
+                (Some(t), None) => Some(t),
+                (None, None) => None,
+            };
+
+            if let Some(r) = room {
+                address.flat = match address.flat.take() {
+                    Some(existing) => Some(format!("{}, {}", existing, r)),
+                    None => Some(r),
+                };
+            }
+        }
+        // Дом, корпус, квартира - из атрибутов (классический формат)
+        address.house = address.house.take().or_else(|| e.get_attr("Дом".as_bytes()));
+        address.building = address.building.take().or_else(|| e.get_attr("Корп".as_bytes())
+            .or_else(|| e.get_attr("Корпус".as_bytes())));
+        address.flat = address.flat.take().or_else(|| e.get_attr("Кварт".as_bytes())
+            .or_else(|| e.get_attr("Квартира".as_bytes())));
+        address.fias_id = address.fias_id.take().or_else(|| e.get_attr("ИдНом".as_bytes())
+            .or_else(|| e.get_attr("ФИАС".as_bytes())));
     }
 
     /// Парсинг вида деятельности

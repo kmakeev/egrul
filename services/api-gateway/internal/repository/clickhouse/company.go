@@ -970,7 +970,7 @@ func statusToDBValue(status model.EntityStatus) string {
 func (r *CompanyRepository) loadAdditionalActivities(ctx context.Context, row *companyRow) error {
 	const q = `
 		SELECT okved_code, okved_name
-		FROM egrul.companies_okved_additional
+		FROM egrul.companies_okved_additional FINAL
 		WHERE ogrn = ?
 	`
 

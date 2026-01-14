@@ -33,13 +33,14 @@ type licenseRow struct {
 	EntityName    sql.NullString `ch:"entity_name"`
 	LicenseNumber string         `ch:"license_number"`
 	LicenseSeries sql.NullString `ch:"license_series"`
-	Activity      sql.NullString `ch:"activity"`
+	Activity      string         `ch:"activity"`
 	StartDate     sql.NullTime   `ch:"start_date"`
 	EndDate       sql.NullTime   `ch:"end_date"`
 	Authority     sql.NullString `ch:"authority"`
 	Status        string         `ch:"status"`
 	VersionDate   time.Time      `ch:"version_date"`
 	CreatedAt     time.Time      `ch:"created_at"`
+	UpdatedAt     time.Time      `ch:"updated_at"`
 }
 
 func (r *licenseRow) toModel() *model.License {
@@ -51,8 +52,8 @@ func (r *licenseRow) toModel() *model.License {
 	if r.LicenseSeries.Valid {
 		license.Series = &r.LicenseSeries.String
 	}
-	if r.Activity.Valid {
-		license.Activity = &r.Activity.String
+	if r.Activity != "" {
+		license.Activity = &r.Activity
 	}
 	if r.StartDate.Valid {
 		license.StartDate = &model.Date{Time: r.StartDate.Time}
@@ -73,7 +74,7 @@ func (r *licenseRow) toModel() *model.License {
 // GetByEntityOGRN получает лицензии по ОГРН/ОГРНИП
 func (r *LicenseRepository) GetByEntityOGRN(ctx context.Context, ogrn string) ([]*model.License, error) {
 	query := `
-		SELECT * FROM egrul.licenses
+		SELECT * FROM egrul.licenses FINAL
 		WHERE entity_ogrn = ?
 		ORDER BY start_date DESC NULLS LAST
 	`

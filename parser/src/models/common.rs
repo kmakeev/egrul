@@ -86,6 +86,13 @@ impl Address {
             }
         }
 
+        // Добавляем регион
+        if let Some(ref region) = self.region {
+            if !region.is_empty() {
+                parts.push(region.clone());
+            }
+        }
+
         if let Some(ref district) = self.district {
             if !district.is_empty() {
                 parts.push(format!("р-н {}", district));
@@ -94,7 +101,12 @@ impl Address {
 
         if let Some(ref city) = self.city {
             if !city.is_empty() {
-                parts.push(format!("г. {}", city));
+                // Проверяем, нужно ли добавлять "г." (может уже содержаться в названии)
+                if city.starts_with("г.") || city.starts_with("г ") || city.starts_with("Г.") || city.starts_with("Г ") {
+                    parts.push(city.clone());
+                } else {
+                    parts.push(format!("г. {}", city));
+                }
             }
         }
 
@@ -106,13 +118,29 @@ impl Address {
 
         if let Some(ref street) = self.street {
             if !street.is_empty() {
-                parts.push(format!("ул. {}", street));
+                // Проверяем, содержит ли улица уже тип (УЛ., ПР., ПЕР. и т.д.)
+                let has_type = street.contains("УЛ") || street.contains("ул")
+                    || street.contains("ПР") || street.contains("пр")
+                    || street.contains("ПЕР") || street.contains("пер")
+                    || street.contains("Ш.") || street.contains("ш.")
+                    || street.contains("БУЛ") || street.contains("бул")
+                    || street.contains("ПЛ.") || street.contains("пл.");
+                if has_type {
+                    parts.push(street.clone());
+                } else {
+                    parts.push(format!("ул. {}", street));
+                }
             }
         }
 
         if let Some(ref house) = self.house {
             if !house.is_empty() {
-                parts.push(format!("д. {}", house));
+                // Проверяем, содержит ли дом уже тип (Д., д.)
+                if house.starts_with("Д.") || house.starts_with("д.") || house.starts_with("Д ") || house.starts_with("д ") {
+                    parts.push(house.clone());
+                } else {
+                    parts.push(format!("д. {}", house));
+                }
             }
         }
 
@@ -124,7 +152,15 @@ impl Address {
 
         if let Some(ref flat) = self.flat {
             if !flat.is_empty() {
-                parts.push(format!("кв. {}", flat));
+                // Проверяем, содержит ли квартира/помещение уже тип
+                if flat.contains("ПОМЕЩ") || flat.contains("помещ")
+                    || flat.contains("КВ") || flat.contains("кв")
+                    || flat.contains("ОФ") || flat.contains("оф")
+                    || flat.contains("КОМ") || flat.contains("ком") {
+                    parts.push(flat.clone());
+                } else {
+                    parts.push(format!("кв. {}", flat));
+                }
             }
         }
 
