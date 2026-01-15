@@ -1,7 +1,7 @@
 "use client";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { MapPin, Calendar, Building, Banknote } from "lucide-react";
+import { MapPin, Calendar, Building, Banknote, Mail, History } from "lucide-react";
 import { formatCurrency, formatDate } from "@/lib/format-utils";
 import { unifiedStatusOptions } from "@/lib/statuses";
 import type { LegalEntity } from "@/lib/api";
@@ -180,8 +180,58 @@ export function CompanyInfo({ company }: CompanyInfoProps) {
             <p className="text-sm text-gray-500">Статус</p>
             <p className="font-medium">{getStatusText()}</p>
           </div>
+
+          {/* Регистрация до 01.07.2002 */}
+          {company.oldRegistration && (company.oldRegistration.regNumber || company.oldRegistration.regDate || company.oldRegistration.authority) && (
+            <div className="mt-4 pt-4 border-t">
+              <div className="flex items-center gap-2 mb-2">
+                <History className="h-4 w-4 text-gray-500" />
+                <p className="text-sm font-medium text-gray-700">Регистрация до 01.07.2002</p>
+              </div>
+              <div className="space-y-2 text-sm">
+                {company.oldRegistration.regNumber && (
+                  <div>
+                    <span className="text-gray-500">Рег. номер:</span>
+                    <span className="ml-2 font-medium">{company.oldRegistration.regNumber}</span>
+                  </div>
+                )}
+                {company.oldRegistration.regDate && (
+                  <div>
+                    <span className="text-gray-500">Дата регистрации:</span>
+                    <span className="ml-2 font-medium">{formatDate(company.oldRegistration.regDate)}</span>
+                  </div>
+                )}
+                {company.oldRegistration.authority && (
+                  <div>
+                    <span className="text-gray-500">Орган регистрации:</span>
+                    <span className="ml-2 font-medium">{company.oldRegistration.authority}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
+
+      {/* Email */}
+      {company.email && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Mail className="h-5 w-5" />
+              Контактная информация
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div>
+              <p className="text-sm text-gray-500">Адрес электронной почты</p>
+              <a href={`mailto:${company.email}`} className="font-medium text-blue-600 hover:underline">
+                {company.email}
+              </a>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Уставный капитал */}
       {company.capital && (

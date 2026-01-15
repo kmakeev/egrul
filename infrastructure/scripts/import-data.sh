@@ -142,6 +142,11 @@ import_single_egrul_file() {
         main_activity_name Nullable(String),
         additional_activities Nullable(String),
         email Nullable(String),
+        company_share_percent Nullable(Float64),
+        company_share_nominal Nullable(Float64),
+        old_reg_number Nullable(String),
+        old_reg_date Nullable(String),
+        old_reg_authority Nullable(String),
         founders_count Nullable(Int32),
         founders String DEFAULT '',
         history String DEFAULT '',
@@ -171,13 +176,16 @@ import_single_egrul_file() {
     clickhouse_query "
     INSERT INTO ${CLICKHOUSE_DATABASE}.companies (
         ogrn, ogrn_date, inn, kpp, full_name, short_name, status, status_code,
-        registration_date, termination_date, 
+        registration_date, termination_date,
         postal_code, region_code, region, district, city, locality, street, house, building, flat, full_address, fias_id, kladr_code,
         capital_amount, capital_currency,
         head_last_name, head_first_name, head_middle_name, head_inn, head_position,
         okved_main_code, okved_main_name,
         okved_additional, okved_additional_names, additional_activities,
-        email, founders_count, extract_date,
+        email,
+        company_share_percent, company_share_nominal,
+        old_reg_number, old_reg_date, old_reg_authority,
+        founders_count, extract_date,
         version_date
     )
     SELECT
@@ -220,6 +228,11 @@ import_single_egrul_file() {
         [] AS okved_additional_names,
         additional_activities,
         email,
+        company_share_percent,
+        company_share_nominal,
+        old_reg_number,
+        toDateOrNull(old_reg_date),
+        old_reg_authority,
         founders_count,
         coalesce(toDateOrNull(extract_date), toDate('1970-01-01')) AS extract_date,
         today()

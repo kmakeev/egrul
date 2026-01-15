@@ -19,6 +19,8 @@ export interface LegalEntity {
   address?: Address;
   email?: string;
   capital?: Capital;
+  companyShare?: Share;
+  oldRegistration?: OldRegistration;
   director?: Person;
   mainActivity?: Activity;
   activities?: Activity[];
@@ -152,6 +154,17 @@ export interface Activity {
 export interface Capital {
   amount: number;
   currency: string;
+}
+
+export interface Share {
+  percent?: number;
+  nominalValue?: number;
+}
+
+export interface OldRegistration {
+  regNumber?: string;
+  regDate?: string;
+  authority?: string;
 }
 
 export interface Person {

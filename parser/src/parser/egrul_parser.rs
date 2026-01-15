@@ -166,7 +166,14 @@ impl EgrulXmlParser {
                                 }
                             }
                         }
-                        record.registration = Some(self.parse_registration(reader, e)?);
+                        // Парсим регистрационный орган, но не перезаписываем данные о регистрации до 2002
+                        let reg_info = self.parse_registration(reader, e)?;
+                        if let Some(ref mut existing_reg) = record.registration {
+                            // Сохраняем существующие данные о старой регистрации
+                            existing_reg.authority = reg_info.authority;
+                        } else {
+                            record.registration = Some(reg_info);
+                        }
                         depth -= 1;
                     }
                     // Налоговый орган
@@ -197,6 +204,24 @@ impl EgrulXmlParser {
                             .or_else(|| e.get_attr(attr_names::EMAIL)) {
                             record.email = Some(email);
                         }
+                    }
+                    // Email (СвАдрЭлПочты)
+                    else if tag_matches(tag, "СвАдрЭлПочты".as_bytes()) {
+                        if let Some(email) = e.get_attr("E-mail".as_bytes()) {
+                            record.email = Some(email);
+                        }
+                    }
+                    // Доля ООО в уставном капитале (СвДоляООО)
+                    else if tag_matches(tag, "СвДоляООО".as_bytes()) {
+                        if let Ok(share) = self.parse_share_full(reader, e) {
+                            record.company_share = Some(share);
+                        }
+                        depth -= 1;
+                    }
+                    // Сведения об образовании ЮЛ (регистрация до 01.07.2002)
+                    else if tag_matches(tag, "СвОбрЮЛ".as_bytes()) {
+                        self.parse_sv_obr_ul(reader, e, &mut record)?;
+                        depth -= 1;
                     }
                     // Прекращение
                     else if tag_matches(tag, "СвПрекрЮЛ".as_bytes()) {
@@ -260,6 +285,20 @@ impl EgrulXmlParser {
                         if let Some(email) = e.get_attr("E-mail".as_bytes()) {
                             record.email = Some(email);
                         }
+                    }
+                    // Email (СвАдрЭлПочты)
+                    else if tag_matches(tag, "СвАдрЭлПочты".as_bytes()) {
+                        if let Some(email) = e.get_attr("E-mail".as_bytes()) {
+                            record.email = Some(email);
+                        }
+                    }
+                    // Доля ООО в уставном капитале (СвДоляООО) - empty element
+                    else if tag_matches(tag, "СвДоляООО".as_bytes()) {
+                        record.company_share = Some(self.parse_share(e));
+                    }
+                    // Сведения об образовании ЮЛ (регистрация до 01.07.2002) - empty element
+                    else if tag_matches(tag, "СвОбрЮЛ".as_bytes()) {
+                        self.parse_sv_obr_ul_empty(e, &mut record);
                     }
                     // Статус ЮЛ (СвСтатус / СвСтатусЮЛ как empty element)
                     else if tag_matches(tag, "СвСтатус".as_bytes()) || tag_matches(tag, "СвСтатусЮЛ".as_bytes()) {
@@ -1093,6 +1132,89 @@ impl EgrulXmlParser {
 
         self.skip_element(reader)?;
         Ok(reg)
+    }
+
+    /// Парсинг сведений об образовании ЮЛ (СвОбрЮЛ) - Start element
+    fn parse_sv_obr_ul(&self, reader: &mut Reader<&[u8]>, start: &BytesStart, record: &mut EgrulRecord) -> Result<()> {
+        // Извлекаем атрибуты корневого элемента
+        let old_reg_number = start.get_attr("РегНом".as_bytes());
+        let old_reg_date = start.get_date_attr("ДатаРег".as_bytes());
+        let old_authority = start.get_attr("НаимРО".as_bytes());
+
+        // Устанавливаем данные в registration
+        if old_reg_number.is_some() || old_reg_date.is_some() || old_authority.is_some() {
+            if record.registration.is_none() {
+                record.registration = Some(RegistrationInfo::default());
+            }
+            if let Some(ref mut reg) = record.registration {
+                reg.old_reg_number = old_reg_number;
+                reg.old_reg_date = old_reg_date;
+                reg.old_authority = old_authority;
+            }
+        }
+
+        // Парсим вложенные элементы
+        let mut buf = Vec::new();
+        let mut depth = 1;
+
+        loop {
+            match reader.read_event_into(&mut buf) {
+                Ok(Event::Start(ref e)) => {
+                    depth += 1;
+                    let name = e.name();
+                    let tag = name.as_ref();
+
+                    // СпОбрЮЛ - способ образования
+                    if tag_matches(tag, "СпОбрЮЛ".as_bytes()) {
+                        if let Some(ref mut reg) = record.registration {
+                            reg.formation_code = e.get_attr("КодСпОбрЮЛ".as_bytes());
+                            reg.formation_method = e.get_attr("НаимСпОбрЮЛ".as_bytes());
+                        }
+                    }
+                }
+                Ok(Event::Empty(ref e)) => {
+                    let name = e.name();
+                    let tag = name.as_ref();
+
+                    if tag_matches(tag, "СпОбрЮЛ".as_bytes()) {
+                        if let Some(ref mut reg) = record.registration {
+                            reg.formation_code = e.get_attr("КодСпОбрЮЛ".as_bytes());
+                            reg.formation_method = e.get_attr("НаимСпОбрЮЛ".as_bytes());
+                        }
+                    }
+                }
+                Ok(Event::End(_)) => {
+                    depth -= 1;
+                    if depth == 0 {
+                        break;
+                    }
+                }
+                Ok(Event::Eof) => break,
+                Err(e) => return Err(Error::Xml(e)),
+                _ => {}
+            }
+            buf.clear();
+        }
+
+        Ok(())
+    }
+
+    /// Парсинг сведений об образовании ЮЛ (СвОбрЮЛ) - Empty element
+    fn parse_sv_obr_ul_empty(&self, e: &BytesStart, record: &mut EgrulRecord) {
+        let old_reg_number = e.get_attr("РегНом".as_bytes());
+        let old_reg_date = e.get_date_attr("ДатаРег".as_bytes());
+        let old_authority = e.get_attr("НаимРО".as_bytes());
+
+        if old_reg_number.is_some() || old_reg_date.is_some() || old_authority.is_some() {
+            if record.registration.is_none() {
+                record.registration = Some(RegistrationInfo::default());
+            }
+            if let Some(ref mut reg) = record.registration {
+                reg.old_reg_number = old_reg_number;
+                reg.old_reg_date = old_reg_date;
+                reg.old_authority = old_authority;
+            }
+        }
     }
 
     /// Парсинг налогового органа

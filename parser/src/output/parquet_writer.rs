@@ -100,6 +100,11 @@ impl ParquetOutputWriter {
             Field::new("main_activity_name", DataType::Utf8, true),
             Field::new("additional_activities", DataType::Utf8, true), // JSON массив
             Field::new("email", DataType::Utf8, true),
+            Field::new("company_share_percent", DataType::Float64, true),
+            Field::new("company_share_nominal", DataType::Float64, true),
+            Field::new("old_reg_number", DataType::Utf8, true),
+            Field::new("old_reg_date", DataType::Utf8, true),
+            Field::new("old_reg_authority", DataType::Utf8, true),
             Field::new("founders_count", DataType::Int32, true),
             Field::new("founders", DataType::Utf8, true), // JSON массив учредителей
             Field::new("history", DataType::Utf8, true), // JSON массив истории изменений
@@ -258,6 +263,21 @@ impl ParquetOutputWriter {
         let email: StringArray = records.iter()
             .map(|r| r.email.as_deref())
             .collect();
+        let company_share_percent: Float64Array = records.iter()
+            .map(|r| r.company_share.as_ref().and_then(|s| s.calculate_percent()))
+            .collect();
+        let company_share_nominal: Float64Array = records.iter()
+            .map(|r| r.company_share.as_ref().and_then(|s| s.nominal_value))
+            .collect();
+        let old_reg_number: StringArray = records.iter()
+            .map(|r| r.registration.as_ref().and_then(|reg| reg.old_reg_number.as_deref()))
+            .collect();
+        let old_reg_date: StringArray = records.iter()
+            .map(|r| r.registration.as_ref().and_then(|reg| reg.old_reg_date.map(|d| d.to_string())))
+            .collect();
+        let old_reg_authority: StringArray = records.iter()
+            .map(|r| r.registration.as_ref().and_then(|reg| reg.old_authority.as_deref()))
+            .collect();
         let founders_count: Int32Array = records.iter()
             .map(|r| Some(r.founders.len() as i32))
             .collect();
@@ -338,6 +358,11 @@ impl ParquetOutputWriter {
                 Arc::new(main_activity_name),
                 Arc::new(additional_activities),
                 Arc::new(email),
+                Arc::new(company_share_percent),
+                Arc::new(company_share_nominal),
+                Arc::new(old_reg_number),
+                Arc::new(old_reg_date),
+                Arc::new(old_reg_authority),
                 Arc::new(founders_count),
                 Arc::new(founders),
                 Arc::new(history),

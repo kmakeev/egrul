@@ -2,7 +2,7 @@
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { User, Users, Building, Globe, Landmark } from "lucide-react";
+import { User, Users, Building, Globe, Landmark, Banknote } from "lucide-react";
 import { formatCurrency, formatPercentage } from "@/lib/format-utils";
 import { decodeHtmlEntities } from "@/lib/html-utils";
 import type { LegalEntity, Founder } from "@/lib/api";
@@ -297,6 +297,44 @@ export function CompanyManagement({ company }: CompanyManagementProps) {
           )}
         </CardContent>
       </Card>
+
+      {/* Доля компании в уставном капитале */}
+      {company.companyShare && (company.companyShare.percent || company.companyShare.nominalValue) && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Banknote className="h-5 w-5" />
+              Доля в уставном капитале, принадлежащая обществу
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="border rounded-lg p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-muted-foreground mb-1">
+                    Доля, принадлежащая самому обществу
+                  </p>
+                  <p className="text-sm text-muted-foreground">
+                    (не распределена между участниками)
+                  </p>
+                </div>
+                <div className="text-right">
+                  {company.companyShare.percent !== undefined && company.companyShare.percent !== null && company.companyShare.percent > 0 && (
+                    <div className="text-lg font-bold text-orange-600 dark:text-orange-400 mb-1">
+                      {formatPercentage(company.companyShare.percent)}
+                    </div>
+                  )}
+                  {company.companyShare.nominalValue !== undefined && company.companyShare.nominalValue !== null && company.companyShare.nominalValue > 0 && (
+                    <div className="text-sm text-muted-foreground">
+                      {formatCurrency(company.companyShare.nominalValue, "RUB")}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }

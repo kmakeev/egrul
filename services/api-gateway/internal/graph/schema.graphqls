@@ -162,6 +162,23 @@ type Authority {
 }
 
 """
+Доля в уставном капитале
+"""
+type Share {
+  percent: Float
+  nominalValue: Float
+}
+
+"""
+Сведения о регистрации до 01.07.2002
+"""
+type OldRegistration {
+  regNumber: String
+  regDate: Date
+  authority: String
+}
+
+"""
 Учредитель
 """
 type Founder {
@@ -269,7 +286,12 @@ type Company {
   
   # Уставный капитал
   capital: Money
-  
+  # Доля в УК, принадлежащая самому обществу
+  companyShare: Share
+
+  # Сведения о регистрации до 01.07.2002
+  oldRegistration: OldRegistration
+
   # Руководитель
   director: Person
   

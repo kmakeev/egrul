@@ -166,6 +166,11 @@ type companyRow struct {
 	IsReorganizing       uint8           `ch:"is_reorganizing"`
 	LastGrn              sql.NullString  `ch:"last_grn"`
 	LastGrnDate          sql.NullTime    `ch:"last_grn_date"`
+	CompanySharePercent  sql.NullFloat64 `ch:"company_share_percent"`
+	CompanyShareNominal  sql.NullFloat64 `ch:"company_share_nominal"`
+	OldRegNumber         sql.NullString  `ch:"old_reg_number"`
+	OldRegDate           sql.NullTime    `ch:"old_reg_date"`
+	OldRegAuthority      sql.NullString  `ch:"old_reg_authority"`
 	DocumentID           sql.NullString  `ch:"document_id"`
 	SourceFile           sql.NullString  `ch:"source_file"`
 	VersionDate          time.Time       `ch:"version_date"`
@@ -303,6 +308,31 @@ func (r *companyRow) toModel() *model.Company {
 		company.Capital = &model.Money{
 			Amount:   r.CapitalAmount.Float64,
 			Currency: currency,
+		}
+	}
+
+	// Company Share (доля компании в УК)
+	if r.CompanySharePercent.Valid || r.CompanyShareNominal.Valid {
+		company.CompanyShare = &model.Share{}
+		if r.CompanySharePercent.Valid {
+			company.CompanyShare.Percent = &r.CompanySharePercent.Float64
+		}
+		if r.CompanyShareNominal.Valid {
+			company.CompanyShare.NominalValue = &r.CompanyShareNominal.Float64
+		}
+	}
+
+	// Old Registration (регистрация до 01.07.2002)
+	if r.OldRegNumber.Valid || r.OldRegDate.Valid || r.OldRegAuthority.Valid {
+		company.OldRegistration = &model.OldRegistration{}
+		if r.OldRegNumber.Valid {
+			company.OldRegistration.RegNumber = &r.OldRegNumber.String
+		}
+		if r.OldRegDate.Valid {
+			company.OldRegistration.RegDate = &model.Date{Time: r.OldRegDate.Time}
+		}
+		if r.OldRegAuthority.Valid {
+			company.OldRegistration.Authority = &r.OldRegAuthority.String
 		}
 	}
 

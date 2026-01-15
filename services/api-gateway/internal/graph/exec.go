@@ -352,6 +352,8 @@ func (h *ManualHandler) handleCompanyQuery(ctx context.Context, req *GraphQLRequ
 			"address":       company.Address,
 			"email":         company.Email,
 			"capital":       company.Capital,
+			"companyShare":  company.CompanyShare,
+			"oldRegistration": company.OldRegistration,
 			"director":      company.Director,
 			"mainActivity":  company.MainActivity,
 			"activities":    company.Activities,

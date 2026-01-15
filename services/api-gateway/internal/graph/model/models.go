@@ -190,6 +190,19 @@ type Authority struct {
 	Name *string `json:"name"`
 }
 
+// Share доля в уставном капитале
+type Share struct {
+	Percent      *float64 `json:"percent"`
+	NominalValue *float64 `json:"nominalValue"`
+}
+
+// OldRegistration сведения о регистрации до 01.07.2002
+type OldRegistration struct {
+	RegNumber *string `json:"regNumber"`
+	RegDate   *Date   `json:"regDate"`
+	Authority *string `json:"authority"`
+}
+
 // Founder учредитель
 type Founder struct {
 	Type             FounderType `json:"type"`
@@ -258,10 +271,12 @@ type Company struct {
 	RegistrationDate  *Date         `json:"registrationDate"`
 	TerminationDate   *Date         `json:"terminationDate"`
 	ExtractDate       *Date         `json:"extractDate"`
-	Address           *Address      `json:"address"`
-	Email             *string       `json:"email"`
-	Capital           *Money        `json:"capital"`
-	Director          *Person       `json:"director"`
+	Address           *Address         `json:"address"`
+	Email             *string          `json:"email"`
+	Capital           *Money           `json:"capital"`
+	CompanyShare      *Share           `json:"companyShare"`
+	OldRegistration   *OldRegistration `json:"oldRegistration"`
+	Director          *Person          `json:"director"`
 	MainActivity      *Activity     `json:"mainActivity"`
 	Activities        []*Activity   `json:"activities"`
 	RegAuthority      *Authority    `json:"regAuthority"`
