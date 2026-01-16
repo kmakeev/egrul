@@ -69,7 +69,7 @@ impl XmlReader {
             let decl = &data[..decl_end.min(200)];
             let decl_lower: Vec<u8> = decl.iter().map(|b| b.to_ascii_lowercase()).collect();
 
-            if decl_lower.windows(16).any(|w| w == b"windows-1251") {
+            if decl_lower.windows(12).any(|w| w == b"windows-1251") {
                 return XmlEncoding::Windows1251;
             }
             if decl_lower.windows(5).any(|w| w == b"utf-8") {

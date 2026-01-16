@@ -1,0 +1,159 @@
+# ==============================================================================
+# Production Overrides - docker-compose.prod.yml
+# ==============================================================================
+# Использование: docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+# Содержит production настройки: resource limits, restart policies, security
+# ==============================================================================
+
+services:
+  # PostgreSQL
+  postgres:
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '${POSTGRES_CPU_LIMIT:-2}'
+          memory: ${POSTGRES_MEMORY_LIMIT:-4G}
+        reservations:
+          memory: ${POSTGRES_MEMORY_RESERVATION:-2G}
+
+  # ClickHouse
+  clickhouse:
+    restart: unless-stopped
+    environment:
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD}  # Должен быть в secrets
+    ulimits:
+      nofile:
+        soft: ${CLICKHOUSE_ULIMIT_NOFILE:-524288}
+        hard: ${CLICKHOUSE_ULIMIT_NOFILE:-524288}
+    deploy:
+      resources:
+        limits:
+          cpus: '${CLICKHOUSE_CPU_LIMIT:-8}'
+          memory: ${CLICKHOUSE_MEMORY_LIMIT_PROD:-32G}
+        reservations:
+          memory: ${CLICKHOUSE_MEMORY_RESERVATION:-16G}
+
+  # Elasticsearch
+  elasticsearch:
+    restart: unless-stopped
+    environment:
+      - "ES_JAVA_OPTS=${ES_JAVA_OPTS:--Xms2g -Xmx2g}"
+    deploy:
+      resources:
+        limits:
+          cpus: '${ELASTICSEARCH_CPU_LIMIT:-4}'
+          memory: ${ELASTICSEARCH_MEMORY_LIMIT:-8G}
+        reservations:
+          memory: ${ELASTICSEARCH_MEMORY_RESERVATION:-4G}
+
+  # Redis
+  redis:
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: ${REDIS_MEMORY_LIMIT:-1G}
+        reservations:
+          memory: ${REDIS_MEMORY_RESERVATION:-512M}
+
+  # API Gateway
+  api-gateway:
+    restart: unless-stopped
+    environment:
+      - LOG_LEVEL=${LOG_LEVEL:-warn}
+      - GRAPHQL_PLAYGROUND_ENABLED=${GRAPHQL_PLAYGROUND_ENABLED:-false}
+      - GRAPHQL_INTROSPECTION_ENABLED=${GRAPHQL_INTROSPECTION_ENABLED:-false}
+    deploy:
+      resources:
+        limits:
+          cpus: '${API_GATEWAY_CPU_LIMIT:-2}'
+          memory: ${API_GATEWAY_MEMORY_LIMIT:-2G}
+        reservations:
+          memory: ${API_GATEWAY_MEMORY_RESERVATION:-1G}
+
+  # Search Service
+  search-service:
+    restart: unless-stopped
+    environment:
+      - LOG_LEVEL=${LOG_LEVEL:-warn}
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 1G
+        reservations:
+          memory: 512M
+
+  # Frontend
+  frontend:
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+      - NEXT_PUBLIC_DEBUG=false
+    deploy:
+      resources:
+        limits:
+          cpus: '${FRONTEND_CPU_LIMIT:-2}'
+          memory: ${FRONTEND_MEMORY_LIMIT:-1G}
+        reservations:
+          memory: ${FRONTEND_MEMORY_RESERVATION:-512M}
+
+  # Kafka
+  kafka:
+    restart: unless-stopped
+    environment:
+      KAFKA_HEAP_OPTS: ${KAFKA_HEAP_OPTS:--Xms1g -Xmx1g}
+    deploy:
+      resources:
+        limits:
+          cpus: '${KAFKA_CPU_LIMIT:-2}'
+          memory: ${KAFKA_MEMORY_LIMIT:-2G}
+        reservations:
+          memory: ${KAFKA_MEMORY_RESERVATION:-1G}
+
+  # Zookeeper
+  zookeeper:
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
+        reservations:
+          memory: 512M
+
+  # MinIO
+  minio:
+    restart: unless-stopped
+    environment:
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}  # Должен быть в secrets
+    deploy:
+      resources:
+        limits:
+          cpus: '${MINIO_CPU_LIMIT:-2}'
+          memory: ${MINIO_MEMORY_LIMIT:-2G}
+        reservations:
+          memory: ${MINIO_MEMORY_RESERVATION:-1G}
+
+  # Grafana
+  grafana:
+    restart: unless-stopped
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=${GF_SECURITY_ADMIN_PASSWORD}  # Должен быть в secrets
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
+        reservations:
+          memory: 512M
+
+  # Отключаем UI tools в production
+  adminer:
+    profiles:
+      - disabled
+
+  redisinsight:
+    profiles:
+      - disabled

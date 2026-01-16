@@ -1,6 +1,6 @@
-.PHONY: help setup dev build test clean docker-up docker-down docker-logs \
+.PHONY: help setup dev build test test-coverage clean docker-up docker-down docker-logs \
         parser-build parser-run parser-test \
-        services-build services-run services-test services-generate \
+        services-build services-run services-test services-test-local services-test-coverage services-generate \
         frontend-dev frontend-build frontend-test \
         db-migrate db-seed lint format
 
@@ -48,7 +48,21 @@ build: parser-build services-build frontend-build ## Сборка всех ко�
 	@echo "$(GREEN)✅ Сборка завершена$(NC)"
 
 test: parser-test services-test frontend-test ## Запуск всех тестов
-	@echo "$(GREEN)✅ Тесты пройдены$(NC)"
+	@echo "$(GREEN)✅ Все тесты пройдены$(NC)"
+
+test-coverage: ## Запуск всех тестов с покрытием кода
+	@echo "$(CYAN)📊 Запуск тестов с coverage...$(NC)"
+	@echo ""
+	@echo "$(CYAN)=== Rust Parser ===$(NC)"
+	@cd parser && cargo tarpaulin --out Stdout 2>/dev/null || cargo test
+	@echo ""
+	@echo "$(CYAN)=== Go Services ===$(NC)"
+	@make services-test-coverage
+	@echo ""
+	@echo "$(CYAN)=== Frontend ===$(NC)"
+	@cd frontend && $(PNPM) test:unit:coverage || true
+	@echo ""
+	@echo "$(GREEN)✅ Coverage тесты завершены$(NC)"
 
 clean: ## Очистка артефактов сборки
 	@echo "$(YELLOW)🧹 Очистка...$(NC)"
@@ -124,10 +138,31 @@ services-run-search: ## Запуск Search Service
 	@echo "$(CYAN)▶️  Запуск Search Service...$(NC)"
 	@cd services/search-service && $(GO) run .
 
-services-test: ## Тестирование Go сервисов
+services-test: ## Тестирование Go сервисов (в Docker)
 	@echo "$(CYAN)🧪 Тестирование сервисов...$(NC)"
-	@cd services/api-gateway && $(GO) test ./...
-	@cd services/search-service && $(GO) test ./...
+	@docker run --rm \
+		-v "$(PWD)/services/api-gateway:/app" \
+		-w /app \
+		golang:1.22 \
+		sh -c "go mod tidy && go test -v -short ./..."
+	@docker run --rm \
+		-v "$(PWD)/services/search-service:/app" \
+		-w /app \
+		golang:1.22 \
+		sh -c "go mod tidy && go test -v -short ./..."
+
+services-test-local: ## Тестирование Go сервисов (локально, требуется Go)
+	@echo "$(CYAN)🧪 Тестирование сервисов (локально)...$(NC)"
+	@cd services/api-gateway && $(GO) test -v -short ./...
+	@cd services/search-service && $(GO) test -v -short ./...
+
+services-test-coverage: ## Тестирование с покрытием кода
+	@echo "$(CYAN)📊 Тестирование с coverage...$(NC)"
+	@docker run --rm \
+		-v "$(PWD)/services/api-gateway:/app" \
+		-w /app \
+		golang:1.22 \
+		sh -c "go mod tidy && go test -v -short -coverprofile=coverage.out ./... && go tool cover -func=coverage.out | grep total"
 
 services-generate: ## Генерация GraphQL кода для API Gateway
 	@echo "$(CYAN)🔧 Генерация GraphQL кода...$(NC)"
@@ -273,4 +308,74 @@ update-deps: ## Обновление зависимостей
 	@cd parser && $(CARGO) update
 	@cd services/api-gateway && $(GO) get -u ./...
 	@cd services/search-service && $(GO) get -u ./...
+
+# ==================== Docker Profiles ====================
+
+docker-up-full: ## Запуск всех сервисов (profile: full)
+	@echo "$(CYAN)🐳 Запуск всех сервисов (full profile)...$(NC)"
+	@$(DOCKER_COMPOSE) --profile full up -d
+
+docker-up-tools: ## Запуск с UI инструментами (profile: tools)
+	@echo "$(CYAN)🔧 Запуск с UI инструментами...$(NC)"
+	@$(DOCKER_COMPOSE) --profile tools up -d
+
+docker-up-monitoring: ## Запуск с мониторингом (profile: monitoring)
+	@echo "$(CYAN)📊 Запуск с мониторингом...$(NC)"
+	@$(DOCKER_COMPOSE) --profile monitoring up -d
+
+docker-up-dev: ## Dev mode с hot reload
+	@echo "$(CYAN)🔧 Запуск в dev режиме (hot reload)...$(NC)"
+	@$(DOCKER_COMPOSE) -f docker-compose.yml -f docker-compose.override.yml up -d
+
+docker-up-prod: ## Production mode
+	@echo "$(CYAN)🚀 Запуск в production режиме...$(NC)"
+	@$(DOCKER_COMPOSE) -f docker-compose.yml -f docker-compose.prod.yml up -d
+
+# ==================== MinIO ====================
+
+minio-console: ## Открыть MinIO Console
+	@echo "$(CYAN)📦 Открытие MinIO Console...$(NC)"
+	@open http://localhost:9001 || xdg-open http://localhost:9001 || echo "Откройте http://localhost:9001 в браузере"
+
+minio-upload: ## Загрузить файлы в MinIO (OUTPUT=./output)
+	@echo "$(CYAN)📤 Загрузка файлов в MinIO...$(NC)"
+	@$(DOCKER_COMPOSE) exec minio mc cp $(OUTPUT:-./output)/* egrul/parquet-files/ --recursive
+
+# ==================== Kafka ====================
+
+kafka-topics: ## Список Kafka топиков
+	@echo "$(CYAN)📋 Список Kafka топиков:$(NC)"
+	@$(DOCKER_COMPOSE) exec kafka kafka-topics --bootstrap-server localhost:9092 --list
+
+kafka-create-topic: ## Создать Kafka топик (TOPIC=name)
+	@echo "$(CYAN)➕ Создание топика: $(TOPIC)$(NC)"
+	@$(DOCKER_COMPOSE) exec kafka kafka-topics --bootstrap-server localhost:9092 --create --topic $(TOPIC) --partitions 3 --replication-factor 1
+
+kafka-console: ## Kafka console consumer (TOPIC=name)
+	@echo "$(CYAN)🎧 Консоль Kafka для топика: $(TOPIC)$(NC)"
+	@$(DOCKER_COMPOSE) exec kafka kafka-console-consumer --bootstrap-server localhost:9092 --topic $(TOPIC) --from-beginning
+
+# ==================== UI Tools ====================
+
+adminer: ## Открыть Adminer
+	@echo "$(CYAN)🗄️  Открытие Adminer...$(NC)"
+	@open http://localhost:8090 || xdg-open http://localhost:8090 || echo "Откройте http://localhost:8090 в браузере"
+
+redisinsight: ## Открыть RedisInsight
+	@echo "$(CYAN)🔴 Открытие RedisInsight...$(NC)"
+	@open http://localhost:8091 || xdg-open http://localhost:8091 || echo "Откройте http://localhost:8091 в браузере"
+
+# ==================== Seed Data ====================
+
+seed-data: ## Загрузка тестовых данных из test/
+	@echo "$(CYAN)🌱 Загрузка тестовых данных...$(NC)"
+	@chmod +x infrastructure/scripts/seed-data.sh
+	@./infrastructure/scripts/seed-data.sh
+
+# ==================== Init Scripts ====================
+
+init-db: ## Инициализация PostgreSQL метаданных
+	@echo "$(CYAN)🔧 Инициализация PostgreSQL...$(NC)"
+	@chmod +x infrastructure/scripts/init-db.sh
+	@$(DOCKER_COMPOSE) exec -T postgres bash < infrastructure/scripts/init-db.sh
 

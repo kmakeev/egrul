@@ -6,27 +6,28 @@ import (
 	"fmt"
 
 	"github.com/egrul-system/services/api-gateway/internal/graph/model"
+	"github.com/egrul-system/services/api-gateway/internal/repository"
 	"github.com/egrul-system/services/api-gateway/internal/repository/clickhouse"
 	"go.uber.org/zap"
 )
 
 // CompanyService сервис для работы с компаниями
 type CompanyService struct {
-	companyRepo  *clickhouse.CompanyRepository
-	founderRepo  *clickhouse.FounderRepository
-	licenseRepo  *clickhouse.LicenseRepository
-	branchRepo   *clickhouse.BranchRepository
-	historyRepo  *clickhouse.HistoryRepository
+	companyRepo  repository.CompanyRepository
+	founderRepo  repository.FounderRepository
+	licenseRepo  repository.LicenseRepository
+	branchRepo   repository.BranchRepository
+	historyRepo  repository.HistoryRepository
 	logger       *zap.Logger
 }
 
 // NewCompanyService создает новый сервис компаний
 func NewCompanyService(
-	companyRepo *clickhouse.CompanyRepository,
-	founderRepo *clickhouse.FounderRepository,
-	licenseRepo *clickhouse.LicenseRepository,
-	branchRepo *clickhouse.BranchRepository,
-	historyRepo *clickhouse.HistoryRepository,
+	companyRepo repository.CompanyRepository,
+	founderRepo repository.FounderRepository,
+	licenseRepo repository.LicenseRepository,
+	branchRepo repository.BranchRepository,
+	historyRepo repository.HistoryRepository,
 	logger *zap.Logger,
 ) *CompanyService {
 	return &CompanyService{

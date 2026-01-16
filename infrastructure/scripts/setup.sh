@@ -30,9 +30,6 @@ MISSING_DEPS=0
 
 check_command "docker" || MISSING_DEPS=1
 check_command "docker-compose" || check_command "docker compose" || MISSING_DEPS=1
-check_command "pnpm" || MISSING_DEPS=1
-check_command "cargo" || MISSING_DEPS=1
-check_command "go" || MISSING_DEPS=1
 
 if [ $MISSING_DEPS -eq 1 ]; then
     echo ""
@@ -42,22 +39,8 @@ if [ $MISSING_DEPS -eq 1 ]; then
 fi
 
 echo ""
-echo "📦 Установка зависимостей Node.js..."
-pnpm install
-
-echo ""
-echo "🦀 Проверка Rust проекта..."
-cd parser
-cargo check
-cd ..
-
-echo ""
-echo "🐹 Проверка Go модулей..."
-cd services/api-gateway
-go mod tidy
-cd ../search-service
-go mod tidy
-cd ../..
+echo "ℹ️  Сборка компонентов происходит в Docker контейнерах"
+echo "   Локальная установка pnpm, cargo, go не требуется"
 
 echo ""
 echo "🐳 Сборка Docker образов..."

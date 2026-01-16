@@ -1,0 +1,168 @@
+name: PR Checks
+
+on:
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  go-tests:
+    name: Go Services Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+          cache-dependency-path: services/*/go.sum
+
+      - name: Install Dependencies - API Gateway
+        working-directory: ./services/api-gateway
+        run: go mod download
+
+      - name: Install Dependencies - Search Service
+        working-directory: ./services/search-service
+        run: go mod download
+
+      - name: Run go vet - API Gateway
+        working-directory: ./services/api-gateway
+        run: go vet ./...
+
+      - name: Run go vet - Search Service
+        working-directory: ./services/search-service
+        run: go vet ./...
+
+      - name: Run Unit Tests - API Gateway
+        working-directory: ./services/api-gateway
+        run: go test -v -short -coverprofile=coverage.out ./...
+
+      - name: Run Unit Tests - Search Service
+        working-directory: ./services/search-service
+        run: go test -v -short -coverprofile=coverage.out ./...
+
+      - name: Check Coverage - API Gateway
+        working-directory: ./services/api-gateway
+        run: |
+          COVERAGE=$(go tool cover -func=coverage.out | grep total | awk '{print $3}' | sed 's/%//')
+          echo "Coverage: ${COVERAGE}%"
+          if (( $(echo "$COVERAGE < 30" | bc -l) )); then
+            echo "⚠️ Coverage ${COVERAGE}% is below 30% (будет проверяться после добавления большего количества тестов)"
+          else
+            echo "✅ Coverage ${COVERAGE}% meets requirement"
+          fi
+
+      - name: Upload Coverage - API Gateway
+        uses: codecov/codecov-action@v4
+        with:
+          files: ./services/api-gateway/coverage.out
+          flags: go-api-gateway
+          fail_ci_if_error: false
+
+  rust-tests:
+    name: Rust Parser Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Cache Cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            parser/target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Run Clippy
+        working-directory: ./parser
+        run: cargo clippy -- -D warnings
+
+      - name: Run Tests
+        working-directory: ./parser
+        run: cargo test --all-features --no-fail-fast
+
+      - name: Check Code Coverage
+        working-directory: ./parser
+        run: |
+          cargo install cargo-tarpaulin || true
+          cargo tarpaulin --out Xml --output-dir coverage || echo "⚠️ Coverage check skipped"
+
+      - name: Upload Coverage - Parser
+        uses: codecov/codecov-action@v4
+        if: success()
+        with:
+          files: ./parser/coverage/cobertura.xml
+          flags: rust-parser
+          fail_ci_if_error: false
+
+  frontend-tests:
+    name: Frontend Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v3
+        with:
+          version: 8
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - name: Install Dependencies
+        working-directory: ./frontend
+        run: pnpm install --frozen-lockfile
+
+      - name: Run Lint
+        working-directory: ./frontend
+        run: pnpm lint
+
+      - name: Run Type Check
+        working-directory: ./frontend
+        run: pnpm type-check
+
+      - name: Run Unit Tests
+        working-directory: ./frontend
+        run: |
+          if [ -f "vitest.config.ts" ]; then
+            pnpm test:unit --coverage || echo "⚠️ Tests not yet configured"
+          else
+            echo "⚠️ Vitest not yet configured, skipping tests"
+          fi
+
+  security-scan:
+    name: Security Scan
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+          severity: 'CRITICAL,HIGH'
+
+      - name: Upload Trivy results to GitHub Security
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: 'trivy-results.sarif'

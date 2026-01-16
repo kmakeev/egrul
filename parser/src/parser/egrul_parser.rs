@@ -8,7 +8,7 @@ use crate::error::{Error, Result};
 use crate::models::{
     EgrulRecord, Address, Capital, Activity, Person, Founder, Share,
     HistoryRecord, RegistrationAuthority, TaxAuthority,
-    PensionFund, SocialInsurance, License,
+    PensionFund, SocialInsurance, License, EntityStatus,
 };
 use crate::models::egrul::{HeadInfo, RegistrationInfo, Branch, BranchType};
 use super::attributes::{AttributeExt, attr_names, tag_names, tag_matches, normalize_string};
@@ -340,6 +340,11 @@ impl EgrulXmlParser {
                     registration.certificate_date = history_with_cert.certificate_date;
                 }
             }
+        }
+
+        // Преобразуем status_code в status enum
+        if let Some(ref code) = record.status_code {
+            record.status = EntityStatus::from_code(code);
         }
 
         Ok(record)
@@ -1695,6 +1700,210 @@ impl EgrulXmlParser {
 impl Default for EgrulXmlParser {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::EntityStatus;
+
+    const SAMPLE_EGRUL_XML: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
+<Файл>
+<Документ>
+<СвЮЛ ОГРН="1234567890123" ИНН="7707083893" КПП="770701001"
+      ДатаОГРН="01.01.2015" ДатаВып="02.08.2024">
+    <СвНаимЮЛ НаимЮЛПолн="ОБЩЕСТВО С ОГРАНИЧЕННОЙ ОТВЕТСТВЕННОСТЬЮ &quot;ТЕСТ&quot;">
+        <СвНаимЮЛСокр НаимСокр="ООО &quot;ТЕСТ&quot;"/>
+    </СвНаимЮЛ>
+    <СвАдресЮЛ>
+        <АдресРФ Индекс="123456" КодРегион="77">
+            <Город ТипГород="Г" НаимГород="Москва"/>
+            <Улица ТипУлица="УЛ" НаимУлица="Тверская"/>
+        </АдресРФ>
+    </СвАдресЮЛ>
+</СвЮЛ>
+</Документ>
+</Файл>"#;
+
+    #[test]
+    fn test_parse_basic_company() {
+        let parser = EgrulXmlParser::new();
+        let result = parser.parse(SAMPLE_EGRUL_XML);
+
+        assert!(result.is_ok(), "Failed to parse basic XML: {:?}", result.err());
+        let records = result.unwrap();
+        assert_eq!(records.len(), 1, "Expected 1 record, got {}", records.len());
+
+        let company = &records[0];
+        assert_eq!(company.ogrn, "1234567890123");
+        assert_eq!(company.inn, "7707083893");
+        assert!(company.full_name.contains("ТЕСТ"), "Full name should contain ТЕСТ: {}", company.full_name);
+    }
+
+    #[test]
+    fn test_parse_empty_xml() {
+        let parser = EgrulXmlParser::new();
+        let result = parser.parse("<Файл><Документ></Документ></Файл>");
+
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().len(), 0);
+    }
+
+    #[test]
+    fn test_parse_minimal_company() {
+        let xml = r#"<?xml version="1.0"?>
+<Файл>
+<Документ>
+<СвЮЛ ОГРН="1111111111111" ИНН="1111111111">
+    <СвНаимЮЛ НаимЮЛПолн="Минимальная компания"/>
+</СвЮЛ>
+</Документ>
+</Файл>"#;
+
+        let parser = EgrulXmlParser::new();
+        let result = parser.parse(xml);
+
+        assert!(result.is_ok());
+        let records = result.unwrap();
+        assert_eq!(records.len(), 1);
+
+        let company = &records[0];
+        assert_eq!(company.ogrn, "1111111111111");
+        assert_eq!(company.inn, "1111111111");
+        assert_eq!(company.full_name, "Минимальная компания");
+    }
+
+    #[test]
+    fn test_extract_region_code_from_tax_code() {
+        assert_eq!(
+            EgrulXmlParser::extract_region_code_from_tax_code("7707"),
+            Some("77".to_string())
+        );
+        assert_eq!(
+            EgrulXmlParser::extract_region_code_from_tax_code("50"),
+            Some("50".to_string())
+        );
+        assert_eq!(
+            EgrulXmlParser::extract_region_code_from_tax_code("0"),
+            None
+        );
+        assert_eq!(
+            EgrulXmlParser::extract_region_code_from_tax_code("X7"),
+            None
+        );
+        assert_eq!(
+            EgrulXmlParser::extract_region_code_from_tax_code(""),
+            None
+        );
+    }
+
+    #[test]
+    fn test_parse_company_with_address() {
+        let xml = r#"<?xml version="1.0"?>
+<Файл>
+<Документ>
+<СвЮЛ ОГРН="2222222222222" ИНН="2222222222">
+    <СвНаимЮЛ НаимЮЛПолн="Компания с адресом"/>
+    <СвАдресЮЛ>
+        <АдресРФ Индекс="101000" КодРегион="77">
+            <Город ТипГород="Г" НаимГород="Москва"/>
+            <Улица ТипУлица="УЛ" НаимУлица="Красная площадь"/>
+        </АдресРФ>
+    </СвАдресЮЛ>
+</СвЮЛ>
+</Документ>
+</Файл>"#;
+
+        let parser = EgrulXmlParser::new();
+        let result = parser.parse(xml);
+
+        assert!(result.is_ok());
+        let records = result.unwrap();
+        let company = &records[0];
+
+        assert!(company.address.is_some());
+        let addr = company.address.as_ref().unwrap();
+        assert_eq!(addr.postal_code.as_ref().unwrap(), "101000");
+        assert_eq!(addr.region_code.as_ref().unwrap(), "77");
+        assert_eq!(addr.city.as_ref().unwrap(), "Москва");
+    }
+
+    #[test]
+    fn test_parse_company_with_status() {
+        let xml = r#"<?xml version="1.0"?>
+<Файл>
+<Документ>
+<СвЮЛ ОГРН="3333333333333" ИНН="3333333333" СтатусЮЛ="1">
+    <СвНаимЮЛ НаимЮЛПолн="Активная компания"/>
+</СвЮЛ>
+</Документ>
+</Файл>"#;
+
+        let parser = EgrulXmlParser::new();
+        let result = parser.parse(xml);
+
+        assert!(result.is_ok());
+        let records = result.unwrap();
+        let company = &records[0];
+
+        assert_eq!(company.status, EntityStatus::Active);
+    }
+
+    #[test]
+    fn test_parse_multiple_companies() {
+        let xml = r#"<?xml version="1.0"?>
+<Файл>
+<Документ>
+<СвЮЛ ОГРН="1111111111111" ИНН="1111111111">
+    <СвНаимЮЛ НаимЮЛПолн="Компания 1"/>
+</СвЮЛ>
+</Документ>
+<Документ>
+<СвЮЛ ОГРН="2222222222222" ИНН="2222222222">
+    <СвНаимЮЛ НаимЮЛПолн="Компания 2"/>
+</СвЮЛ>
+</Документ>
+</Файл>"#;
+
+        let parser = EgrulXmlParser::new();
+        let result = parser.parse(xml);
+
+        assert!(result.is_ok());
+        let records = result.unwrap();
+        assert_eq!(records.len(), 2);
+        assert_eq!(records[0].ogrn, "1111111111111");
+        assert_eq!(records[1].ogrn, "2222222222222");
+    }
+
+    #[test]
+    fn test_parse_invalid_xml() {
+        let parser = EgrulXmlParser::new();
+        let result = parser.parse("<ЕГРЮЛ><СвЮЛ>");
+
+        // Invalid XML should be handled gracefully
+        assert!(result.is_ok(), "Parser should handle invalid XML");
+    }
+
+    #[test]
+    fn test_parse_with_cyrillic_tags() {
+        // Test that we can parse XML with cyrillic tags
+        let xml = r#"<?xml version="1.0"?>
+<Файл>
+<Документ>
+<СвЮЛ ОГРН="4444444444444" ИНН="4444444444">
+    <СвНаимЮЛ НаимЮЛПолн="Тест кириллицы"/>
+</СвЮЛ>
+</Документ>
+</Файл>"#;
+
+        let parser = EgrulXmlParser::new();
+        let result = parser.parse(xml);
+
+        assert!(result.is_ok());
+        let records = result.unwrap();
+        assert_eq!(records.len(), 1);
+        assert_eq!(records[0].full_name, "Тест кириллицы");
     }
 }
 
