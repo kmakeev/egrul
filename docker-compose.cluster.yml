@@ -1,0 +1,482 @@
+# Docker Compose для ClickHouse кластера
+# Использование: docker compose -f docker-compose.cluster.yml --profile cluster up -d
+#
+# Структура:
+# - 3 Keeper ноды для координации кластера (замена Zookeeper)
+# - 6 ClickHouse нод (3 шарда по 2 реплики)
+# - Prometheus для мониторинга метрик
+#
+# Профили:
+# - cluster: все компоненты кластера
+# - monitoring: prometheus
+# - full: cluster + monitoring
+
+services:
+  # ================================
+  # Keeper ноды (координация кластера)
+  # ================================
+
+  keeper-01:
+    image: clickhouse/clickhouse-keeper:24.11-alpine
+    container_name: egrul-keeper-01
+    hostname: keeper-01
+    volumes:
+      - keeper01_data:/var/lib/clickhouse-keeper
+      - ./infrastructure/docker/clickhouse-cluster/keeper/keeper-01.xml:/etc/clickhouse-keeper/keeper_config.xml:ro
+    ports:
+      - "2181:2181"   # Клиентский порт
+      - "9444:9444"   # Raft порт
+      - "9641:9641"   # Prometheus metrics
+    healthcheck:
+      test: ["CMD-SHELL", "timeout 1 bash -c '</dev/tcp/localhost/2181' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - egrul-cluster-network
+    profiles:
+      - cluster
+      - full
+    restart: unless-stopped
+
+  keeper-02:
+    image: clickhouse/clickhouse-keeper:24.11-alpine
+    container_name: egrul-keeper-02
+    hostname: keeper-02
+    volumes:
+      - keeper02_data:/var/lib/clickhouse-keeper
+      - ./infrastructure/docker/clickhouse-cluster/keeper/keeper-02.xml:/etc/clickhouse-keeper/keeper_config.xml:ro
+    ports:
+      - "2182:2181"   # Клиентский порт
+      - "9445:9445"   # Raft порт
+      - "9642:9642"   # Prometheus metrics
+    healthcheck:
+      test: ["CMD-SHELL", "timeout 1 bash -c '</dev/tcp/localhost/2181' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - egrul-cluster-network
+    profiles:
+      - cluster
+      - full
+    restart: unless-stopped
+
+  keeper-03:
+    image: clickhouse/clickhouse-keeper:24.11-alpine
+    container_name: egrul-keeper-03
+    hostname: keeper-03
+    volumes:
+      - keeper03_data:/var/lib/clickhouse-keeper
+      - ./infrastructure/docker/clickhouse-cluster/keeper/keeper-03.xml:/etc/clickhouse-keeper/keeper_config.xml:ro
+    ports:
+      - "2183:2181"   # Клиентский порт
+      - "9446:9446"   # Raft порт
+      - "9643:9643"   # Prometheus metrics
+    healthcheck:
+      test: ["CMD-SHELL", "timeout 1 bash -c '</dev/tcp/localhost/2181' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - egrul-cluster-network
+    profiles:
+      - cluster
+      - full
+    restart: unless-stopped
+
+  # ================================
+  # ClickHouse ноды
+  # Шард 1: clickhouse-01 (реплика 1), clickhouse-02 (реплика 2)
+  # Шард 2: clickhouse-03 (реплика 1), clickhouse-04 (реплика 2)
+  # Шард 3: clickhouse-05 (реплика 1), clickhouse-06 (реплика 2)
+  # ================================
+
+  clickhouse-01:
+    build:
+      context: ./infrastructure/docker/clickhouse-cluster/node-01
+      dockerfile: Dockerfile
+    container_name: egrul-clickhouse-01
+    hostname: clickhouse-01
+    depends_on:
+      keeper-01:
+        condition: service_healthy
+      keeper-02:
+        condition: service_healthy
+      keeper-03:
+        condition: service_healthy
+    volumes:
+      - clickhouse01_data:/var/lib/clickhouse
+      - clickhouse01_logs:/var/log/clickhouse-server
+      - ./infrastructure/docker/clickhouse-cluster/shared:/etc/clickhouse-server/config.d:ro
+      - ./infrastructure/migrations/clickhouse/cluster:/docker-entrypoint-initdb.d:ro
+    ports:
+      - "8123:8123"   # HTTP API
+      - "9000:9000"   # Native protocol
+      - "9009:9009"   # Interserver HTTP
+      - "9363:9363"   # Prometheus metrics
+    environment:
+      CLICKHOUSE_DB: ${CLICKHOUSE_DB:-egrul}
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER:-admin}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-admin}
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    healthcheck:
+      test: ["CMD", "clickhouse-client", "--user", "egrul_app", "--password", "test", "--query", "SELECT 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+    networks:
+      - egrul-cluster-network
+    profiles:
+      - cluster
+      - full
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 8G
+        reservations:
+          memory: 4G
+
+  clickhouse-02:
+    build:
+      context: ./infrastructure/docker/clickhouse-cluster/node-02
+      dockerfile: Dockerfile
+    container_name: egrul-clickhouse-02
+    hostname: clickhouse-02
+    depends_on:
+      keeper-01:
+        condition: service_healthy
+      keeper-02:
+        condition: service_healthy
+      keeper-03:
+        condition: service_healthy
+    volumes:
+      - clickhouse02_data:/var/lib/clickhouse
+      - clickhouse02_logs:/var/log/clickhouse-server
+      - ./infrastructure/docker/clickhouse-cluster/shared:/etc/clickhouse-server/config.d:ro
+    ports:
+      - "8124:8123"   # HTTP API
+      - "9001:9000"   # Native protocol
+      - "9010:9009"   # Interserver HTTP
+      - "9364:9363"   # Prometheus metrics
+    environment:
+      CLICKHOUSE_DB: ${CLICKHOUSE_DB:-egrul}
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER:-admin}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-admin}
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    healthcheck:
+      test: ["CMD", "clickhouse-client", "--user", "egrul_app", "--password", "test", "--query", "SELECT 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+    networks:
+      - egrul-cluster-network
+    profiles:
+      - cluster
+      - full
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 8G
+        reservations:
+          memory: 4G
+
+  clickhouse-03:
+    build:
+      context: ./infrastructure/docker/clickhouse-cluster/node-03
+      dockerfile: Dockerfile
+    container_name: egrul-clickhouse-03
+    hostname: clickhouse-03
+    depends_on:
+      keeper-01:
+        condition: service_healthy
+      keeper-02:
+        condition: service_healthy
+      keeper-03:
+        condition: service_healthy
+    volumes:
+      - clickhouse03_data:/var/lib/clickhouse
+      - clickhouse03_logs:/var/log/clickhouse-server
+      - ./infrastructure/docker/clickhouse-cluster/shared:/etc/clickhouse-server/config.d:ro
+    ports:
+      - "8125:8123"   # HTTP API
+      - "9002:9000"   # Native protocol
+      - "9011:9009"   # Interserver HTTP
+      - "9365:9363"   # Prometheus metrics
+    environment:
+      CLICKHOUSE_DB: ${CLICKHOUSE_DB:-egrul}
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER:-admin}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-admin}
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    healthcheck:
+      test: ["CMD", "clickhouse-client", "--user", "egrul_app", "--password", "test", "--query", "SELECT 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+    networks:
+      - egrul-cluster-network
+    profiles:
+      - cluster
+      - full
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 8G
+        reservations:
+          memory: 4G
+
+  clickhouse-04:
+    build:
+      context: ./infrastructure/docker/clickhouse-cluster/node-04
+      dockerfile: Dockerfile
+    container_name: egrul-clickhouse-04
+    hostname: clickhouse-04
+    depends_on:
+      keeper-01:
+        condition: service_healthy
+      keeper-02:
+        condition: service_healthy
+      keeper-03:
+        condition: service_healthy
+    volumes:
+      - clickhouse04_data:/var/lib/clickhouse
+      - clickhouse04_logs:/var/log/clickhouse-server
+      - ./infrastructure/docker/clickhouse-cluster/shared:/etc/clickhouse-server/config.d:ro
+    ports:
+      - "8126:8123"   # HTTP API
+      - "9003:9000"   # Native protocol
+      - "9012:9009"   # Interserver HTTP
+      - "9366:9363"   # Prometheus metrics
+    environment:
+      CLICKHOUSE_DB: ${CLICKHOUSE_DB:-egrul}
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER:-admin}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-admin}
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    healthcheck:
+      test: ["CMD", "clickhouse-client", "--user", "egrul_app", "--password", "test", "--query", "SELECT 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+    networks:
+      - egrul-cluster-network
+    profiles:
+      - cluster
+      - full
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 8G
+        reservations:
+          memory: 4G
+
+  clickhouse-05:
+    build:
+      context: ./infrastructure/docker/clickhouse-cluster/node-05
+      dockerfile: Dockerfile
+    container_name: egrul-clickhouse-05
+    hostname: clickhouse-05
+    depends_on:
+      keeper-01:
+        condition: service_healthy
+      keeper-02:
+        condition: service_healthy
+      keeper-03:
+        condition: service_healthy
+    volumes:
+      - clickhouse05_data:/var/lib/clickhouse
+      - clickhouse05_logs:/var/log/clickhouse-server
+      - ./infrastructure/docker/clickhouse-cluster/shared:/etc/clickhouse-server/config.d:ro
+    ports:
+      - "8127:8123"   # HTTP API
+      - "9004:9000"   # Native protocol
+      - "9013:9009"   # Interserver HTTP
+      - "9367:9363"   # Prometheus metrics
+    environment:
+      CLICKHOUSE_DB: ${CLICKHOUSE_DB:-egrul}
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER:-admin}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-admin}
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    healthcheck:
+      test: ["CMD", "clickhouse-client", "--user", "egrul_app", "--password", "test", "--query", "SELECT 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+    networks:
+      - egrul-cluster-network
+    profiles:
+      - cluster
+      - full
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 8G
+        reservations:
+          memory: 4G
+
+  clickhouse-06:
+    build:
+      context: ./infrastructure/docker/clickhouse-cluster/node-06
+      dockerfile: Dockerfile
+    container_name: egrul-clickhouse-06
+    hostname: clickhouse-06
+    depends_on:
+      keeper-01:
+        condition: service_healthy
+      keeper-02:
+        condition: service_healthy
+      keeper-03:
+        condition: service_healthy
+    volumes:
+      - clickhouse06_data:/var/lib/clickhouse
+      - clickhouse06_logs:/var/log/clickhouse-server
+      - ./infrastructure/docker/clickhouse-cluster/shared:/etc/clickhouse-server/config.d:ro
+    ports:
+      - "8128:8123"   # HTTP API
+      - "9005:9000"   # Native protocol
+      - "9014:9009"   # Interserver HTTP
+      - "9368:9363"   # Prometheus metrics
+    environment:
+      CLICKHOUSE_DB: ${CLICKHOUSE_DB:-egrul}
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER:-admin}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-admin}
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    healthcheck:
+      test: ["CMD", "clickhouse-client", "--user", "egrul_app", "--password", "test", "--query", "SELECT 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+    networks:
+      - egrul-cluster-network
+    profiles:
+      - cluster
+      - full
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 8G
+        reservations:
+          memory: 4G
+
+  # ================================
+  # Мониторинг
+  # ================================
+
+  prometheus:
+    image: prom/prometheus:v2.48.0
+    container_name: egrul-prometheus
+    hostname: prometheus
+    # Конфигурация будет создана позже в infrastructure/monitoring/prometheus/
+    # volumes:
+    #   - ./infrastructure/monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    volumes:
+      - prometheus_data:/prometheus
+    ports:
+      - "9090:9090"   # Web UI
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+      - '--storage.tsdb.retention.time=30d'
+      - '--web.enable-lifecycle'
+    networks:
+      - egrul-cluster-network
+    profiles:
+      - cluster
+      - monitoring
+      - full
+    restart: unless-stopped
+
+# ================================
+# Volumes
+# ================================
+
+volumes:
+  # Keeper данные
+  keeper01_data:
+    driver: local
+  keeper02_data:
+    driver: local
+  keeper03_data:
+    driver: local
+
+  # ClickHouse данные и логи
+  clickhouse01_data:
+    driver: local
+  clickhouse01_logs:
+    driver: local
+  clickhouse02_data:
+    driver: local
+  clickhouse02_logs:
+    driver: local
+  clickhouse03_data:
+    driver: local
+  clickhouse03_logs:
+    driver: local
+  clickhouse04_data:
+    driver: local
+  clickhouse04_logs:
+    driver: local
+  clickhouse05_data:
+    driver: local
+  clickhouse05_logs:
+    driver: local
+  clickhouse06_data:
+    driver: local
+  clickhouse06_logs:
+    driver: local
+
+  # Prometheus данные
+  prometheus_data:
+    driver: local
+
+# ================================
+# Networks
+# ================================
+
+networks:
+  egrul-cluster-network:
+    driver: bridge
+    ipam:
+      driver: default
+      config:
+        - subnet: 172.25.0.0/16

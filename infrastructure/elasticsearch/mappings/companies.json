@@ -1,0 +1,123 @@
+{
+  "settings": {
+    "number_of_shards": 3,
+    "number_of_replicas": 1,
+    "analysis": {
+      "analyzer": {
+        "russian_company_name": {
+          "type": "custom",
+          "tokenizer": "standard",
+          "filter": ["lowercase", "russian_stop", "russian_stemmer"]
+        }
+      },
+      "filter": {
+        "russian_stop": {
+          "type": "stop",
+          "stopwords": "_russian_"
+        },
+        "russian_stemmer": {
+          "type": "stemmer",
+          "language": "russian"
+        }
+      }
+    }
+  },
+  "mappings": {
+    "properties": {
+      "ogrn": {
+        "type": "keyword"
+      },
+      "inn": {
+        "type": "keyword"
+      },
+      "kpp": {
+        "type": "keyword"
+      },
+      "full_name": {
+        "type": "text",
+        "analyzer": "russian_company_name",
+        "fields": {
+          "keyword": {
+            "type": "keyword"
+          }
+        }
+      },
+      "short_name": {
+        "type": "text",
+        "analyzer": "russian_company_name"
+      },
+      "brand_name": {
+        "type": "text",
+        "analyzer": "russian_company_name"
+      },
+      "status": {
+        "type": "keyword"
+      },
+      "region_code": {
+        "type": "keyword"
+      },
+      "region": {
+        "type": "text",
+        "analyzer": "russian_company_name"
+      },
+      "city": {
+        "type": "text",
+        "analyzer": "russian_company_name"
+      },
+      "full_address": {
+        "type": "text",
+        "analyzer": "russian_company_name"
+      },
+      "email": {
+        "type": "keyword"
+      },
+      "okved_main_code": {
+        "type": "keyword"
+      },
+      "okved_main_name": {
+        "type": "text",
+        "analyzer": "russian_company_name"
+      },
+      "okved_additional": {
+        "type": "keyword"
+      },
+      "okved_additional_names": {
+        "type": "text",
+        "analyzer": "russian_company_name"
+      },
+      "head_last_name": {
+        "type": "text",
+        "analyzer": "russian_company_name"
+      },
+      "head_first_name": {
+        "type": "text",
+        "analyzer": "russian_company_name"
+      },
+      "head_middle_name": {
+        "type": "text",
+        "analyzer": "russian_company_name"
+      },
+      "head_inn": {
+        "type": "keyword"
+      },
+      "opf_code": {
+        "type": "keyword"
+      },
+      "opf_short_name": {
+        "type": "keyword"
+      },
+      "registration_date": {
+        "type": "date"
+      },
+      "termination_date": {
+        "type": "date"
+      },
+      "capital_amount": {
+        "type": "double"
+      },
+      "updated_at": {
+        "type": "date"
+      }
+    }
+  }
+}

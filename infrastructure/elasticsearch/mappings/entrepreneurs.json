@@ -1,0 +1,104 @@
+{
+  "settings": {
+    "number_of_shards": 2,
+    "number_of_replicas": 1,
+    "analysis": {
+      "analyzer": {
+        "russian_person_name": {
+          "type": "custom",
+          "tokenizer": "standard",
+          "filter": ["lowercase", "russian_stop", "russian_stemmer"]
+        }
+      },
+      "filter": {
+        "russian_stop": {
+          "type": "stop",
+          "stopwords": "_russian_"
+        },
+        "russian_stemmer": {
+          "type": "stemmer",
+          "language": "russian"
+        }
+      }
+    }
+  },
+  "mappings": {
+    "properties": {
+      "ogrnip": {
+        "type": "keyword"
+      },
+      "inn": {
+        "type": "keyword"
+      },
+      "last_name": {
+        "type": "text",
+        "analyzer": "russian_person_name"
+      },
+      "first_name": {
+        "type": "text",
+        "analyzer": "russian_person_name"
+      },
+      "middle_name": {
+        "type": "text",
+        "analyzer": "russian_person_name"
+      },
+      "full_name": {
+        "type": "text",
+        "analyzer": "russian_person_name"
+      },
+      "gender": {
+        "type": "keyword"
+      },
+      "citizenship_type": {
+        "type": "keyword"
+      },
+      "status": {
+        "type": "keyword"
+      },
+      "region_code": {
+        "type": "keyword"
+      },
+      "region": {
+        "type": "text",
+        "analyzer": "russian_person_name"
+      },
+      "city": {
+        "type": "text",
+        "analyzer": "russian_person_name"
+      },
+      "full_address": {
+        "type": "text",
+        "analyzer": "russian_person_name"
+      },
+      "email": {
+        "type": "keyword"
+      },
+      "okved_main_code": {
+        "type": "keyword"
+      },
+      "okved_main_name": {
+        "type": "text",
+        "analyzer": "russian_person_name"
+      },
+      "okved_additional": {
+        "type": "keyword"
+      },
+      "okved_additional_names": {
+        "type": "text",
+        "analyzer": "russian_person_name"
+      },
+      "registration_date": {
+        "type": "date"
+      },
+      "termination_date": {
+        "type": "date"
+      },
+      "is_bankrupt": {
+        "type": "boolean"
+      },
+      "updated_at": {
+        "type": "date"
+      }
+    }
+  }
+}

@@ -173,7 +173,7 @@ export function useSearch() {
     return parsed;
   }, [searchParams, urlKey]);
 
-  const debouncedQ = useDebounce(filters.q ?? "", 300);
+  const debouncedQ = useDebounce(filters.q ?? "", 1000);
   
   // Поиск активен только если фильтры применены (applied=true) или есть текстовый запрос >= 2 символа
   // Для текстового поиска оставляем автоматический режим, для расширенных фильтров - ручной

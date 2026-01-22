@@ -1,0 +1,62 @@
+<?xml version="1.0"?>
+<clickhouse>
+    <!--
+        ClickHouse Node Configuration
+        Node: clickhouse-02
+        Shard: 1 (Москва и ЦФО)
+        Replica: replica-02
+    -->
+
+    <listen_host>0.0.0.0</listen_host>
+    <http_port>8123</http_port>
+    <tcp_port>9000</tcp_port>
+    <interserver_http_port>9009</interserver_http_port>
+
+    <prometheus>
+        <endpoint>/metrics</endpoint>
+        <port>9364</port>
+        <metrics>true</metrics>
+        <events>true</events>
+        <asynchronous_metrics>true</asynchronous_metrics>
+    </prometheus>
+
+    <macros>
+        <cluster>egrul_cluster</cluster>
+        <shard>01</shard>
+        <replica>replica-02</replica>
+    </macros>
+
+    <path>/var/lib/clickhouse/</path>
+    <tmp_path>/var/lib/clickhouse/tmp/</tmp_path>
+    <user_files_path>/var/lib/clickhouse/user_files/</user_files_path>
+    <format_schema_path>/var/lib/clickhouse/format_schemas/</format_schema_path>
+
+    <max_server_memory_usage_to_ram_ratio>0.9</max_server_memory_usage_to_ram_ratio>
+    <max_concurrent_queries>100</max_concurrent_queries>
+    <max_connections>4096</max_connections>
+
+    <merge_tree>
+        <replicated_deduplication_window>100</replicated_deduplication_window>
+        <replicated_deduplication_window_seconds>604800</replicated_deduplication_window_seconds>
+        <max_replicated_logs_to_keep>1000</max_replicated_logs_to_keep>
+    </merge_tree>
+
+    <logger>
+        <level>information</level>
+        <log>/var/log/clickhouse-server/clickhouse-server.log</log>
+        <errorlog>/var/log/clickhouse-server/clickhouse-server.err.log</errorlog>
+        <size>100M</size>
+        <count>5</count>
+    </logger>
+
+    <max_table_size_to_drop>50000000000</max_table_size_to_drop>
+    <max_partition_size_to_drop>50000000000</max_partition_size_to_drop>
+
+    <compression>
+        <case>
+            <method>lz4</method>
+        </case>
+    </compression>
+
+    <timezone>Europe/Moscow</timezone>
+</clickhouse>

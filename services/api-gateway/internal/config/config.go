@@ -11,12 +11,12 @@ import (
 
 // Config - основная структура конфигурации
 type Config struct {
-	Server     ServerConfig     `mapstructure:"server"`
-	ClickHouse ClickHouseConfig `mapstructure:"clickhouse"`
-	Elastic    ElasticConfig    `mapstructure:"elasticsearch"`
-	Redis      RedisConfig      `mapstructure:"redis"`
-	Log        LogConfig        `mapstructure:"log"`
-	GraphQL    GraphQLConfig    `mapstructure:"graphql"`
+	Server        ServerConfig     `mapstructure:"server"`
+	ClickHouse    ClickHouseConfig `mapstructure:"clickhouse"`
+	Elasticsearch ElasticConfig    `mapstructure:"elasticsearch"`
+	Redis         RedisConfig      `mapstructure:"redis"`
+	Log           LogConfig        `mapstructure:"log"`
+	GraphQL       GraphQLConfig    `mapstructure:"graphql"`
 }
 
 // ServerConfig - конфигурация HTTP сервера
@@ -192,5 +192,13 @@ func (c *ClickHouseConfig) DSN() string {
 		c.MaxOpenConns,
 		c.MaxIdleConns,
 	)
+}
+
+// URL возвращает первый адрес Elasticsearch (для обратной совместимости)
+func (c *ElasticConfig) URL() string {
+	if len(c.Addresses) > 0 {
+		return c.Addresses[0]
+	}
+	return ""
 }
 

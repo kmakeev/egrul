@@ -1,0 +1,15 @@
+<?xml version="1.0"?>
+<clickhouse>
+    <!-- Директории пользователей -->
+    <user_directories>
+        <!-- Локальные пользователи из config.d/users.xml -->
+        <users_xml>
+            <path>/etc/clickhouse-server/config.d/users.xml</path>
+        </users_xml>
+
+        <!-- Дополнительная директория для переопределений -->
+        <local_directory>
+            <path>/etc/clickhouse-server/users.d/</path>
+        </local_directory>
+    </user_directories>
+</clickhouse>

@@ -16,7 +16,18 @@ RUN pnpm install --no-frozen-lockfile
 # Копируем исходный код
 COPY . .
 
-# Сборка приложения
+# Передаем NEXT_PUBLIC_* переменные для встраивания в build
+ARG NEXT_PUBLIC_API_URL
+ARG NEXT_PUBLIC_GRAPHQL_URL
+ARG NEXT_PUBLIC_YANDEX_MAPS_API_KEY
+ARG NEXT_PUBLIC_DEBUG
+
+ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
+ENV NEXT_PUBLIC_GRAPHQL_URL=$NEXT_PUBLIC_GRAPHQL_URL
+ENV NEXT_PUBLIC_YANDEX_MAPS_API_KEY=$NEXT_PUBLIC_YANDEX_MAPS_API_KEY
+ENV NEXT_PUBLIC_DEBUG=$NEXT_PUBLIC_DEBUG
+
+# Сборка приложения (NEXT_PUBLIC_* переменные встроятся в bundle)
 RUN pnpm build
 
 # Runtime stage

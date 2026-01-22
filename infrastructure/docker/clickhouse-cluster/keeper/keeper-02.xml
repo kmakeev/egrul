@@ -1,0 +1,93 @@
+<?xml version="1.0"?>
+<clickhouse>
+    <!--
+        ClickHouse Keeper Configuration
+        Node: keeper-02
+        Server ID: 2
+
+        ClickHouse Keeper - встроенная замена ZooKeeper на основе Raft consensus algorithm
+    -->
+
+    <logger>
+        <level>information</level>
+        <log>/var/log/clickhouse-keeper/clickhouse-keeper.log</log>
+        <errorlog>/var/log/clickhouse-keeper/clickhouse-keeper.err.log</errorlog>
+        <size>100M</size>
+        <count>5</count>
+    </logger>
+
+    <listen_host>0.0.0.0</listen_host>
+
+    <keeper_server>
+        <!-- Порт для клиентских подключений (аналог ZooKeeper 2181) -->
+        <tcp_port>2181</tcp_port>
+
+        <!-- Уникальный ID сервера в Raft кластере -->
+        <server_id>2</server_id>
+
+        <!-- Пути для хранения логов и снапшотов Raft -->
+        <log_storage_path>/var/lib/clickhouse-keeper/coordination/log</log_storage_path>
+        <snapshot_storage_path>/var/lib/clickhouse-keeper/coordination/snapshots</snapshot_storage_path>
+
+        <!-- Настройки координации -->
+        <coordination_settings>
+            <!-- Таймаут операции в миллисекундах -->
+            <operation_timeout_ms>10000</operation_timeout_ms>
+
+            <!-- Таймаут сессии в миллисекундах -->
+            <session_timeout_ms>30000</session_timeout_ms>
+
+            <!-- Уровень логирования Raft операций -->
+            <raft_logs_level>information</raft_logs_level>
+
+            <!-- Лимиты для снапшотов -->
+            <snapshot_distance>10000</snapshot_distance>
+            <snapshots_to_keep>5</snapshots_to_keep>
+
+            <!-- Интервал сжатия старых логов -->
+            <stale_log_gap>10000</stale_log_gap>
+            <fresh_log_gap>200</fresh_log_gap>
+
+            <!-- Максимальный размер запроса -->
+            <max_requests_batch_size>100</max_requests_batch_size>
+
+            <!-- Heartbeat и election таймауты -->
+            <heart_beat_interval_ms>500</heart_beat_interval_ms>
+            <election_timeout_lower_bound_ms>1000</election_timeout_lower_bound_ms>
+            <election_timeout_upper_bound_ms>2000</election_timeout_upper_bound_ms>
+        </coordination_settings>
+
+        <!-- Конфигурация Raft кластера -->
+        <raft_configuration>
+            <!-- Keeper Node 1 -->
+            <server>
+                <id>1</id>
+                <hostname>keeper-01</hostname>
+                <port>9444</port>
+            </server>
+
+            <!-- Keeper Node 2 -->
+            <server>
+                <id>2</id>
+                <hostname>keeper-02</hostname>
+                <port>9445</port>
+            </server>
+
+            <!-- Keeper Node 3 -->
+            <server>
+                <id>3</id>
+                <hostname>keeper-03</hostname>
+                <port>9446</port>
+            </server>
+        </raft_configuration>
+    </keeper_server>
+
+    <!-- Prometheus метрики -->
+    <prometheus>
+        <endpoint>/metrics</endpoint>
+        <port>9642</port>
+        <metrics>true</metrics>
+        <events>true</events>
+        <asynchronous_metrics>true</asynchronous_metrics>
+    </prometheus>
+</clickhouse>

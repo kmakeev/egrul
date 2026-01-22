@@ -43,7 +43,7 @@ log_error() {
 # Функция для выполнения запросов к ClickHouse
 clickhouse_query() {
     local query="$1"
-    curl -s "http://${CLICKHOUSE_HOST}:${CLICKHOUSE_PORT}/" \
+    curl -sS "http://${CLICKHOUSE_HOST}:${CLICKHOUSE_PORT}/" \
         --user "${CLICKHOUSE_USER}:${CLICKHOUSE_PASSWORD}" \
         --data-binary "$query"
 }
@@ -62,7 +62,7 @@ import_parquet() {
     log_info "Загрузка $file ($file_size) в таблицу $table..."
     
     # Загрузка через HTTP интерфейс
-    curl -s "http://${CLICKHOUSE_HOST}:${CLICKHOUSE_PORT}/?query=INSERT%20INTO%20${CLICKHOUSE_DATABASE}.${table}%20FORMAT%20Parquet" \
+    curl -sS "http://${CLICKHOUSE_HOST}:${CLICKHOUSE_PORT}/?query=INSERT%20INTO%20${CLICKHOUSE_DATABASE}.${table}%20FORMAT%20Parquet" \
         --user "${CLICKHOUSE_USER}:${CLICKHOUSE_PASSWORD}" \
         --data-binary "@$file"
     

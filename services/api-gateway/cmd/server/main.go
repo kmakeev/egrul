@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/99designs/gqlgen/graphql/playground"
+	"github.com/elastic/go-elasticsearch/v8"
 	"github.com/go-chi/chi/v5"
 	chimiddleware "github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
@@ -20,6 +21,7 @@ import (
 	"github.com/egrul-system/services/api-gateway/internal/graph"
 	"github.com/egrul-system/services/api-gateway/internal/middleware"
 	"github.com/egrul-system/services/api-gateway/internal/repository/clickhouse"
+	esrepo "github.com/egrul-system/services/api-gateway/internal/repository/elasticsearch"
 	"github.com/egrul-system/services/api-gateway/internal/service"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
@@ -57,7 +59,41 @@ func main() {
 	}
 	defer chClient.Close()
 
-	// Инициализация репозиториев
+	// Подключение к Elasticsearch (опционально)
+	var esClient *elasticsearch.Client
+	if cfg.Elasticsearch.URL() != "" {
+		esCfg := elasticsearch.Config{
+			Addresses: cfg.Elasticsearch.Addresses,
+		}
+		esClient, err = elasticsearch.NewClient(esCfg)
+		if err != nil {
+			logger.Warn("failed to connect to Elasticsearch, will use ClickHouse for all searches",
+				zap.Error(err),
+				zap.String("url", cfg.Elasticsearch.URL()))
+		} else {
+			// Проверка подключения
+			res, err := esClient.Info()
+			if err != nil {
+				logger.Warn("Elasticsearch connection check failed, will use ClickHouse for all searches",
+					zap.Error(err))
+				esClient = nil
+			} else {
+				res.Body.Close()
+				if res.IsError() {
+					logger.Warn("Elasticsearch returned error, will use ClickHouse for all searches",
+						zap.String("status", res.Status()))
+					esClient = nil
+				} else {
+					logger.Info("Successfully connected to Elasticsearch",
+						zap.String("url", cfg.Elasticsearch.URL()))
+				}
+			}
+		}
+	} else {
+		logger.Info("Elasticsearch URL not configured, using ClickHouse for all searches")
+	}
+
+	// Инициализация ClickHouse репозиториев
 	companyRepo := clickhouse.NewCompanyRepository(chClient, logger)
 	entrepreneurRepo := clickhouse.NewEntrepreneurRepository(chClient, logger)
 	founderRepo := clickhouse.NewFounderRepository(chClient, logger)
@@ -66,13 +102,36 @@ func main() {
 	historyRepo := clickhouse.NewHistoryRepository(chClient, logger)
 	statsRepo := clickhouse.NewStatisticsRepository(chClient, logger)
 
+	// Инициализация Elasticsearch репозиториев (если подключение успешно)
+	var esCompanyRepo *esrepo.ESCompanyRepository
+	var esEntrepreneurRepo *esrepo.ESEntrepreneurRepository
+	if esClient != nil {
+		esCompanyRepo = esrepo.NewESCompanyRepository(esClient, logger)
+		esEntrepreneurRepo = esrepo.NewESEntrepreneurRepository(esClient, logger)
+		logger.Info("Elasticsearch repositories initialized, hybrid search enabled")
+	}
+
 	// Инициализация Redis кэша
 	redisCache := cache.NewRedisCache(cfg.Redis, logger)
 	defer redisCache.Close()
 
 	// Инициализация сервисов
-	companyService := service.NewCompanyService(companyRepo, founderRepo, licenseRepo, branchRepo, historyRepo, logger)
-	entrepreneurService := service.NewEntrepreneurService(entrepreneurRepo, licenseRepo, historyRepo, logger)
+	companyService := service.NewCompanyService(
+		companyRepo,
+		esCompanyRepo,
+		founderRepo,
+		licenseRepo,
+		branchRepo,
+		historyRepo,
+		logger,
+	)
+	entrepreneurService := service.NewEntrepreneurService(
+		entrepreneurRepo,
+		esEntrepreneurRepo,
+		licenseRepo,
+		historyRepo,
+		logger,
+	)
 	statsService := service.NewStatisticsService(statsRepo, logger)
 	searchService := service.NewSearchService(companyService, entrepreneurService, logger)
 

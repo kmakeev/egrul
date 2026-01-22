@@ -1,0 +1,54 @@
+<?xml version="1.0"?>
+<clickhouse>
+    <!--
+        ClickHouse Backup Disk Configuration
+
+        Конфигурация S3-совместимого диска для хранения бэкапов в MinIO.
+        Используется с командами BACKUP/RESTORE ClickHouse.
+    -->
+
+    <storage_configuration>
+        <disks>
+            <!-- S3-диск для backup в MinIO -->
+            <s3_backup>
+                <type>s3</type>
+
+                <!-- Endpoint MinIO (S3-compatible storage) -->
+                <endpoint>http://minio:9000/backups/clickhouse/</endpoint>
+
+                <!-- Credentials для MinIO -->
+                <access_key_id>minioadmin</access_key_id>
+                <secret_access_key>minioadmin</secret_access_key>
+
+                <!-- Не использовать переменные окружения AWS -->
+                <use_environment_credentials>false</use_environment_credentials>
+
+                <!-- Регион S3 (пустой для MinIO) -->
+                <region></region>
+
+                <!-- Поддержка batch delete для ускорения удаления -->
+                <support_batch_delete>true</support_batch_delete>
+
+                <!-- Настройки соединения -->
+                <connect_timeout_ms>10000</connect_timeout_ms>
+                <request_timeout_ms>30000</request_timeout_ms>
+
+                <!-- Количество повторных попыток -->
+                <retry_attempts>3</retry_attempts>
+
+                <!-- Сжатие данных при backup -->
+                <metadata_path>/var/lib/clickhouse/disks/s3_backup/</metadata_path>
+            </s3_backup>
+        </disks>
+    </storage_configuration>
+
+    <!-- Настройки backup -->
+    <backups>
+        <!-- Разрешенные диски для backup -->
+        <allowed_disk>s3_backup</allowed_disk>
+
+        <!-- Разрешенные пути для backup -->
+        <allowed_path>/backups/</allowed_path>
+    </backups>
+
+</clickhouse>

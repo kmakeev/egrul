@@ -12,6 +12,11 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
       target: builder  # Останавливаемся на builder stage
+      args:
+        - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:8080/api/v1}
+        - NEXT_PUBLIC_GRAPHQL_URL=${NEXT_PUBLIC_GRAPHQL_URL:-http://localhost:8080/graphql}
+        - NEXT_PUBLIC_YANDEX_MAPS_API_KEY=${NEXT_PUBLIC_YANDEX_MAPS_API_KEY:-}
+        - NEXT_PUBLIC_DEBUG=${NEXT_PUBLIC_DEBUG:-true}
     command: pnpm dev
     volumes:
       - ./frontend:/app:cached
@@ -20,6 +25,9 @@ services:
     environment:
       - NODE_ENV=development
       - WATCHPACK_POLLING=true  # Для Docker на Mac/Windows
+      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:8080/api/v1}
+      - NEXT_PUBLIC_GRAPHQL_URL=${NEXT_PUBLIC_GRAPHQL_URL:-http://localhost:8080/graphql}
+      - NEXT_PUBLIC_YANDEX_MAPS_API_KEY=${NEXT_PUBLIC_YANDEX_MAPS_API_KEY:-}
       - NEXT_PUBLIC_DEBUG=true
     ports:
       - "3000:3000"

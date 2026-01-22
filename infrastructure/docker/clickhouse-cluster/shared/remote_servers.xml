@@ -1,0 +1,136 @@
+<?xml version="1.0"?>
+<clickhouse>
+    <!--
+        ClickHouse Cluster Configuration
+        Cluster: egrul_cluster
+
+        Топология:
+        - 3 шарда (регионы РФ)
+        - 2 реплики на каждом шарде (RF=2)
+        - Всего 6 нод ClickHouse
+
+        Шардирование:
+        - Shard 1: Москва и ЦФО (регионы 77, 50, 03, 33, 40, 57, 62, 69, 71, 76)
+        - Shard 2: Санкт-Петербург и СЗФО (регионы 78, 47, 10, 29, 35, 39, 51, 53, 60)
+        - Shard 3: Остальные регионы РФ
+    -->
+
+    <remote_servers>
+        <egrul_cluster>
+
+            <!-- ========================================= -->
+            <!-- Shard 1: Москва и Центральный ФО -->
+            <!-- ========================================= -->
+            <shard>
+                <weight>1</weight>
+                <!-- internal_replication: true означает, что репликация управляется ClickHouse -->
+                <!-- Данные записываются только на одну реплику, затем автоматически реплицируются -->
+                <internal_replication>true</internal_replication>
+
+                <!-- Реплика 1 шарда 1 -->
+                <replica>
+                    <host>clickhouse-01</host>
+                    <port>9000</port>
+                    <user>egrul_app</user>
+                    <password>test</password>
+                </replica>
+
+                <!-- Реплика 2 шарда 1 -->
+                <replica>
+                    <host>clickhouse-02</host>
+                    <port>9000</port>
+                    <user>egrul_app</user>
+                    <password>test</password>
+                </replica>
+            </shard>
+
+            <!-- ========================================= -->
+            <!-- Shard 2: Санкт-Петербург и Северо-Западный ФО -->
+            <!-- ========================================= -->
+            <shard>
+                <weight>1</weight>
+                <internal_replication>true</internal_replication>
+
+                <!-- Реплика 1 шарда 2 -->
+                <replica>
+                    <host>clickhouse-03</host>
+                    <port>9000</port>
+                    <user>egrul_app</user>
+                    <password>test</password>
+                </replica>
+
+                <!-- Реплика 2 шарда 2 -->
+                <replica>
+                    <host>clickhouse-04</host>
+                    <port>9000</port>
+                    <user>egrul_app</user>
+                    <password>test</password>
+                </replica>
+            </shard>
+
+            <!-- ========================================= -->
+            <!-- Shard 3: Остальные регионы РФ -->
+            <!-- ========================================= -->
+            <shard>
+                <weight>1</weight>
+                <internal_replication>true</internal_replication>
+
+                <!-- Реплика 1 шарда 3 -->
+                <replica>
+                    <host>clickhouse-05</host>
+                    <port>9000</port>
+                    <user>egrul_app</user>
+                    <password>test</password>
+                </replica>
+
+                <!-- Реплика 2 шарда 3 -->
+                <replica>
+                    <host>clickhouse-06</host>
+                    <port>9000</port>
+                    <user>egrul_app</user>
+                    <password>test</password>
+                </replica>
+            </shard>
+
+        </egrul_cluster>
+    </remote_servers>
+
+    <!-- ========================================= -->
+    <!-- ZooKeeper/Keeper Configuration -->
+    <!-- ========================================= -->
+    <!-- ClickHouse Keeper используется для координации между нодами -->
+    <zookeeper>
+        <node>
+            <host>keeper-01</host>
+            <port>2181</port>
+        </node>
+        <node>
+            <host>keeper-02</host>
+            <port>2181</port>
+        </node>
+        <node>
+            <host>keeper-03</host>
+            <port>2181</port>
+        </node>
+
+        <!-- Таймауты для Keeper соединения -->
+        <session_timeout_ms>30000</session_timeout_ms>
+        <operation_timeout_ms>10000</operation_timeout_ms>
+    </zookeeper>
+
+    <!-- ========================================= -->
+    <!-- Distributed DDL Configuration -->
+    <!-- ========================================= -->
+    <!-- Позволяет выполнять DDL запросы на всех нодах кластера -->
+    <distributed_ddl>
+        <!-- Путь в Keeper для хранения DDL задач -->
+        <path>/clickhouse/task_queue/ddl</path>
+
+        <!-- Профиль для выполнения DDL -->
+        <profile>default</profile>
+
+        <!-- Таймаут выполнения DDL на одной ноде -->
+        <pool_size>1</pool_size>
+    </distributed_ddl>
+
+</clickhouse>

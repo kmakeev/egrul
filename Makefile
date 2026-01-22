@@ -355,6 +355,56 @@ kafka-console: ## Kafka console consumer (TOPIC=name)
 	@echo "$(CYAN)🎧 Консоль Kafka для топика: $(TOPIC)$(NC)"
 	@$(DOCKER_COMPOSE) exec kafka kafka-console-consumer --bootstrap-server localhost:9092 --topic $(TOPIC) --from-beginning
 
+# ==================== Elasticsearch ====================
+
+es-create-indices: ## Создать индексы Elasticsearch с русской морфологией
+	@echo "$(CYAN)📊 Создание индексов Elasticsearch...$(NC)"
+	@chmod +x infrastructure/scripts/es-create-indices.sh
+	@./infrastructure/scripts/es-create-indices.sh
+
+es-delete-indices: ## Удалить индексы Elasticsearch
+	@echo "$(YELLOW)⚠️  Удаление индексов Elasticsearch...$(NC)"
+	@curl -X DELETE "http://localhost:9200/egrul_*"
+	@echo ""
+
+es-reindex: ## Полная переиндексация (удаление + создание + initial sync)
+	@echo "$(CYAN)🔄 Полная переиндексация Elasticsearch...$(NC)"
+	@chmod +x infrastructure/scripts/es-reindex.sh
+	@./infrastructure/scripts/es-reindex.sh
+
+es-sync-initial: ## Первичная синхронизация данных ClickHouse → Elasticsearch
+	@echo "$(CYAN)📥 Первичная синхронизация (initial mode)...$(NC)"
+	@$(DOCKER_COMPOSE) run --rm sync-service ./sync-service --mode=initial
+
+es-sync-incremental: ## Инкрементальная синхронизация (только изменения)
+	@echo "$(CYAN)🔄 Инкрементальная синхронизация...$(NC)"
+	@$(DOCKER_COMPOSE) run --rm sync-service ./sync-service --mode=incremental
+
+es-sync-daemon: ## Запуск sync-service в daemon mode (периодическая синхронизация)
+	@echo "$(CYAN)🔁 Запуск sync-service в daemon mode...$(NC)"
+	@$(DOCKER_COMPOSE) --profile full up -d sync-service
+
+es-sync-stop: ## Остановка sync-service daemon
+	@echo "$(YELLOW)⏹  Остановка sync-service...$(NC)"
+	@$(DOCKER_COMPOSE) stop sync-service
+
+es-stats: ## Статистика индексов Elasticsearch
+	@echo "$(CYAN)📊 Статистика индексов Elasticsearch:$(NC)"
+	@curl -s "http://localhost:9200/egrul_*/_stats?pretty" | grep -A5 "\"docs\"\|\"store\"\|\"indexing\"\|\"search\""
+	@echo ""
+	@echo "$(CYAN)📋 Список индексов:$(NC)"
+	@curl -s "http://localhost:9200/_cat/indices/egrul_*?v&h=index,docs.count,store.size,health,status"
+
+es-search-test: ## Тестовый поиск в Elasticsearch (QUERY=текст)
+	@echo "$(CYAN)🔍 Тестовый поиск: $(QUERY)$(NC)"
+	@curl -X POST "http://localhost:9200/egrul_companies/_search?pretty" \
+		-H 'Content-Type: application/json' \
+		-d '{"query": {"match": {"full_name": "$(QUERY)"}}}'
+
+es-health: ## Проверка состояния Elasticsearch
+	@echo "$(CYAN)❤️  Проверка Elasticsearch:$(NC)"
+	@curl -s "http://localhost:9200/_cluster/health?pretty"
+
 # ==================== UI Tools ====================
 
 adminer: ## Открыть Adminer
@@ -378,4 +428,125 @@ init-db: ## Инициализация PostgreSQL метаданных
 	@echo "$(CYAN)🔧 Инициализация PostgreSQL...$(NC)"
 	@chmod +x infrastructure/scripts/init-db.sh
 	@$(DOCKER_COMPOSE) exec -T postgres bash < infrastructure/scripts/init-db.sh
+
+# ==================== ClickHouse Cluster ====================
+
+cluster-up: ## Запуск ClickHouse кластера (6 нод + 3 Keeper)
+	@echo "$(CYAN)🚀 Запуск ClickHouse кластера...$(NC)"
+	@$(DOCKER_COMPOSE) -f docker-compose.cluster.yml --profile cluster up -d
+	@echo "$(GREEN)✅ Кластер запущен$(NC)"
+	@echo "$(CYAN)Keeper ноды: keeper-01, keeper-02, keeper-03$(NC)"
+	@echo "$(CYAN)ClickHouse ноды: clickhouse-01..06$(NC)"
+
+cluster-up-full: ## Запуск кластера с мониторингом (+ Prometheus)
+	@echo "$(CYAN)🚀 Запуск кластера с мониторингом...$(NC)"
+	@$(DOCKER_COMPOSE) -f docker-compose.cluster.yml --profile full up -d
+
+cluster-down: ## Остановка ClickHouse кластера
+	@echo "$(YELLOW)⏹  Остановка кластера...$(NC)"
+	@$(DOCKER_COMPOSE) -f docker-compose.cluster.yml --profile cluster down
+
+cluster-restart: ## Перезапуск кластера
+	@echo "$(CYAN)🔄 Перезапуск кластера...$(NC)"
+	@make cluster-down
+	@make cluster-up
+
+cluster-verify: ## Проверка состояния кластера
+	@echo "$(CYAN)🔍 Проверка кластера...$(NC)"
+	@chmod +x infrastructure/scripts/verify-cluster.sh
+	@./infrastructure/scripts/verify-cluster.sh
+
+cluster-test: ## Тестирование кластера (full test suite)
+	@echo "$(CYAN)🧪 Тестирование кластера...$(NC)"
+	@chmod +x infrastructure/scripts/test-cluster.sh
+	@./infrastructure/scripts/test-cluster.sh
+
+cluster-reset: ## Полное пересоздание БД кластера (удаление и применение миграций)
+	@echo "$(YELLOW)⚠️  Полное пересоздание БД кластера...$(NC)"
+	@echo "$(YELLOW)⚠️  ВНИМАНИЕ: Все данные будут удалены!$(NC)"
+	@echo "$(CYAN)🛑 Остановка кластера...$(NC)"
+	@docker compose -f docker-compose.cluster.yml --profile cluster down -v 2>/dev/null || true
+	@echo "$(CYAN)🚀 Запуск чистого кластера...$(NC)"
+	@docker compose -f docker-compose.cluster.yml --profile cluster up -d
+	@echo "$(CYAN)⏳ Ожидание готовности кластера (60 сек)...$(NC)"
+	@sleep 60
+	@echo "$(CYAN)📊 Создание базы данных...$(NC)"
+	@docker exec egrul-clickhouse-01 clickhouse-client --user egrul_import --password 123 --query "\
+		CREATE DATABASE IF NOT EXISTS egrul ON CLUSTER egrul_cluster ENGINE = Atomic" 2>&1 | tail -1
+	@echo "$(GREEN)✅ База данных создана на всех нодах$(NC)"
+	@echo "$(CYAN)📊 Применение миграции 011...$(NC)"
+	@cat infrastructure/migrations/clickhouse/cluster/011_distributed_cluster.sql | \
+		docker exec -i egrul-clickhouse-01 clickhouse-client --user egrul_import --password 123 --multiquery 2>&1 | tail -20
+	@echo "$(GREEN)✅ Миграция применена, таблицы созданы$(NC)"
+	@echo "$(CYAN)🔍 Проверка кластера...$(NC)"
+	@make cluster-verify
+
+cluster-truncate: ## Очистить все таблицы кластера
+	@echo "$(YELLOW)⚠️  Очистка всех таблиц кластера...$(NC)"
+	@docker exec egrul-clickhouse-01 clickhouse-client --user egrul_import --password 123 --multiquery -q "\
+		TRUNCATE TABLE IF EXISTS egrul.companies_local ON CLUSTER egrul_cluster; \
+		TRUNCATE TABLE IF EXISTS egrul.entrepreneurs_local ON CLUSTER egrul_cluster; \
+		TRUNCATE TABLE IF EXISTS egrul.founders_local ON CLUSTER egrul_cluster; \
+		TRUNCATE TABLE IF EXISTS egrul.company_history_local ON CLUSTER egrul_cluster; \
+		TRUNCATE TABLE IF EXISTS egrul.licenses_local ON CLUSTER egrul_cluster; \
+		TRUNCATE TABLE IF EXISTS egrul.branches_local ON CLUSTER egrul_cluster; \
+		TRUNCATE TABLE IF EXISTS egrul.ownership_graph_local ON CLUSTER egrul_cluster; \
+		TRUNCATE TABLE IF EXISTS egrul.companies_okved_additional_local ON CLUSTER egrul_cluster; \
+		TRUNCATE TABLE IF EXISTS egrul.entrepreneurs_okved_additional_local ON CLUSTER egrul_cluster; \
+		TRUNCATE TABLE IF EXISTS egrul.import_log_local ON CLUSTER egrul_cluster;"
+	@echo "$(GREEN)✅ Таблицы очищены на всех нодах$(NC)"
+
+cluster-import: ## Импорт данных в кластер (использует make import)
+	@echo "$(CYAN)📥 Импорт данных в кластер...$(NC)"
+	@CLICKHOUSE_HOST=localhost CLICKHOUSE_PORT=8123 make import
+
+cluster-import-okved: ## Импорт только дополнительных ОКВЭД в кластер
+	@echo "$(CYAN)📊 Импорт дополнительных ОКВЭД в кластер...$(NC)"
+	@chmod +x infrastructure/scripts/import-okved-extra.sh
+	@CLICKHOUSE_HOST=localhost CLICKHOUSE_PORT=8123 CLICKHOUSE_USER=egrul_import CLICKHOUSE_PASSWORD=123 \
+		./infrastructure/scripts/import-okved-extra.sh
+	@echo "$(GREEN)✅ Импорт ОКВЭД завершен$(NC)"
+
+cluster-frontend: ## Запуск frontend и API Gateway для работы с кластером
+	@echo "$(CYAN)🌐 Запуск frontend и API Gateway для кластера...$(NC)"
+	@echo "$(CYAN)API Gateway подключится к кластеру (clickhouse-01)$(NC)"
+	@echo "$(CYAN)Frontend: http://localhost:3000$(NC)"
+	@echo "$(CYAN)GraphQL Playground: http://localhost:8080/playground$(NC)"
+	@echo ""
+	@echo "$(YELLOW)⚠️  Проверьте .env файл:$(NC)"
+	@echo "$(YELLOW)   NEXT_PUBLIC_GRAPHQL_URL должен быть http://localhost:8080/graphql$(NC)"
+	@echo "$(YELLOW)   NEXT_PUBLIC_API_URL должен быть http://localhost:8080/api/v1$(NC)"
+	@echo ""
+	@$(DOCKER_COMPOSE) stop api-gateway frontend 2>/dev/null || true
+	@echo "$(CYAN)🚀 Пересоздание контейнеров с новыми переменными...$(NC)"
+	@CLICKHOUSE_HOST=clickhouse-01 $(DOCKER_COMPOSE) up -d --force-recreate --no-deps api-gateway frontend
+	@sleep 2
+	@echo "$(CYAN)🔗 Подключение к кластерной сети...$(NC)"
+	@docker network connect egrul_egrul-cluster-network egrul-api-gateway 2>/dev/null || echo "  api-gateway уже подключен"
+	@docker network connect egrul_egrul-cluster-network egrul-frontend 2>/dev/null || echo "  frontend уже подключен"
+	@echo "$(CYAN)🔄 Перезапуск контейнеров для применения сети...$(NC)"
+	@docker restart egrul-api-gateway egrul-frontend
+	@echo "$(GREEN)✅ Сервисы запущены и подключены к кластеру$(NC)"
+	@echo "$(CYAN)📊 Проверка статуса...$(NC)"
+	@sleep 5
+	@$(DOCKER_COMPOSE) ps api-gateway frontend
+	@echo ""
+	@echo "$(CYAN)📝 Логи API Gateway (последние 5 строк):$(NC)"
+	@docker logs --tail 5 egrul-api-gateway
+
+cluster-backup: ## Создание backup кластера в MinIO
+	@echo "$(CYAN)💾 Создание backup...$(NC)"
+	@chmod +x infrastructure/scripts/backup/backup-all.sh
+	@./infrastructure/scripts/backup/backup-all.sh
+
+cluster-restore: ## Восстановление из backup (BACKUP_NAME=...)
+	@echo "$(CYAN)♻️  Восстановление из backup...$(NC)"
+	@chmod +x infrastructure/scripts/backup/restore-all.sh
+	@./infrastructure/scripts/backup/restore-all.sh $(BACKUP_NAME)
+
+cluster-logs: ## Просмотр логов кластера
+	@$(DOCKER_COMPOSE) -f docker-compose.cluster.yml logs -f
+
+cluster-ps: ## Статус нод кластера
+	@$(DOCKER_COMPOSE) -f docker-compose.cluster.yml ps
 
