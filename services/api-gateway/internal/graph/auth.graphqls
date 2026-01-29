@@ -1,0 +1,69 @@
+# ==============================================================================
+# Аутентификация и Пользователи
+# ==============================================================================
+
+"""
+Пользователь системы
+"""
+type User {
+  id: ID!
+  email: String!
+  firstName: String!
+  lastName: String!
+  isActive: Boolean!
+  emailVerified: Boolean!
+  createdAt: DateTime!
+  updatedAt: DateTime!
+  lastLoginAt: DateTime
+}
+
+"""
+Ответ при успешной аутентификации
+"""
+type AuthResponse {
+  user: User!
+  token: String!
+  expiresAt: DateTime!
+}
+
+"""
+Входные данные для регистрации
+"""
+input RegisterInput {
+  email: String!
+  password: String!
+  firstName: String!
+  lastName: String!
+}
+
+"""
+Входные данные для входа
+"""
+input LoginInput {
+  email: String!
+  password: String!
+}
+
+extend type Query {
+  """
+  Получить текущего пользователя (требует авторизации)
+  """
+  me: User
+}
+
+extend type Mutation {
+  """
+  Регистрация нового пользователя
+  """
+  register(input: RegisterInput!): AuthResponse!
+
+  """
+  Вход пользователя
+  """
+  login(input: LoginInput!): AuthResponse!
+
+  """
+  Выход (опционально, для logout на сервере)
+  """
+  logout: Boolean!
+}

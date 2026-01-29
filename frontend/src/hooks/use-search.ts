@@ -807,8 +807,8 @@ export function useSearch() {
   });
   // #endregion agent log: shouldShowData
 
-  const totalCompanies = shouldShowData && companyQueryEnabled ? (companiesQuery.data?.companies.totalCount ?? 0) : 0;
-  const totalEntrepreneurs = shouldShowData && entrepreneurQueryEnabled ? (entrepreneursQuery.data?.entrepreneurs.totalCount ?? 0) : 0;
+  const totalCompanies = shouldShowData && companyQueryEnabled ? (companiesQuery.data?.companies.pageInfo.totalCount ?? 0) : 0;
+  const totalEntrepreneurs = shouldShowData && entrepreneurQueryEnabled ? (entrepreneursQuery.data?.entrepreneurs.pageInfo.totalCount ?? 0) : 0;
   const total = totalCompanies + totalEntrepreneurs;
 
   const rows: SearchRow[] = useMemo(() => {

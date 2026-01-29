@@ -1,10 +1,24 @@
 "use client";
 
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader } from "@/components/ui/card";
-import { Heart, Download, Share2 } from "lucide-react";
+import { Heart, Download, Share2, Bell, BellRing } from "lucide-react";
 import { formatDate } from "@/lib/format-utils";
 import { EntrepreneurStatusBadge } from "./entrepreneur-status-badge";
+import { SubscriptionForm } from "@/components/subscriptions/subscription-form";
+import { useHasSubscriptionQuery } from "@/lib/api/subscription-hooks";
+import { EntityType } from "@/lib/api/subscription-hooks";
+import {
+  useHasFavoriteQuery,
+  useCreateFavoriteMutation,
+  useDeleteFavoriteMutation,
+  useMyFavoritesQuery
+} from "@/lib/api/favorites-hooks";
+import { useAuthStore } from "@/store/auth-store";
+import { useToast } from "@/hooks/use-toast";
 import type { IndividualEntrepreneur } from "@/lib/api";
 
 interface EntrepreneurHeaderProps {
@@ -12,9 +26,136 @@ interface EntrepreneurHeaderProps {
 }
 
 export function EntrepreneurHeader({ entrepreneur }: EntrepreneurHeaderProps) {
+  const router = useRouter();
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+
+  // State for subscription modal
+  const [subscriptionDialogOpen, setSubscriptionDialogOpen] = useState(false);
+
+  // Get user from auth store
+  const { isAuthenticated } = useAuthStore();
+
+  // Check if already subscribed
+  const { data: hasSubscriptionData } = useHasSubscriptionQuery(
+    EntityType.ENTREPRENEUR,
+    entrepreneur.ogrnip,
+    { enabled: isAuthenticated }
+  );
+
+  const hasSubscription = hasSubscriptionData?.hasSubscription ?? false;
+
+  // Check if in favorites
+  const { data: hasFavoriteData } = useHasFavoriteQuery(
+    EntityType.ENTREPRENEUR,
+    entrepreneur.ogrnip,
+    { enabled: isAuthenticated }
+  );
+
+  const isFavorite = hasFavoriteData?.hasFavorite ?? false;
+
+  // Get all favorites to find favorite ID for deletion
+  const { data: favoritesData } = useMyFavoritesQuery({
+    enabled: isAuthenticated && isFavorite
+  });
+
+  // Mutations for favorites
+  const createFavorite = useCreateFavoriteMutation({
+    onSuccess: () => {
+      // Явно инвалидируем кэш для немедленного обновления UI
+      queryClient.invalidateQueries({
+        queryKey: ["favorite", "has", EntityType.ENTREPRENEUR, entrepreneur.ogrnip],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["favorites", "my"],
+      });
+      toast({
+        title: "Добавлено в избранное",
+        description: "ИП добавлен в избранное"
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Ошибка",
+        description: error?.message || "Не удалось добавить в избранное",
+        variant: "destructive"
+      });
+    }
+  });
+
+  const deleteFavorite = useDeleteFavoriteMutation({
+    onSuccess: () => {
+      // Явно инвалидируем кэш для немедленного обновления UI
+      queryClient.invalidateQueries({
+        queryKey: ["favorite", "has", EntityType.ENTREPRENEUR, entrepreneur.ogrnip],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["favorites", "my"],
+      });
+      toast({
+        title: "Удалено из избранного",
+        description: "ИП удален из избранного"
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Ошибка",
+        description: error?.message || "Не удалось удалить из избранного",
+        variant: "destructive"
+      });
+    }
+  });
+
+  const handleSubscribeClick = () => {
+    if (!isAuthenticated) {
+      toast({
+        title: "Требуется авторизация",
+        description: "Войдите или зарегистрируйтесь для подписки на изменения",
+        action: (
+          <Button onClick={() => router.push("/login")} size="sm">
+            Войти
+          </Button>
+        ),
+      });
+      return;
+    }
+    setSubscriptionDialogOpen(true);
+  };
+
   const handleAddToFavorites = () => {
-    // TODO: Implement favorites functionality
-    console.log("Add to favorites:", entrepreneur.ogrnip);
+    if (!isAuthenticated) {
+      toast({
+        title: "Требуется авторизация",
+        description: "Войдите или зарегистрируйтесь для добавления в избранное",
+        action: (
+          <Button onClick={() => router.push("/login")} size="sm">
+            Войти
+          </Button>
+        ),
+      });
+      return;
+    }
+
+    // Формируем полное имя для сохранения
+    const fullName = `${entrepreneur.lastName} ${entrepreneur.firstName} ${entrepreneur.middleName || ""}`.trim();
+
+    if (isFavorite) {
+      // Удаляем из избранного
+      const favorite = favoritesData?.myFavorites?.find(
+        f => f.entityType === EntityType.ENTREPRENEUR && f.entityId === entrepreneur.ogrnip
+      );
+      if (favorite) {
+        deleteFavorite.mutate(favorite.id);
+      }
+    } else {
+      // Добавляем в избранное
+      createFavorite.mutate({
+        entityType: EntityType.ENTREPRENEUR,
+        entityId: entrepreneur.ogrnip,
+        entityName: fullName,
+        notes: null
+      });
+    }
   };
 
   const handleDownloadExtract = () => {
@@ -66,16 +207,17 @@ export function EntrepreneurHeader({ entrepreneur }: EntrepreneurHeaderProps) {
               )}
             </div>
           </div>
-          
+
           <div className="flex flex-col sm:flex-row gap-2">
             <Button
-              variant="outline"
+              variant={isFavorite ? "default" : "outline"}
               size="sm"
               onClick={handleAddToFavorites}
               className="flex items-center justify-center gap-2 w-full sm:w-auto"
+              disabled={createFavorite.isPending || deleteFavorite.isPending}
             >
-              <Heart className="h-4 w-4" />
-              <span className="hidden sm:inline">В избранное</span>
+              <Heart className={`h-4 w-4 ${isFavorite ? "fill-current" : ""}`} />
+              <span className="hidden sm:inline">{isFavorite ? "В избранном" : "В избранное"}</span>
             </Button>
             <Button
               variant="outline"
@@ -95,9 +237,35 @@ export function EntrepreneurHeader({ entrepreneur }: EntrepreneurHeaderProps) {
               <Share2 className="h-4 w-4" />
               <span className="hidden sm:inline">Поделиться</span>
             </Button>
+            <Button
+              variant={hasSubscription ? "default" : "outline"}
+              size="sm"
+              onClick={handleSubscribeClick}
+              className="flex items-center justify-center gap-2 w-full sm:w-auto"
+            >
+              {hasSubscription ? (
+                <>
+                  <BellRing className="h-4 w-4 fill-current" />
+                  <span className="hidden sm:inline">Подписка активна</span>
+                </>
+              ) : (
+                <>
+                  <Bell className="h-4 w-4" />
+                  <span className="hidden sm:inline">Отслеживать</span>
+                </>
+              )}
+            </Button>
           </div>
         </div>
       </CardHeader>
+
+      <SubscriptionForm
+        entityType="entrepreneur"
+        entityId={entrepreneur.ogrnip}
+        entityName={fullName}
+        open={subscriptionDialogOpen}
+        onOpenChange={setSubscriptionDialogOpen}
+      />
     </Card>
   );
 }

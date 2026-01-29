@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Изменение в данных {{.EntityName}}</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background-color: #ffffff;
+            border-radius: 8px;
+            padding: 30px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .header {
+            border-bottom: 3px solid #2563eb;
+            padding-bottom: 20px;
+            margin-bottom: 20px;
+        }
+        .header h1 {
+            margin: 0;
+            font-size: 24px;
+            color: #1e293b;
+        }
+        .badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .badge-significant {
+            background-color: #fee2e2;
+            color: #991b1b;
+        }
+        .badge-normal {
+            background-color: #dbeafe;
+            color: #1e40af;
+        }
+        .entity-info {
+            background-color: #f8fafc;
+            border-left: 4px solid #2563eb;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 4px;
+        }
+        .entity-info h2 {
+            margin: 0 0 10px 0;
+            font-size: 18px;
+            color: #1e293b;
+        }
+        .entity-info p {
+            margin: 5px 0;
+            color: #64748b;
+            font-size: 14px;
+        }
+        .change-details {
+            margin: 20px 0;
+        }
+        .change-field {
+            margin: 15px 0;
+            padding: 15px;
+            background-color: #f8fafc;
+            border-radius: 4px;
+        }
+        .change-field-label {
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+            color: #64748b;
+            margin-bottom: 5px;
+        }
+        .change-field-value {
+            font-size: 14px;
+            color: #1e293b;
+        }
+        .value-change {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin: 10px 0;
+        }
+        .old-value {
+            flex: 1;
+            padding: 10px;
+            background-color: #fee2e2;
+            border-radius: 4px;
+            text-decoration: line-through;
+            color: #991b1b;
+        }
+        .new-value {
+            flex: 1;
+            padding: 10px;
+            background-color: #d1fae5;
+            border-radius: 4px;
+            color: #065f46;
+            font-weight: 600;
+        }
+        .arrow {
+            font-size: 20px;
+            color: #64748b;
+        }
+        .button {
+            display: inline-block;
+            padding: 12px 24px;
+            background-color: #2563eb;
+            color: #ffffff;
+            text-decoration: none;
+            border-radius: 6px;
+            font-weight: 600;
+            margin: 10px 10px 10px 0;
+        }
+        .button:hover {
+            background-color: #1d4ed8;
+        }
+        .footer {
+            margin-top: 30px;
+            padding-top: 20px;
+            border-top: 1px solid #e2e8f0;
+            font-size: 12px;
+            color: #64748b;
+            text-align: center;
+        }
+        .footer a {
+            color: #2563eb;
+            text-decoration: none;
+        }
+        .timestamp {
+            font-size: 13px;
+            color: #64748b;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🔔 Обнаружено изменение</h1>
+            {{if .IsSignificant}}
+            <span class="badge badge-significant">⚠️ Важное изменение</span>
+            {{else}}
+            <span class="badge badge-normal">Информационное</span>
+            {{end}}
+        </div>
+
+        <div class="entity-info">
+            <h2>{{.EntityName}}</h2>
+            <p><strong>{{if eq .EntityType "company"}}ОГРН{{else}}ОГРНИП{{end}}:</strong> {{.EntityID}}</p>
+            <p><strong>Тип изменения:</strong> {{.ChangeTypeLabel}}</p>
+        </div>
+
+        <div class="change-details">
+            <div class="change-field">
+                <div class="change-field-label">{{.FieldNameLabel}}</div>
+                <div class="value-change">
+                    <div class="old-value">
+                        <strong>Было:</strong><br>
+                        {{.OldValue}}
+                    </div>
+                    <div class="arrow">→</div>
+                    <div class="new-value">
+                        <strong>Стало:</strong><br>
+                        {{.NewValue}}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="timestamp">
+            📅 Дата изменения: {{.DetectedAt.Format "02.01.2006 15:04:05"}}
+        </div>
+
+        <div style="margin-top: 30px; text-align: center;">
+            <a href="{{.EntityURL}}" class="button">Открыть карточку</a>
+            <a href="{{.SettingsURL}}" class="button" style="background-color: #64748b;">Управление подписками</a>
+        </div>
+
+        <div class="footer">
+            <p>
+                Вы получили это письмо, потому что подписаны на уведомления об изменениях в данных этой организации.
+            </p>
+            <p>
+                <a href="{{.UnsubscribeURL}}">Отписаться от уведомлений</a>
+            </p>
+            <p style="margin-top: 10px;">
+                <small>🤖 Сформировано автоматически сервисом мониторинга ЕГРЮЛ/ЕГРИП</small>
+            </p>
+        </div>
+    </div>
+</body>
+</html>

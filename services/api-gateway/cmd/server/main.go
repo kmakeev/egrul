@@ -3,6 +3,7 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"net/http"
 	"os"
@@ -15,13 +16,15 @@ import (
 	"github.com/go-chi/chi/v5"
 	chimiddleware "github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
+	_ "github.com/lib/pq"
 
+	"github.com/egrul-system/services/api-gateway/internal/auth"
 	"github.com/egrul-system/services/api-gateway/internal/cache"
 	"github.com/egrul-system/services/api-gateway/internal/config"
 	"github.com/egrul-system/services/api-gateway/internal/graph"
 	"github.com/egrul-system/services/api-gateway/internal/middleware"
 	"github.com/egrul-system/services/api-gateway/internal/repository/clickhouse"
-	esrepo "github.com/egrul-system/services/api-gateway/internal/repository/elasticsearch"
+	pgrepo "github.com/egrul-system/services/api-gateway/internal/repository/postgresql"
 	"github.com/egrul-system/services/api-gateway/internal/service"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
@@ -50,6 +53,12 @@ func main() {
 		zap.String("version", Version),
 		zap.String("host", cfg.Server.Host),
 		zap.Int("port", cfg.Server.Port),
+	)
+
+	// Инициализация JWT Manager
+	jwtManager := auth.NewJWTManager(cfg.Auth.JWTSecretKey, cfg.Auth.JWTTokenDuration)
+	logger.Info("JWT Manager initialized",
+		zap.Duration("token_duration", cfg.Auth.JWTTokenDuration),
 	)
 
 	// Подключение к ClickHouse
@@ -102,23 +111,48 @@ func main() {
 	historyRepo := clickhouse.NewHistoryRepository(chClient, logger)
 	statsRepo := clickhouse.NewStatisticsRepository(chClient, logger)
 
-	// Инициализация Elasticsearch репозиториев (если подключение успешно)
-	var esCompanyRepo *esrepo.ESCompanyRepository
-	var esEntrepreneurRepo *esrepo.ESEntrepreneurRepository
-	if esClient != nil {
-		esCompanyRepo = esrepo.NewESCompanyRepository(esClient, logger)
-		esEntrepreneurRepo = esrepo.NewESEntrepreneurRepository(esClient, logger)
-		logger.Info("Elasticsearch repositories initialized, hybrid search enabled")
-	}
-
 	// Инициализация Redis кэша
 	redisCache := cache.NewRedisCache(cfg.Redis, logger)
 	defer redisCache.Close()
 
+	// Подключение к PostgreSQL для subscriptions
+	pgDSN := fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=%s",
+		cfg.PostgreSQL.Host, cfg.PostgreSQL.Port, cfg.PostgreSQL.User,
+		cfg.PostgreSQL.Password, cfg.PostgreSQL.Database, cfg.PostgreSQL.SSLMode)
+	pgDB, err := sql.Open("postgres", pgDSN)
+	if err != nil {
+		logger.Fatal("failed to connect to PostgreSQL", zap.Error(err))
+	}
+	defer pgDB.Close()
+
+	// Настройка connection pool для PostgreSQL
+	pgDB.SetMaxOpenConns(25)
+	pgDB.SetMaxIdleConns(10)
+	pgDB.SetConnMaxLifetime(time.Hour)
+
+	// Проверка подключения к PostgreSQL
+	{
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if err := pgDB.PingContext(ctx); err != nil {
+			logger.Fatal("failed to ping PostgreSQL", zap.Error(err))
+		}
+	}
+
+	logger.Info("Successfully connected to PostgreSQL",
+		zap.String("host", cfg.PostgreSQL.Host),
+		zap.Int("port", cfg.PostgreSQL.Port),
+		zap.String("database", cfg.PostgreSQL.Database),
+	)
+
+	// Инициализация PostgreSQL репозиториев
+	subscriptionRepo := pgrepo.NewSubscriptionRepository(pgDB, cfg.PostgreSQL.Schema, logger)
+	userRepo := pgrepo.NewUserRepository(pgDB, cfg.PostgreSQL.Schema, logger)
+	favoriteRepo := pgrepo.NewFavoriteRepository(pgDB, cfg.PostgreSQL.Schema, logger)
+
 	// Инициализация сервисов
 	companyService := service.NewCompanyService(
 		companyRepo,
-		esCompanyRepo,
 		founderRepo,
 		licenseRepo,
 		branchRepo,
@@ -127,7 +161,6 @@ func main() {
 	)
 	entrepreneurService := service.NewEntrepreneurService(
 		entrepreneurRepo,
-		esEntrepreneurRepo,
 		licenseRepo,
 		historyRepo,
 		logger,
@@ -136,7 +169,7 @@ func main() {
 	searchService := service.NewSearchService(companyService, entrepreneurService, logger)
 
 	// Инициализация GraphQL резолвера
-	resolver := graph.NewResolver(companyService, entrepreneurService, statsService, searchService, redisCache, logger)
+	resolver := graph.NewResolver(companyService, entrepreneurService, statsService, searchService, subscriptionRepo, favoriteRepo, userRepo, jwtManager, redisCache, logger)
 
 	// Создание роутера
 	r := chi.NewRouter()
@@ -163,9 +196,11 @@ func main() {
 	r.Get("/health", healthHandler(chClient))
 	r.Get("/ready", readyHandler(chClient))
 
-	// GraphQL endpoint
+	// GraphQL endpoint с JWT middleware
 	graphqlHandler := graph.NewManualHandler(resolver)
 	r.Group(func(r chi.Router) {
+		// JWT middleware для проверки токена (опциональная авторизация)
+		r.Use(jwtManager.Middleware)
 		// DataLoader middleware для GraphQL эндпоинтов
 		r.Use(graph.DataLoaderMiddleware(resolver))
 		r.Handle("/graphql", graphqlHandler)

@@ -1,0 +1,194 @@
+# ==============================================================================
+# Подписки на изменения (Subscriptions)
+# ==============================================================================
+
+# ------------------------------------------------------------------------------
+# ENUM типы
+# ------------------------------------------------------------------------------
+
+"""
+Статус отправки уведомления
+"""
+enum NotificationStatus {
+  PENDING
+  SENT
+  FAILED
+}
+
+# ------------------------------------------------------------------------------
+# Основные типы
+# ------------------------------------------------------------------------------
+
+"""
+Подписка пользователя на изменения сущности
+"""
+type EntitySubscription {
+  id: ID!
+  userId: ID!
+  user: User!
+  entityType: EntityType!
+  entityId: String!
+  entityName: String!
+  changeFilters: ChangeFilters!
+  notificationChannels: NotificationChannels!
+  isActive: Boolean!
+  createdAt: DateTime!
+  updatedAt: DateTime!
+  lastNotifiedAt: DateTime
+}
+
+"""
+Фильтры типов изменений для отслеживания
+"""
+type ChangeFilters {
+  status: Boolean!
+  director: Boolean!
+  founders: Boolean!
+  address: Boolean!
+  capital: Boolean!
+  activities: Boolean!
+}
+
+"""
+Каналы для отправки уведомлений
+"""
+type NotificationChannels {
+  email: Boolean!
+}
+
+"""
+Запись лога уведомления
+"""
+type NotificationLogEntry {
+  id: ID!
+  subscriptionId: ID!
+  changeEventId: ID!
+  userId: ID!
+  channel: String!
+  status: NotificationStatus!
+  sentAt: DateTime
+  errorMessage: String
+  createdAt: DateTime!
+}
+
+# ------------------------------------------------------------------------------
+# Входные типы (Input)
+# ------------------------------------------------------------------------------
+
+"""
+Входные данные для фильтров изменений
+"""
+input ChangeFiltersInput {
+  status: Boolean
+  director: Boolean
+  founders: Boolean
+  address: Boolean
+  capital: Boolean
+  activities: Boolean
+}
+
+"""
+Входные данные для каналов уведомлений
+"""
+input NotificationChannelsInput {
+  email: Boolean
+}
+
+"""
+Входные данные для создания подписки
+"""
+input CreateSubscriptionInput {
+  entityType: EntityType!
+  entityId: String!
+  entityName: String!
+  changeFilters: ChangeFiltersInput
+  notificationChannels: NotificationChannelsInput
+}
+
+"""
+Входные данные для обновления фильтров подписки
+"""
+input UpdateSubscriptionFiltersInput {
+  id: ID!
+  changeFilters: ChangeFiltersInput!
+}
+
+"""
+Входные данные для обновления каналов подписки
+"""
+input UpdateSubscriptionChannelsInput {
+  id: ID!
+  notificationChannels: NotificationChannelsInput!
+}
+
+"""
+Входные данные для переключения статуса подписки
+"""
+input ToggleSubscriptionInput {
+  id: ID!
+  isActive: Boolean!
+}
+
+# ------------------------------------------------------------------------------
+# Расширение корневых типов
+# ------------------------------------------------------------------------------
+
+extend type Query {
+  """
+  Получить все подписки текущего пользователя (требует авторизации)
+  """
+  mySubscriptions: [EntitySubscription!]!
+
+  """
+  Получить подписку по ID
+  """
+  subscription(id: ID!): EntitySubscription
+
+  """
+  Получить историю уведомлений для подписки
+  """
+  notificationHistory(
+    subscriptionId: ID!
+    limit: Int = 20
+    offset: Int = 0
+  ): [NotificationLogEntry!]!
+
+  """
+  Проверить наличие подписки на конкретную сущность (требует авторизации)
+  """
+  hasSubscription(
+    entityType: EntityType!
+    entityId: String!
+  ): Boolean!
+}
+
+extend type Mutation {
+  """
+  Создать новую подписку
+  """
+  createSubscription(input: CreateSubscriptionInput!): EntitySubscription!
+
+  """
+  Обновить фильтры подписки
+  """
+  updateSubscriptionFilters(input: UpdateSubscriptionFiltersInput!): EntitySubscription!
+
+  """
+  Обновить каналы уведомлений
+  """
+  updateSubscriptionChannels(input: UpdateSubscriptionChannelsInput!): EntitySubscription!
+
+  """
+  Удалить подписку
+  """
+  deleteSubscription(id: ID!): Boolean!
+
+  """
+  Приостановить/возобновить подписку
+  """
+  toggleSubscription(input: ToggleSubscriptionInput!): EntitySubscription!
+}
+
+type Mutation {
+  _empty: String
+}

@@ -1,0 +1,157 @@
+# ==============================================================================
+# Subscriptions Queries & Mutations
+# ==============================================================================
+
+# ------------------------------------------------------------------------------
+# Queries
+# ------------------------------------------------------------------------------
+
+# Получить все подписки пользователя
+query MySubscriptions($email: String!) {
+  mySubscriptions(email: $email) {
+    id
+    userEmail
+    entityType
+    entityId
+    entityName
+    changeFilters {
+      status
+      director
+      founders
+      address
+      capital
+      activities
+    }
+    notificationChannels {
+      email
+    }
+    isActive
+    createdAt
+    updatedAt
+    lastNotifiedAt
+  }
+}
+
+# Получить конкретную подписку по ID
+query GetSubscription($id: ID!) {
+  subscription(id: $id) {
+    id
+    userEmail
+    entityType
+    entityId
+    entityName
+    changeFilters {
+      status
+      director
+      founders
+      address
+      capital
+      activities
+    }
+    notificationChannels {
+      email
+    }
+    isActive
+    createdAt
+    updatedAt
+    lastNotifiedAt
+  }
+}
+
+# Проверить наличие подписки на сущность
+query HasSubscription($email: String!, $entityType: EntityType!, $entityId: String!) {
+  hasSubscription(email: $email, entityType: $entityType, entityId: $entityId)
+}
+
+# Получить историю уведомлений для подписки
+query NotificationHistory($subscriptionId: String!, $limit: Int, $offset: Int) {
+  notificationHistory(subscriptionId: $subscriptionId, limit: $limit, offset: $offset) {
+    id
+    subscriptionId
+    changeEventId
+    entityType
+    entityId
+    entityName
+    changeType
+    fieldName
+    oldValue
+    newValue
+    detectedAt
+    channel
+    recipient
+    status
+    sentAt
+    retryCount
+    errorMessage
+    createdAt
+  }
+}
+
+# ------------------------------------------------------------------------------
+# Mutations
+# ------------------------------------------------------------------------------
+
+# Создать подписку
+mutation CreateSubscription($input: CreateSubscriptionInput!) {
+  createSubscription(input: $input) {
+    id
+    userEmail
+    entityType
+    entityId
+    entityName
+    changeFilters {
+      status
+      director
+      founders
+      address
+      capital
+      activities
+    }
+    notificationChannels {
+      email
+    }
+    isActive
+    createdAt
+  }
+}
+
+# Обновить фильтры подписки
+mutation UpdateSubscriptionFilters($input: UpdateSubscriptionFiltersInput!) {
+  updateSubscriptionFilters(input: $input) {
+    id
+    changeFilters {
+      status
+      director
+      founders
+      address
+      capital
+      activities
+    }
+    updatedAt
+  }
+}
+
+# Обновить каналы уведомлений
+mutation UpdateSubscriptionChannels($input: UpdateSubscriptionChannelsInput!) {
+  updateSubscriptionChannels(input: $input) {
+    id
+    notificationChannels {
+      email
+    }
+    updatedAt
+  }
+}
+
+# Удалить подписку
+mutation DeleteSubscription($id: ID!) {
+  deleteSubscription(id: $id)
+}
+
+# Переключить активность подписки
+mutation ToggleSubscription($input: ToggleSubscriptionInput!) {
+  toggleSubscription(input: $input) {
+    id
+    isActive
+    updatedAt
+  }
+}

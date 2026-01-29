@@ -8,9 +8,10 @@
 - 📊 **Аналитика** - ClickHouse для хранения и анализа миллионов записей
 - 🔍 **Полнотекстовый поиск** - Elasticsearch для быстрого поиска
 - 🎨 **Современный UI** - Next.js 15 + React 19 + TanStack Query
+- 🔔 **Отслеживание изменений** - Подписки на изменения компаний/ИП с email уведомлениями (NEW)
 - 🔄 **Event Streaming** - Kafka для обработки событий изменений
 - 💾 **S3 Storage** - MinIO для хранения файлов
-- 🛠️ **UI Tools** - Adminer, RedisInsight, MinIO Console
+- 🛠️ **UI Tools** - Adminer, RedisInsight, MinIO Console, MailHog
 - 📈 **Monitoring** - Grafana + ClickHouse datasource
 - 🐳 **Full Docker** - Полная инфраструктура в Docker Compose
 - 🎯 **Profiles** - Гибкая конфигурация для dev/prod окружений
@@ -20,32 +21,49 @@
 ```
                     ┌──────────────────────────────┐
                     │   Frontend (Next.js/React)   │
+                    │   - Watchlist (subscriptions)│
                     └──────────────┬───────────────┘
                                    │
                     ┌──────────────▼───────────────┐
                     │   API Gateway (Go/GraphQL)   │
+                    │   - Subscription management  │
                     └──────────────┬───────────────┘
                                    │
         ┌──────────────┬───────────┼────────────┬──────────────┐
         ▼              ▼           ▼            ▼              ▼
 ┌────────────┐  ┌──────────┐ ┌──────────┐ ┌─────────┐  ┌──────────┐
-│ClickHouse  │  │Postgres  │ │  Redis   │ │  Kafka  │  │  MinIO   │
-│(Аналитика) │  │(Метадата)│ │  (Кэш)   │ │(Events) │  │(Файлы)   │
-└────────────┘  └──────────┘ └──────────┘ └─────────┘  └──────────┘
-                                   │
-                    ┌──────────────▼───────────────┐
-                    │  Search Service (Go)         │
-                    └──────────────┬───────────────┘
-                                   │
-                    ┌──────────────▼───────────────┐
-                    │   Elasticsearch (Поиск)      │
-                    └──────────────────────────────┘
+│ClickHouse  │  │PostgreSQL│ │  Redis   │ │  Kafka  │  │  MinIO   │
+│(Аналитика) │  │(Metadata │ │  (Кэш)   │ │(Events) │  │(Файлы)   │
+│ +Changes   │  │+Subscrip)│ │          │ │         │  │          │
+└──────┬─────┘  └────┬─────┘ └──────────┘ └────┬────┘  └──────────┘
+       │             │                          │
+       │             │         ┌────────────────▼────────────────┐
+       │             │         │  Change Detection Service (Go)  │
+       │             │         │  - Detects changes in data      │
+       │             │         │  - Produces Kafka events        │
+       │             │         └──────────────┬──────────────────┘
+       │             │                        │
+       │             │         ┌──────────────▼──────────────────┐
+       │             └────────>│  Notification Service (Go)      │
+       │                       │  - Consumes change events       │
+       │                       │  - Sends email notifications    │
+       │                       └─────────────────────────────────┘
+       │
+       │             ┌──────────────┐
+       └────────────>│Search Service│
+                     │     (Go)     │
+                     └──────┬───────┘
+                            │
+                     ┌──────▼──────┐
+                     │Elasticsearch│
+                     │   (Поиск)   │
+                     └─────────────┘
 
 ┌─────────────────────────────────────────────────────────────────┐
-│           XML Parser (Rust) → Parquet → ClickHouse              │
+│  XML Parser (Rust) → Parquet → ClickHouse → Change Detection   │
 └─────────────────────────────────────────────────────────────────┘
 
-UI Tools: Adminer (PostgreSQL) | RedisInsight (Redis) | MinIO Console
+UI Tools: Adminer (PostgreSQL) | RedisInsight (Redis) | MinIO Console | MailHog (SMTP)
 Monitoring: Grafana + ClickHouse datasource
 ```
 
@@ -68,6 +86,25 @@ egrul-system/
 │   │
 │   ├── search-service/        # Go Search Service
 │   │   ├── main.go
+│   │   ├── go.mod
+│   │   └── Dockerfile
+│   │
+│   ├── change-detection-service/  # Go Change Detection (NEW)
+│   │   ├── cmd/server/
+│   │   ├── internal/
+│   │   │   ├── detector/      # Change comparison logic
+│   │   │   ├── kafka/         # Kafka producer
+│   │   │   └── repository/    # ClickHouse access
+│   │   ├── go.mod
+│   │   └── Dockerfile
+│   │
+│   ├── notification-service/  # Go Notification Service (NEW)
+│   │   ├── cmd/server/
+│   │   ├── internal/
+│   │   │   ├── consumer/      # Kafka consumer
+│   │   │   ├── channels/      # Email sender
+│   │   │   ├── templates/     # Email templates
+│   │   │   └── repository/    # PostgreSQL access
 │   │   ├── go.mod
 │   │   └── Dockerfile
 │   │
@@ -144,38 +181,53 @@ make dev
 
 ### Запуск Docker окружения
 
+> **Важно:** Система использует ClickHouse кластер (6 нод + 3 Keeper). Single-node режим отключен.
+
 ```bash
-# Default profile (минимальный набор)
-make docker-up
-# Запускает: postgres, clickhouse, redis, api-gateway, frontend
+# Запуск всей инфраструктуры (кластер + все сервисы)
+make up
+# Запускает:
+# - ClickHouse кластер (6 nodes + 3 Keeper)
+# - PostgreSQL, Elasticsearch, Redis, Kafka, MinIO
+# - API Gateway, Search Service, Frontend
+# - Change Detection & Notification Services
+# - UI Tools (Adminer, RedisInsight, MailHog)
 
-# Full profile (все сервисы)
-make docker-up-full
-# Добавляет: kafka, zookeeper, minio, adminer, redisinsight
-
-# Dev mode (с hot reload)
-make docker-up-dev
-# Volume mounts для live code reload
-
-# Production mode
-make docker-up-prod
-# Resource limits, restart policies, security
+# Альтернативные команды (алиасы)
+make docker-up          # То же что make up
+make docker-up-full     # То же что make up
 
 # Просмотр логов
 make docker-logs
 
-# Остановка
+# Остановка всей системы
+make down
+# или
 make docker-down
 ```
 
-### Docker Profiles
+**Доступные сервисы после запуска:**
+- Frontend: http://localhost:3000
+- GraphQL Playground: http://localhost:8080/playground
+- MailHog UI: http://localhost:8025
+- MinIO Console: http://localhost:9011
+- Adminer (PostgreSQL): http://localhost:8090
+- RedisInsight: http://localhost:8091
 
-| Profile | Описание | Команда |
-|---------|----------|---------|
-| **default** | Основные сервисы для работы | `make docker-up` |
-| **full** | Все сервисы (включая Kafka, MinIO, UI tools) | `make docker-up-full` |
-| **tools** | UI инструменты (Adminer, RedisInsight) | `make docker-up-tools` |
-| **monitoring** | Grafana для мониторинга | `make docker-up-monitoring` |
+### Архитектура развертывания
+
+**ClickHouse Cluster** (обязательно):
+- 6 нод ClickHouse: 3 шарда × 2 реплики
+- 3 ноды ClickHouse Keeper (Raft-based координация)
+- Шардирование по region_code (регионы РФ)
+- Асинхронная репликация (RF=2)
+- Distributed таблицы поверх локальных
+
+**Запуск через `make up`** автоматически стартует весь стек:
+1. ClickHouse кластер (docker-compose.cluster.yml)
+2. Базовые сервисы (PostgreSQL, Redis, Kafka, Elasticsearch)
+3. Прикладные сервисы (API Gateway, Frontend, Change Detection, Notification)
+4. UI Tools (Adminer, RedisInsight, MailHog, MinIO Console)
 
 ## 📋 Доступные команды
 
@@ -184,19 +236,19 @@ make help              # Показать все команды (60+)
 
 # Общие
 make setup             # Начальная настройка
+make up                # Запуск всей системы (кластер + сервисы)
+make down              # Остановка всей системы
 make dev               # Режим разработки
 make build             # Сборка всех компонентов
 make test              # Запуск тестов
 make clean             # Очистка артефактов
 
-# Docker Profiles
-make docker-up         # Default profile
-make docker-up-full    # Все сервисы (Kafka, MinIO, UI tools)
-make docker-up-tools   # С UI инструментами
-make docker-up-dev     # Dev mode с hot reload
-make docker-up-prod    # Production mode
-make docker-down       # Остановка контейнеров
+# Docker
+make docker-up         # Алиас для make up
+make docker-down       # Алиас для make down
 make docker-logs       # Просмотр логов
+make docker-build      # Сборка Docker образов
+make docker-clean      # Очистка Docker
 
 # Parser (Rust)
 make parser-build      # Сборка парсера
@@ -211,12 +263,22 @@ make services-test     # Тесты сервисов
 make frontend-dev      # Режим разработки
 make frontend-build    # Сборка
 
-# ClickHouse
-make ch-migrate        # Применить миграции
-make ch-shell          # Открыть консоль
-make ch-stats          # Статистика
-make ch-truncate       # Очистить таблицы
-make ch-reset          # Пересоздать БД
+# ClickHouse Cluster (single-node отключен)
+make cluster-up        # Запуск кластера
+make cluster-down      # Остановка кластера
+make cluster-reset     # Пересоздать БД на всех нодах
+make cluster-truncate  # Очистить все таблицы
+make cluster-import    # Импорт данных в кластер
+make cluster-verify    # Проверка состояния кластера
+make cluster-test      # Тестирование кластера
+make cluster-ps        # Статус нод
+make cluster-logs      # Просмотр логов
+
+# Алиасы для обратной совместимости
+make ch-shell          # Консоль (подключение к node-01)
+make ch-stats          # Статистика кластера
+make ch-truncate       # Алиас для cluster-truncate
+make ch-reset          # Алиас для cluster-reset
 
 # Data Management
 make import            # Импорт данных из Parquet
@@ -309,6 +371,21 @@ cp .env.production .env
 | `FRONTEND_PORT` | Порт Frontend | `3000` |
 | `LOG_LEVEL` | Уровень логов | `info` |
 | `GRAPHQL_PLAYGROUND_ENABLED` | GraphQL Playground | `true` |
+
+#### Subscription System (NEW - profile: full)
+| Переменная | Описание | По умолчанию |
+|------------|----------|--------------|
+| `CHANGE_DETECTION_SERVICE_PORT` | Порт Change Detection | `8082` |
+| `NOTIFICATION_SERVICE_PORT` | Порт Notification | `8083` |
+| `SMTP_HOST` | SMTP сервер | `mailhog` (dev) |
+| `SMTP_PORT` | SMTP порт | `1025` (dev) |
+| `SMTP_USERNAME` | SMTP пользователь | - |
+| `SMTP_PASSWORD` | SMTP пароль | - |
+| `SMTP_FROM` | Email отправителя | `noreply@egrul.ru` |
+| `SMTP_TLS` | Использовать TLS | `false` (dev) |
+| `POSTGRES_SUBSCRIPTION_SCHEMA` | PostgreSQL схема | `subscriptions` |
+
+См. [docs/SUBSCRIPTIONS.md](docs/SUBSCRIPTIONS.md) для подробной документации.
 
 ### Порты сервисов
 
@@ -715,6 +792,31 @@ make docker-clean
 make ch-truncate  # Очистить таблицы
 make ch-reset     # Пересоздать БД
 ```
+
+## 📚 Документация
+
+Подробная документация доступна в директории `docs/`:
+
+- **[SUBSCRIPTIONS.md](docs/SUBSCRIPTIONS.md)** - Система отслеживания изменений контрагентов (NEW)
+  - Архитектура системы подписок
+  - GraphQL API для управления подписками
+  - Change Detection Service
+  - Notification Service
+  - Email уведомления через SMTP
+  - End-to-end тестирование
+
+- **[ARCHITECTURE.md](docs/ARCHITECTURE.md)** - Подробная архитектура системы
+- **[API.md](docs/API.md)** - Документация GraphQL/REST API
+- **[CLICKHOUSE.md](docs/CLICKHOUSE.md)** - ClickHouse схема и запросы
+- **[CLAUDE.md](CLAUDE.md)** - Инструкции для Claude Code (AI помощник)
+
+### Быстрые ссылки
+
+**Subscription System:**
+- Создание подписки: [frontend/src/components/subscriptions/subscription-form.tsx](frontend/src/components/subscriptions/subscription-form.tsx)
+- Список подписок: [frontend/src/components/subscriptions/subscriptions-list.tsx](frontend/src/components/subscriptions/subscriptions-list.tsx)
+- Страница Watchlist: [frontend/src/app/(dashboard)/watchlist/page.tsx](frontend/src/app/(dashboard)/watchlist/page.tsx)
+- GraphQL API: [services/api-gateway/internal/graph/subscription.graphqls](services/api-gateway/internal/graph/subscription.graphqls)
 
 ## 🤝 Контрибьютинг
 

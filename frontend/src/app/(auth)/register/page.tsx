@@ -26,11 +26,12 @@ import { registerSchema, type RegisterInput } from "@/lib/validations/auth";
 import { useAuthStore } from "@/store/auth-store";
 import { useToast } from "@/components/ui/use-toast";
 import { useRouter } from "next/navigation";
+import * as authApi from "@/lib/api/auth-api";
 
 export default function RegisterPage() {
   const { toast } = useToast();
   const router = useRouter();
-  const { setUser } = useAuthStore();
+  const { setUser, setToken } = useAuthStore();
   const [isLoading, setIsLoading] = useState(false);
 
   const form = useForm<RegisterInput>({
@@ -47,28 +48,28 @@ export default function RegisterPage() {
   const onSubmit = async (data: RegisterInput) => {
     setIsLoading(true);
     try {
-      // TODO: Реализовать реальный API вызов
-      // const response = await authApi.register(data);
-      
-      // Временная заглушка
-      setUser({
-        id: "1",
+      // Вызов реального API (без confirmPassword)
+      const response = await authApi.register({
         email: data.email,
+        password: data.password,
         firstName: data.firstName,
         lastName: data.lastName,
-        createdAt: new Date().toISOString(),
       });
+
+      // Сохранение пользователя и токена
+      setUser(response.user);
+      setToken(response.token);
 
       toast({
         title: "Регистрация успешна",
-        description: "Вы успешно зарегистрировались",
+        description: `Добро пожаловать, ${response.user.firstName}!`,
       });
 
       router.push("/search");
     } catch (error) {
       toast({
         title: "Ошибка регистрации",
-        description: error instanceof Error ? error.message : "Неизвестная ошибка",
+        description: error instanceof Error ? error.message : "Пользователь с таким email уже существует",
         variant: "destructive",
       });
     } finally {

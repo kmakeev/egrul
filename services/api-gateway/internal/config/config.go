@@ -14,9 +14,11 @@ type Config struct {
 	Server        ServerConfig     `mapstructure:"server"`
 	ClickHouse    ClickHouseConfig `mapstructure:"clickhouse"`
 	Elasticsearch ElasticConfig    `mapstructure:"elasticsearch"`
+	PostgreSQL    PostgreSQLConfig `mapstructure:"postgresql"`
 	Redis         RedisConfig      `mapstructure:"redis"`
 	Log           LogConfig        `mapstructure:"log"`
 	GraphQL       GraphQLConfig    `mapstructure:"graphql"`
+	Auth          AuthConfig       `mapstructure:"auth"`
 }
 
 // ServerConfig - конфигурация HTTP сервера
@@ -57,6 +59,17 @@ type RedisConfig struct {
 	DB       int    `mapstructure:"db"`
 }
 
+// PostgreSQLConfig - конфигурация PostgreSQL
+type PostgreSQLConfig struct {
+	Host     string `mapstructure:"host"`
+	Port     int    `mapstructure:"port"`
+	Database string `mapstructure:"database"`
+	User     string `mapstructure:"user"`
+	Password string `mapstructure:"password"`
+	SSLMode  string `mapstructure:"sslmode"`
+	Schema   string `mapstructure:"schema"` // subscriptions schema
+}
+
 // LogConfig - конфигурация логирования
 type LogConfig struct {
 	Level      string `mapstructure:"level"`
@@ -71,6 +84,12 @@ type GraphQLConfig struct {
 	IntrospectionEnabled bool `mapstructure:"introspection_enabled"`
 	MaxDepth          int  `mapstructure:"max_depth"`
 	MaxComplexity     int  `mapstructure:"max_complexity"`
+}
+
+// AuthConfig - конфигурация аутентификации
+type AuthConfig struct {
+	JWTSecretKey      string        `mapstructure:"jwt_secret_key"`
+	JWTTokenDuration  time.Duration `mapstructure:"jwt_token_duration"`
 }
 
 // Load загружает конфигурацию из файла и переменных окружения
@@ -137,6 +156,15 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("redis.password", "")
 	v.SetDefault("redis.db", 0)
 
+	// PostgreSQL
+	v.SetDefault("postgresql.host", "localhost")
+	v.SetDefault("postgresql.port", 5432)
+	v.SetDefault("postgresql.database", "egrul")
+	v.SetDefault("postgresql.user", "postgres")
+	v.SetDefault("postgresql.password", "")
+	v.SetDefault("postgresql.sslmode", "disable")
+	v.SetDefault("postgresql.schema", "subscriptions")
+
 	// Logging
 	v.SetDefault("log.level", "info")
 	v.SetDefault("log.format", "json")
@@ -148,6 +176,10 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("graphql.introspection_enabled", true)
 	v.SetDefault("graphql.max_depth", 15)
 	v.SetDefault("graphql.max_complexity", 1000)
+
+	// Auth
+	v.SetDefault("auth.jwt_secret_key", "CHANGE_ME_IN_PRODUCTION_MIN_32_CHARS")
+	v.SetDefault("auth.jwt_token_duration", 24*time.Hour)
 }
 
 func bindEnvVariables(v *viper.Viper) {
@@ -170,9 +202,22 @@ func bindEnvVariables(v *viper.Viper) {
 	_ = v.BindEnv("redis.port", "REDIS_PORT")
 	_ = v.BindEnv("redis.password", "REDIS_PASSWORD")
 
+	// PostgreSQL
+	_ = v.BindEnv("postgresql.host", "POSTGRES_HOST")
+	_ = v.BindEnv("postgresql.port", "POSTGRES_PORT")
+	_ = v.BindEnv("postgresql.database", "POSTGRES_DB")
+	_ = v.BindEnv("postgresql.user", "POSTGRES_USER")
+	_ = v.BindEnv("postgresql.password", "POSTGRES_PASSWORD")
+	_ = v.BindEnv("postgresql.sslmode", "POSTGRES_SSLMODE")
+	_ = v.BindEnv("postgresql.schema", "POSTGRES_SUBSCRIPTION_SCHEMA")
+
 	// Logging
 	_ = v.BindEnv("log.level", "LOG_LEVEL")
 	_ = v.BindEnv("log.format", "LOG_FORMAT")
+
+	// Auth
+	_ = v.BindEnv("auth.jwt_secret_key", "JWT_SECRET_KEY")
+	_ = v.BindEnv("auth.jwt_token_duration", "JWT_TOKEN_DURATION")
 }
 
 // Addr возвращает адрес сервера

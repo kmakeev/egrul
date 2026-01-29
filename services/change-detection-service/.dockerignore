@@ -1,0 +1,30 @@
+# Git files
+.git
+.gitignore
+
+# Documentation
+*.md
+README.md
+LICENSE
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+
+# Build artifacts
+*.exe
+*.dll
+*.so
+*.dylib
+change-detection-service
+
+# Test files
+*_test.go
+testdata/
+
+# Development files
+.env
+.env.local
+tmp/

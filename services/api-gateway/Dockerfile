@@ -12,13 +12,8 @@ COPY services/api-gateway/ .
 # Генерируем go.sum и скачиваем зависимости
 RUN go mod tidy && go mod download
 
-# Удаляем только сгенерированные файлы, НЕ наши резолверы
+# Удаляем сгенерированные gqlgen файлы - используем ManualHandler
 RUN rm -f internal/graph/generated/generated.go
-
-# Генерируем GraphQL код, игнорируя ошибки валидации
-RUN go run github.com/99designs/gqlgen generate || true
-
-# Удаляем конфликтующие файлы ПОСЛЕ генерации
 RUN rm -f internal/graph/schema.resolvers.go
 RUN rm -f internal/graph/company.resolvers.go
 RUN rm -f internal/graph/entrepreneur.resolvers.go

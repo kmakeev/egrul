@@ -26,11 +26,12 @@ import { loginSchema, type LoginInput } from "@/lib/validations/auth";
 import { useAuthStore } from "@/store/auth-store";
 import { useToast } from "@/components/ui/use-toast";
 import { useRouter } from "next/navigation";
+import * as authApi from "@/lib/api/auth-api";
 
 export default function LoginPage() {
   const { toast } = useToast();
   const router = useRouter();
-  const { setUser } = useAuthStore();
+  const { setUser, setToken } = useAuthStore();
   const [isLoading, setIsLoading] = useState(false);
 
   const form = useForm<LoginInput>({
@@ -44,28 +45,23 @@ export default function LoginPage() {
   const onSubmit = async (data: LoginInput) => {
     setIsLoading(true);
     try {
-      // TODO: Реализовать реальный API вызов
-      // const response = await authApi.login(data);
-      
-      // Временная заглушка
-      setUser({
-        id: "1",
-        email: data.email,
-        firstName: "Пользователь",
-        lastName: "Тестовый",
-        createdAt: new Date().toISOString(),
-      });
+      // Вызов реального API
+      const response = await authApi.login(data);
+
+      // Сохранение пользователя и токена
+      setUser(response.user);
+      setToken(response.token);
 
       toast({
         title: "Успешный вход",
-        description: "Вы успешно вошли в систему",
+        description: `Добро пожаловать, ${response.user.firstName}!`,
       });
 
       router.push("/search");
     } catch (error) {
       toast({
         title: "Ошибка входа",
-        description: error instanceof Error ? error.message : "Неизвестная ошибка",
+        description: error instanceof Error ? error.message : "Неверный email или пароль",
         variant: "destructive",
       });
     } finally {

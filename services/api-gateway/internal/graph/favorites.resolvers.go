@@ -1,0 +1,249 @@
+package graph
+
+// This file contains favorites resolvers for ManualHandler
+// DO NOT import generated package - we use manual routing
+
+import (
+	"context"
+	"fmt"
+
+	"github.com/egrul-system/services/api-gateway/internal/auth"
+	"github.com/egrul-system/services/api-gateway/internal/graph/model"
+	"go.uber.org/zap"
+)
+
+// CreateFavorite is the resolver for the createFavorite field.
+func (r *mutationResolver) CreateFavorite(ctx context.Context, input model.CreateFavoriteInput) (*model.Favorite, error) {
+	if r.FavoriteRepo == nil {
+		return nil, fmt.Errorf("favorite repository not configured")
+	}
+
+	// Получаем userID из JWT context
+	userID, ok := auth.GetUserIDFromContext(ctx)
+	if !ok {
+		return nil, fmt.Errorf("unauthorized: login required")
+	}
+
+	// Проверяем, нет ли уже в избранном
+	exists, err := r.FavoriteRepo.HasFavorite(ctx, userID, string(input.EntityType), input.EntityID)
+	if err != nil {
+		r.Logger.Error("failed to check favorite existence",
+			zap.String("user_id", userID),
+			zap.Error(err),
+		)
+		return nil, err
+	}
+
+	if exists {
+		return nil, fmt.Errorf("entity already in favorites")
+	}
+
+	// Создаем избранное
+	favorite := &model.Favorite{
+		UserID:     userID,
+		EntityType: input.EntityType,
+		EntityID:   input.EntityID,
+		EntityName: input.EntityName,
+		Notes:      input.Notes,
+	}
+
+	if err := r.FavoriteRepo.Create(ctx, favorite); err != nil {
+		r.Logger.Error("failed to create favorite",
+			zap.String("user_id", userID),
+			zap.String("entity_id", input.EntityID),
+			zap.Error(err),
+		)
+		return nil, err
+	}
+
+	r.Logger.Info("favorite created",
+		zap.String("id", favorite.ID),
+		zap.String("user_id", favorite.UserID),
+		zap.String("entity_type", string(favorite.EntityType)),
+		zap.String("entity_id", favorite.EntityID),
+	)
+
+	return favorite, nil
+}
+
+// UpdateFavoriteNotes is the resolver for the updateFavoriteNotes field.
+func (r *mutationResolver) UpdateFavoriteNotes(ctx context.Context, input model.UpdateFavoriteNotesInput) (*model.Favorite, error) {
+	if r.FavoriteRepo == nil {
+		return nil, fmt.Errorf("favorite repository not configured")
+	}
+
+	// Получаем userID из JWT context
+	userID, ok := auth.GetUserIDFromContext(ctx)
+	if !ok {
+		return nil, fmt.Errorf("unauthorized: login required")
+	}
+
+	favorite, err := r.FavoriteRepo.GetByID(ctx, input.ID)
+	if err != nil {
+		r.Logger.Error("failed to get favorite",
+			zap.String("id", input.ID),
+			zap.Error(err),
+		)
+		return nil, err
+	}
+
+	if favorite == nil {
+		return nil, fmt.Errorf("favorite not found")
+	}
+
+	// Проверяем, что пользователь владелец
+	if favorite.UserID != userID {
+		return nil, fmt.Errorf("access denied: you can only update your own favorites")
+	}
+
+	// Обновляем заметки
+	favorite.Notes = input.Notes
+
+	if err := r.FavoriteRepo.Update(ctx, favorite); err != nil {
+		r.Logger.Error("failed to update favorite notes",
+			zap.String("id", input.ID),
+			zap.Error(err),
+		)
+		return nil, err
+	}
+
+	r.Logger.Info("favorite notes updated",
+		zap.String("id", favorite.ID),
+	)
+
+	return favorite, nil
+}
+
+// DeleteFavorite is the resolver for the deleteFavorite field.
+func (r *mutationResolver) DeleteFavorite(ctx context.Context, id string) (bool, error) {
+	if r.FavoriteRepo == nil {
+		return false, fmt.Errorf("favorite repository not configured")
+	}
+
+	// Получаем userID из JWT context
+	userID, ok := auth.GetUserIDFromContext(ctx)
+	if !ok {
+		return false, fmt.Errorf("unauthorized: login required")
+	}
+
+	// Проверяем владельца
+	favorite, err := r.FavoriteRepo.GetByID(ctx, id)
+	if err != nil {
+		r.Logger.Error("failed to get favorite",
+			zap.String("id", id),
+			zap.Error(err),
+		)
+		return false, err
+	}
+
+	if favorite == nil {
+		return false, fmt.Errorf("favorite not found")
+	}
+
+	if favorite.UserID != userID {
+		return false, fmt.Errorf("access denied: you can only delete your own favorites")
+	}
+
+	if err := r.FavoriteRepo.Delete(ctx, id); err != nil {
+		r.Logger.Error("failed to delete favorite",
+			zap.String("id", id),
+			zap.Error(err),
+		)
+		return false, err
+	}
+
+	r.Logger.Info("favorite deleted",
+		zap.String("id", id),
+	)
+
+	return true, nil
+}
+
+// MyFavorites is the resolver for the myFavorites field.
+func (r *queryResolver) MyFavorites(ctx context.Context) ([]*model.Favorite, error) {
+	if r.FavoriteRepo == nil {
+		return nil, fmt.Errorf("favorite repository not configured")
+	}
+
+	// Получаем userID из JWT context
+	userID, ok := auth.GetUserIDFromContext(ctx)
+	if !ok {
+		return nil, fmt.Errorf("unauthorized: login required")
+	}
+
+	favorites, err := r.FavoriteRepo.GetByUserID(ctx, userID)
+	if err != nil {
+		r.Logger.Error("failed to get favorites by user id",
+			zap.String("user_id", userID),
+			zap.Error(err),
+		)
+		return nil, err
+	}
+
+	return favorites, nil
+}
+
+// HasFavorite is the resolver for the hasFavorite field.
+func (r *queryResolver) HasFavorite(ctx context.Context, entityType model.EntityType, entityID string) (bool, error) {
+	if r.FavoriteRepo == nil {
+		return false, fmt.Errorf("favorite repository not configured")
+	}
+
+	// Получаем userID из JWT context
+	userID, ok := auth.GetUserIDFromContext(ctx)
+	if !ok {
+		return false, fmt.Errorf("unauthorized: login required")
+	}
+
+	exists, err := r.FavoriteRepo.HasFavorite(ctx, userID, string(entityType), entityID)
+	if err != nil {
+		r.Logger.Error("failed to check favorite existence",
+			zap.String("user_id", userID),
+			zap.String("entity_type", string(entityType)),
+			zap.String("entity_id", entityID),
+			zap.Error(err),
+		)
+		return false, err
+	}
+
+	return exists, nil
+}
+
+// User is the resolver for the user field in Favorite.
+func (r *favoriteResolver) User(ctx context.Context, obj *model.Favorite) (*model.User, error) {
+	if r.UserRepo == nil {
+		return nil, fmt.Errorf("user repository not configured")
+	}
+
+	// Получаем пользователя из БД
+	user, err := r.UserRepo.GetByID(ctx, obj.UserID)
+	if err != nil {
+		r.Logger.Error("failed to get user",
+			zap.String("user_id", obj.UserID),
+			zap.Error(err),
+		)
+		return nil, err
+	}
+
+	if user == nil {
+		return nil, fmt.Errorf("user not found")
+	}
+
+	// Преобразуем в GraphQL модель
+	gqlUser := &model.User{
+		ID:            user.ID,
+		Email:         user.Email,
+		FirstName:     user.FirstName,
+		LastName:      user.LastName,
+		IsActive:      user.IsActive,
+		EmailVerified: user.EmailVerified,
+		CreatedAt:     user.CreatedAt,
+		UpdatedAt:     user.UpdatedAt,
+		LastLoginAt:   user.LastLoginAt,
+	}
+
+	return gqlUser, nil
+}
+
+// Resolver type for ManualHandler - no generated interface registration
+type favoriteResolver struct{ *Resolver }

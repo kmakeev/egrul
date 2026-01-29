@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/egrul-system/services/api-gateway/internal/graph/model"
+	"go.uber.org/zap"
 )
 
 // ManualHandler обрабатывает GraphQL запросы без генерации
@@ -86,39 +87,177 @@ func (h *ManualHandler) writeError(w http.ResponseWriter, msg string, status int
 
 func (h *ManualHandler) execute(ctx context.Context, req *GraphQLRequest) (*GraphQLResponse, error) {
 	query := strings.TrimSpace(req.Query)
-	
+
+	// DEBUG: Simple printf to verify execution
+	fmt.Printf("=== execute() called: query length=%d, opName=%q ===\n", len(query), req.OperationName)
+
 	// Простой парсер для демонстрации
 	// В продакшене используйте gqlgen generate
-	
+
 	if strings.Contains(query, "__schema") || strings.Contains(query, "__type") {
 		return h.handleIntrospection(ctx, query)
 	}
-	
+
 	// Определяем операцию
+	queryLower := strings.ToLower(query)
+	opName := strings.ToLower(req.OperationName)
+
+	// Извлекаем имя query из строки запроса для поддержки "query SearchCompanies {...}"
+	// Ищем между "query " и "(" или "{"
+	queryName := ""
+	if idx := strings.Index(query, "query "); idx >= 0 {
+		remaining := query[idx+6:] // Пропускаем "query "
+		remaining = strings.TrimSpace(remaining)
+		if remaining != "" && remaining[0] != '{' && remaining[0] != '(' {
+			// Есть имя query
+			endIdx := strings.IndexAny(remaining, "({ \t\n")
+			if endIdx > 0 {
+				queryName = strings.ToLower(remaining[:endIdx])
+			}
+		}
+	}
+
+	// DEBUG: Логируем routing info
+	h.resolver.Logger.Info("🔍 ManualHandler routing",
+		zap.String("opName", opName),
+		zap.String("queryName", queryName),
+		zap.String("queryPreview", func() string {
+			if len(query) > 150 {
+				return query[:150] + "..."
+			}
+			return query
+		}()),
+	)
+
+	// ВАЖНО: Проверяем operationName и queryName для точного роутинга
+	// Запросы типа "query SearchCompanies { companies(...) }" должны идти в handleCompaniesQuery,
+	// а не в handleSearchCompaniesQuery
+
+	// Auth mutations and queries - проверяем по имени операции или по query
+	if opName == "register" || queryName == "register" || (strings.Contains(queryLower, "mutation") && strings.Contains(queryLower, "register(")) {
+		h.resolver.Logger.Info("→ Routing to handleRegisterMutation")
+		return h.handleRegisterMutation(ctx, req)
+	}
+	if opName == "login" || queryName == "login" || (strings.Contains(queryLower, "mutation") && strings.Contains(queryLower, "login(")) {
+		h.resolver.Logger.Info("→ Routing to handleLoginMutation")
+		return h.handleLoginMutation(ctx, req)
+	}
+	if opName == "me" || queryName == "me" {
+		h.resolver.Logger.Info("→ Routing to handleMeQuery")
+		return h.handleMeQuery(ctx, req)
+	}
+
+	// Subscription operations - проверяем ПЕРЕД companies/entrepreneurs
+	if opName == "mysubscriptions" || queryName == "mysubscriptions" {
+		h.resolver.Logger.Info("→ Routing to handleMySubscriptionsQuery")
+		return h.handleMySubscriptionsQuery(ctx, req)
+	}
+	if opName == "hassubscription" || queryName == "hassubscription" {
+		h.resolver.Logger.Info("→ Routing to handleHasSubscriptionQuery")
+		return h.handleHasSubscriptionQuery(ctx, req)
+	}
+	if opName == "createsubscription" || queryName == "createsubscription" || strings.Contains(query, "createSubscription(") {
+		h.resolver.Logger.Info("→ Routing to handleCreateSubscriptionMutation")
+		return h.handleCreateSubscriptionMutation(ctx, req)
+	}
+
+	// Favorites operations
+	if opName == "myfavorites" || queryName == "myfavorites" {
+		h.resolver.Logger.Info("→ Routing to handleMyFavoritesQuery")
+		return h.handleMyFavoritesQuery(ctx, req)
+	}
+	if opName == "hasfavorite" || queryName == "hasfavorite" {
+		h.resolver.Logger.Info("→ Routing to handleHasFavoriteQuery")
+		return h.handleHasFavoriteQuery(ctx, req)
+	}
+	if opName == "createfavorite" || queryName == "createfavorite" || strings.Contains(query, "createFavorite(") {
+		h.resolver.Logger.Info("→ Routing to handleCreateFavoriteMutation")
+		return h.handleCreateFavoriteMutation(ctx, req)
+	}
+	if opName == "updatefavoritenotes" || queryName == "updatefavoritenotes" || strings.Contains(query, "updateFavoriteNotes(") {
+		h.resolver.Logger.Info("→ Routing to handleUpdateFavoriteNotesMutation")
+		return h.handleUpdateFavoriteNotesMutation(ctx, req)
+	}
+	if opName == "deletefavorite" || queryName == "deletefavorite" || strings.Contains(query, "deleteFavorite(") {
+		h.resolver.Logger.Info("→ Routing to handleDeleteFavoriteMutation")
+		return h.handleDeleteFavoriteMutation(ctx, req)
+	}
+	if opName == "togglesubscription" || queryName == "togglesubscription" || strings.Contains(query, "toggleSubscription(") {
+		h.resolver.Logger.Info("→ Routing to handleToggleSubscriptionMutation")
+		return h.handleToggleSubscriptionMutation(ctx, req)
+	}
+	if opName == "deletesubscription" || queryName == "deletesubscription" || strings.Contains(query, "deleteSubscription(") {
+		h.resolver.Logger.Info("→ Routing to handleDeleteSubscriptionMutation")
+		return h.handleDeleteSubscriptionMutation(ctx, req)
+	}
+
+	// Company/Entrepreneur queries с поддержкой queryName
+	// "query SearchCompanies { companies(...) }" -> handleCompaniesQuery
+	// "query { searchCompanies(...) }" -> handleSearchCompaniesQuery
+	if opName == "searchcompanies" || queryName == "searchcompanies" {
+		// Если в query есть "companies(" (а не "searchCompanies("), это обычный companies query
+		if strings.Contains(query, "companies(") || strings.Contains(query, "companies {") {
+			h.resolver.Logger.Info("→ Routing to handleCompaniesQuery (from searchcompanies opName/queryName)")
+			return h.handleCompaniesQuery(ctx, req)
+		}
+		h.resolver.Logger.Info("→ Routing to handleSearchCompaniesQuery")
+		return h.handleSearchCompaniesQuery(ctx, req)
+	}
+	if opName == "searchentrepreneurs" || queryName == "searchentrepreneurs" {
+		// Аналогично для entrepreneurs
+		if strings.Contains(query, "entrepreneurs(") || strings.Contains(query, "entrepreneurs {") {
+			h.resolver.Logger.Info("→ Routing to handleEntrepreneursQuery (from searchentrepreneurs opName/queryName)")
+			return h.handleEntrepreneursQuery(ctx, req)
+		}
+		// Нет отдельного handleSearchEntrepreneursQuery, используем handleEntrepreneursQuery
+		h.resolver.Logger.Info("→ Routing to handleEntrepreneursQuery (fallback)")
+		return h.handleEntrepreneursQuery(ctx, req)
+	}
+
+	// Company queries
 	if strings.Contains(query, "company(") || strings.Contains(query, "company (") {
+		h.resolver.Logger.Info("→ Routing to handleCompanyQuery")
 		return h.handleCompanyQuery(ctx, req)
 	}
 	if strings.Contains(query, "companyByInn") {
+		h.resolver.Logger.Info("→ Routing to handleCompanyByInnQuery")
 		return h.handleCompanyByInnQuery(ctx, req)
 	}
 	if strings.Contains(query, "companies(") || strings.Contains(query, "companies {") {
+		h.resolver.Logger.Info("→ Routing to handleCompaniesQuery")
 		return h.handleCompaniesQuery(ctx, req)
 	}
-	if strings.Contains(query, "searchCompanies") {
+	if strings.Contains(query, "searchCompanies(") {
+		h.resolver.Logger.Info("→ Routing to handleSearchCompaniesQuery")
 		return h.handleSearchCompaniesQuery(ctx, req)
 	}
 	if strings.Contains(query, "entrepreneur(") || strings.Contains(query, "entrepreneur (") {
+		h.resolver.Logger.Info("→ Routing to handleEntrepreneurQuery")
 		return h.handleEntrepreneurQuery(ctx, req)
 	}
 	if strings.Contains(query, "entrepreneurs(") || strings.Contains(query, "entrepreneurs {") {
+		h.resolver.Logger.Info("→ Routing to handleEntrepreneursQuery")
 		return h.handleEntrepreneursQuery(ctx, req)
 	}
 	if strings.Contains(query, "search(") || strings.Contains(query, "search {") {
+		h.resolver.Logger.Info("→ Routing to handleSearchQuery")
 		return h.handleSearchQuery(ctx, req)
 	}
 	if strings.Contains(query, "statistics") {
+		h.resolver.Logger.Info("→ Routing to handleStatisticsQuery")
 		return h.handleStatisticsQuery(ctx, req)
 	}
+
+	h.resolver.Logger.Warn("❌ Unsupported query - no routing match found",
+		zap.String("opName", opName),
+		zap.String("queryName", queryName),
+		zap.String("queryPreview", func() string {
+			if len(query) > 200 {
+				return query[:200] + "..."
+			}
+			return query
+		}()),
+	)
 
 	return &GraphQLResponse{
 		Errors: []GraphQLError{{Message: "unsupported query, please use gqlgen generate for full support"}},
@@ -1155,6 +1294,472 @@ func parseStatsFilter(data map[string]interface{}) *model.StatsFilter {
 		filter.Okved = &v
 	}
 	return filter
+}
+
+// handleRegisterMutation обрабатывает register mutation
+func (h *ManualHandler) handleRegisterMutation(ctx context.Context, req *GraphQLRequest) (*GraphQLResponse, error) {
+	input, ok := req.Variables["input"].(map[string]interface{})
+	if !ok {
+		return &GraphQLResponse{
+			Errors: []GraphQLError{{Message: "invalid input for register mutation"}},
+		}, nil
+	}
+
+	registerInput := model.RegisterInput{
+		Email:     input["email"].(string),
+		Password:  input["password"].(string),
+		FirstName: input["firstName"].(string),
+		LastName:  input["lastName"].(string),
+	}
+
+	// Вызываем resolver напрямую
+	mutationResolver := &mutationResolver{h.resolver}
+	authResponse, err := mutationResolver.Register(ctx, registerInput)
+	if err != nil {
+		return &GraphQLResponse{
+			Errors: []GraphQLError{{Message: err.Error()}},
+		}, nil
+	}
+
+	return &GraphQLResponse{
+		Data: map[string]interface{}{
+			"register": map[string]interface{}{
+				"user": map[string]interface{}{
+					"id":            authResponse.User.ID,
+					"email":         authResponse.User.Email,
+					"firstName":     authResponse.User.FirstName,
+					"lastName":      authResponse.User.LastName,
+					"isActive":      authResponse.User.IsActive,
+					"emailVerified": authResponse.User.EmailVerified,
+					"createdAt":     authResponse.User.CreatedAt,
+					"updatedAt":     authResponse.User.UpdatedAt,
+					"lastLoginAt":   authResponse.User.LastLoginAt,
+				},
+				"token":     authResponse.Token,
+				"expiresAt": authResponse.ExpiresAt,
+			},
+		},
+	}, nil
+}
+
+// handleLoginMutation обрабатывает login mutation
+func (h *ManualHandler) handleLoginMutation(ctx context.Context, req *GraphQLRequest) (*GraphQLResponse, error) {
+	input, ok := req.Variables["input"].(map[string]interface{})
+	if !ok {
+		return &GraphQLResponse{
+			Errors: []GraphQLError{{Message: "invalid input for login mutation"}},
+		}, nil
+	}
+
+	loginInput := model.LoginInput{
+		Email:    input["email"].(string),
+		Password: input["password"].(string),
+	}
+
+	// Вызываем resolver напрямую
+	mutationResolver := &mutationResolver{h.resolver}
+	authResponse, err := mutationResolver.Login(ctx, loginInput)
+	if err != nil {
+		return &GraphQLResponse{
+			Errors: []GraphQLError{{Message: err.Error()}},
+		}, nil
+	}
+
+	return &GraphQLResponse{
+		Data: map[string]interface{}{
+			"login": map[string]interface{}{
+				"user": map[string]interface{}{
+					"id":            authResponse.User.ID,
+					"email":         authResponse.User.Email,
+					"firstName":     authResponse.User.FirstName,
+					"lastName":      authResponse.User.LastName,
+					"isActive":      authResponse.User.IsActive,
+					"emailVerified": authResponse.User.EmailVerified,
+					"createdAt":     authResponse.User.CreatedAt,
+					"updatedAt":     authResponse.User.UpdatedAt,
+					"lastLoginAt":   authResponse.User.LastLoginAt,
+				},
+				"token":     authResponse.Token,
+				"expiresAt": authResponse.ExpiresAt,
+			},
+		},
+	}, nil
+}
+
+// handleMeQuery обрабатывает me query
+func (h *ManualHandler) handleMeQuery(ctx context.Context, req *GraphQLRequest) (*GraphQLResponse, error) {
+	// Вызываем resolver напрямую
+	queryResolver := &queryResolver{h.resolver}
+	user, err := queryResolver.Me(ctx)
+	if err != nil {
+		return &GraphQLResponse{
+			Errors: []GraphQLError{{Message: err.Error()}},
+		}, nil
+	}
+
+	return &GraphQLResponse{
+		Data: map[string]interface{}{
+			"me": map[string]interface{}{
+				"id":            user.ID,
+				"email":         user.Email,
+				"firstName":     user.FirstName,
+				"lastName":      user.LastName,
+				"isActive":      user.IsActive,
+				"emailVerified": user.EmailVerified,
+				"createdAt":     user.CreatedAt,
+				"updatedAt":     user.UpdatedAt,
+				"lastLoginAt":   user.LastLoginAt,
+			},
+		},
+	}, nil
+}
+
+// Subscription handlers
+
+// handleMySubscriptionsQuery обрабатывает mySubscriptions query
+func (h *ManualHandler) handleMySubscriptionsQuery(ctx context.Context, req *GraphQLRequest) (*GraphQLResponse, error) {
+	queryResolver := &queryResolver{h.resolver}
+	subscriptions, err := queryResolver.MySubscriptions(ctx)
+	if err != nil {
+		return &GraphQLResponse{
+			Errors: []GraphQLError{{Message: err.Error()}},
+		}, nil
+	}
+
+	subscriptionsData := make([]map[string]interface{}, len(subscriptions))
+	for i, sub := range subscriptions {
+		subscriptionsData[i] = map[string]interface{}{
+			"id":                   sub.ID,
+			"userId":               sub.UserID,
+			"entityType":           sub.EntityType,
+			"entityId":             sub.EntityID,
+			"entityName":           sub.EntityName,
+			"isActive":             sub.IsActive,
+			"createdAt":            sub.CreatedAt,
+			"updatedAt":            sub.UpdatedAt,
+			"lastNotifiedAt":       sub.LastNotifiedAt,
+		}
+	}
+
+	return &GraphQLResponse{
+		Data: map[string]interface{}{
+			"mySubscriptions": subscriptionsData,
+		},
+	}, nil
+}
+
+// handleHasSubscriptionQuery обрабатывает hasSubscription query
+func (h *ManualHandler) handleHasSubscriptionQuery(ctx context.Context, req *GraphQLRequest) (*GraphQLResponse, error) {
+	var input struct {
+		EntityType string `json:"entityType"`
+		EntityID   string `json:"entityId"`
+	}
+
+	if et, ok := req.Variables["entityType"].(string); ok {
+		input.EntityType = et
+	}
+	if eid, ok := req.Variables["entityId"].(string); ok {
+		input.EntityID = eid
+	}
+
+	queryResolver := &queryResolver{h.resolver}
+	hasSubscription, err := queryResolver.HasSubscription(ctx, model.EntityType(input.EntityType), input.EntityID)
+	if err != nil {
+		return &GraphQLResponse{
+			Errors: []GraphQLError{{Message: err.Error()}},
+		}, nil
+	}
+
+	return &GraphQLResponse{
+		Data: map[string]interface{}{
+			"hasSubscription": hasSubscription,
+		},
+	}, nil
+}
+
+// handleCreateSubscriptionMutation обрабатывает createSubscription mutation
+func (h *ManualHandler) handleCreateSubscriptionMutation(ctx context.Context, req *GraphQLRequest) (*GraphQLResponse, error) {
+	var input model.CreateSubscriptionInput
+
+	if inputData, ok := req.Variables["input"].(map[string]interface{}); ok {
+		if et, ok := inputData["entityType"].(string); ok {
+			input.EntityType = model.EntityType(et)
+		}
+		if eid, ok := inputData["entityId"].(string); ok {
+			input.EntityID = eid
+		}
+		if en, ok := inputData["entityName"].(string); ok {
+			input.EntityName = en
+		}
+
+		// Парсинг changeFilters
+		if cfData, ok := inputData["changeFilters"].(map[string]interface{}); ok {
+			filters := &model.ChangeFiltersInput{}
+			if v, ok := cfData["status"].(bool); ok {
+				filters.Status = &v
+			}
+			if v, ok := cfData["director"].(bool); ok {
+				filters.Director = &v
+			}
+			if v, ok := cfData["founders"].(bool); ok {
+				filters.Founders = &v
+			}
+			if v, ok := cfData["address"].(bool); ok {
+				filters.Address = &v
+			}
+			if v, ok := cfData["capital"].(bool); ok {
+				filters.Capital = &v
+			}
+			if v, ok := cfData["activities"].(bool); ok {
+				filters.Activities = &v
+			}
+			input.ChangeFilters = filters
+		}
+
+		// Парсинг notificationChannels
+		if ncData, ok := inputData["notificationChannels"].(map[string]interface{}); ok {
+			channels := &model.NotificationChannelsInput{}
+			if v, ok := ncData["email"].(bool); ok {
+				channels.Email = &v
+			}
+			input.NotificationChannels = channels
+		}
+	}
+
+	mutationResolver := &mutationResolver{h.resolver}
+	subscription, err := mutationResolver.CreateSubscription(ctx, input)
+	if err != nil {
+		return &GraphQLResponse{
+			Errors: []GraphQLError{{Message: err.Error()}},
+		}, nil
+	}
+
+	return &GraphQLResponse{
+		Data: map[string]interface{}{
+			"createSubscription": map[string]interface{}{
+				"id":          subscription.ID,
+				"userId":      subscription.UserID,
+				"entityType":  subscription.EntityType,
+				"entityId":    subscription.EntityID,
+				"entityName":  subscription.EntityName,
+				"isActive":    subscription.IsActive,
+				"createdAt":   subscription.CreatedAt,
+			},
+		},
+	}, nil
+}
+
+// handleToggleSubscriptionMutation обрабатывает toggleSubscription mutation
+func (h *ManualHandler) handleToggleSubscriptionMutation(ctx context.Context, req *GraphQLRequest) (*GraphQLResponse, error) {
+	var input model.ToggleSubscriptionInput
+
+	if inputData, ok := req.Variables["input"].(map[string]interface{}); ok {
+		if id, ok := inputData["id"].(string); ok {
+			input.ID = id
+		}
+		if isActive, ok := inputData["isActive"].(bool); ok {
+			input.IsActive = isActive
+		}
+	}
+
+	mutationResolver := &mutationResolver{h.resolver}
+	subscription, err := mutationResolver.ToggleSubscription(ctx, input)
+	if err != nil {
+		return &GraphQLResponse{
+			Errors: []GraphQLError{{Message: err.Error()}},
+		}, nil
+	}
+
+	return &GraphQLResponse{
+		Data: map[string]interface{}{
+			"toggleSubscription": map[string]interface{}{
+				"id":        subscription.ID,
+				"isActive":  subscription.IsActive,
+				"updatedAt": subscription.UpdatedAt,
+			},
+		},
+	}, nil
+}
+
+// handleDeleteSubscriptionMutation обрабатывает deleteSubscription mutation
+func (h *ManualHandler) handleDeleteSubscriptionMutation(ctx context.Context, req *GraphQLRequest) (*GraphQLResponse, error) {
+	id, ok := req.Variables["id"].(string)
+	if !ok {
+		return &GraphQLResponse{
+			Errors: []GraphQLError{{Message: "id is required"}},
+		}, nil
+	}
+
+	mutationResolver := &mutationResolver{h.resolver}
+	success, err := mutationResolver.DeleteSubscription(ctx, id)
+	if err != nil {
+		return &GraphQLResponse{
+			Errors: []GraphQLError{{Message: err.Error()}},
+		}, nil
+	}
+
+	return &GraphQLResponse{
+		Data: map[string]interface{}{
+			"deleteSubscription": success,
+		},
+	}, nil
+}
+
+// Favorites handlers
+
+// handleMyFavoritesQuery обрабатывает myFavorites query
+func (h *ManualHandler) handleMyFavoritesQuery(ctx context.Context, req *GraphQLRequest) (*GraphQLResponse, error) {
+	queryResolver := &queryResolver{h.resolver}
+	favorites, err := queryResolver.MyFavorites(ctx)
+	if err != nil {
+		return &GraphQLResponse{
+			Errors: []GraphQLError{{Message: err.Error()}},
+		}, nil
+	}
+
+	favoritesData := make([]map[string]interface{}, len(favorites))
+	for i, fav := range favorites {
+		favoritesData[i] = map[string]interface{}{
+			"id":         fav.ID,
+			"userId":     fav.UserID,
+			"entityType": fav.EntityType,
+			"entityId":   fav.EntityID,
+			"entityName": fav.EntityName,
+			"notes":      fav.Notes,
+			"createdAt":  fav.CreatedAt,
+		}
+	}
+
+	return &GraphQLResponse{
+		Data: map[string]interface{}{
+			"myFavorites": favoritesData,
+		},
+	}, nil
+}
+
+// handleHasFavoriteQuery обрабатывает hasFavorite query
+func (h *ManualHandler) handleHasFavoriteQuery(ctx context.Context, req *GraphQLRequest) (*GraphQLResponse, error) {
+	var input struct {
+		EntityType string `json:"entityType"`
+		EntityID   string `json:"entityId"`
+	}
+
+	if et, ok := req.Variables["entityType"].(string); ok {
+		input.EntityType = et
+	}
+	if eid, ok := req.Variables["entityId"].(string); ok {
+		input.EntityID = eid
+	}
+
+	queryResolver := &queryResolver{h.resolver}
+	hasFavorite, err := queryResolver.HasFavorite(ctx, model.EntityType(input.EntityType), input.EntityID)
+	if err != nil {
+		return &GraphQLResponse{
+			Errors: []GraphQLError{{Message: err.Error()}},
+		}, nil
+	}
+
+	return &GraphQLResponse{
+		Data: map[string]interface{}{
+			"hasFavorite": hasFavorite,
+		},
+	}, nil
+}
+
+// handleCreateFavoriteMutation обрабатывает createFavorite mutation
+func (h *ManualHandler) handleCreateFavoriteMutation(ctx context.Context, req *GraphQLRequest) (*GraphQLResponse, error) {
+	var input model.CreateFavoriteInput
+
+	if inputData, ok := req.Variables["input"].(map[string]interface{}); ok {
+		if et, ok := inputData["entityType"].(string); ok {
+			input.EntityType = model.EntityType(et)
+		}
+		if eid, ok := inputData["entityId"].(string); ok {
+			input.EntityID = eid
+		}
+		if en, ok := inputData["entityName"].(string); ok {
+			input.EntityName = en
+		}
+		if notes, ok := inputData["notes"].(string); ok {
+			input.Notes = &notes
+		}
+	}
+
+	mutationResolver := &mutationResolver{h.resolver}
+	favorite, err := mutationResolver.CreateFavorite(ctx, input)
+	if err != nil {
+		return &GraphQLResponse{
+			Errors: []GraphQLError{{Message: err.Error()}},
+		}, nil
+	}
+
+	return &GraphQLResponse{
+		Data: map[string]interface{}{
+			"createFavorite": map[string]interface{}{
+				"id":         favorite.ID,
+				"userId":     favorite.UserID,
+				"entityType": favorite.EntityType,
+				"entityId":   favorite.EntityID,
+				"entityName": favorite.EntityName,
+				"notes":      favorite.Notes,
+				"createdAt":  favorite.CreatedAt,
+			},
+		},
+	}, nil
+}
+
+// handleUpdateFavoriteNotesMutation обрабатывает updateFavoriteNotes mutation
+func (h *ManualHandler) handleUpdateFavoriteNotesMutation(ctx context.Context, req *GraphQLRequest) (*GraphQLResponse, error) {
+	var input model.UpdateFavoriteNotesInput
+
+	if inputData, ok := req.Variables["input"].(map[string]interface{}); ok {
+		if id, ok := inputData["id"].(string); ok {
+			input.ID = id
+		}
+		if notes, ok := inputData["notes"].(string); ok {
+			input.Notes = &notes
+		}
+	}
+
+	mutationResolver := &mutationResolver{h.resolver}
+	favorite, err := mutationResolver.UpdateFavoriteNotes(ctx, input)
+	if err != nil {
+		return &GraphQLResponse{
+			Errors: []GraphQLError{{Message: err.Error()}},
+		}, nil
+	}
+
+	return &GraphQLResponse{
+		Data: map[string]interface{}{
+			"updateFavoriteNotes": map[string]interface{}{
+				"id":    favorite.ID,
+				"notes": favorite.Notes,
+			},
+		},
+	}, nil
+}
+
+// handleDeleteFavoriteMutation обрабатывает deleteFavorite mutation
+func (h *ManualHandler) handleDeleteFavoriteMutation(ctx context.Context, req *GraphQLRequest) (*GraphQLResponse, error) {
+	var id string
+
+	if idVar, ok := req.Variables["id"].(string); ok {
+		id = idVar
+	}
+
+	mutationResolver := &mutationResolver{h.resolver}
+	success, err := mutationResolver.DeleteFavorite(ctx, id)
+	if err != nil {
+		return &GraphQLResponse{
+			Errors: []GraphQLError{{Message: err.Error()}},
+		}, nil
+	}
+
+	return &GraphQLResponse{
+		Data: map[string]interface{}{
+			"deleteFavorite": success,
+		},
+	}, nil
 }
 
 // NewDefaultExecutableSchema возвращает handler для совместимости

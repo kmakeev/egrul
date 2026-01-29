@@ -40,7 +40,50 @@ setup: ## Начальная настройка проекта
 	@chmod +x infrastructure/scripts/*.sh
 	@./infrastructure/scripts/setup.sh
 
-dev: docker-up ## Запуск в режиме разработки
+up: ## Запуск всей системы (кластер + сервисы)
+	@echo "$(CYAN)🚀 Запуск всей системы ЕГРЮЛ/ЕГРИП...$(NC)"
+	@echo "$(YELLOW)1/5 Запуск ClickHouse кластера...$(NC)"
+	@make cluster-up
+	@echo ""
+	@echo "$(YELLOW)2/5 Ожидание готовности кластера (60 сек)...$(NC)"
+	@sleep 60
+	@echo ""
+	@echo "$(YELLOW)3/5 Запуск базовых сервисов (Postgres, Kafka, Redis, Elasticsearch)...$(NC)"
+	@$(DOCKER_COMPOSE) --profile full up -d postgres redis elasticsearch kafka zookeeper mailhog minio adminer redisinsight
+	@sleep 10
+	@echo ""
+	@echo "$(YELLOW)4/5 Запуск прикладных сервисов...$(NC)"
+	@CLICKHOUSE_HOST=clickhouse-01 CLICKHOUSE_USER=egrul_app CLICKHOUSE_PASSWORD=test \
+		$(DOCKER_COMPOSE) --profile full up -d api-gateway search-service frontend change-detection-service notification-service sync-service
+	@sleep 5
+	@echo ""
+	@echo "$(YELLOW)5/5 Подключение API Gateway и Frontend к кластерной сети...$(NC)"
+	@docker network connect egrul_egrul-cluster-network egrul-api-gateway 2>/dev/null || echo "  ✓ api-gateway уже подключен"
+	@docker network connect egrul_egrul-cluster-network egrul-frontend 2>/dev/null || echo "  ✓ frontend уже подключен"
+	@docker restart egrul-api-gateway egrul-frontend > /dev/null 2>&1
+	@sleep 3
+	@echo ""
+	@echo "$(GREEN)✅ Система запущена!$(NC)"
+	@echo ""
+	@echo "$(CYAN)📊 Доступные сервисы:$(NC)"
+	@echo "  - Frontend: http://localhost:3000"
+	@echo "  - GraphQL Playground: http://localhost:8080/playground"
+	@echo "  - MailHog UI: http://localhost:8025"
+	@echo "  - MinIO Console: http://localhost:9011"
+	@echo "  - Adminer (PostgreSQL): http://localhost:8090"
+	@echo "  - RedisInsight: http://localhost:8091"
+	@echo ""
+	@echo "$(CYAN)📝 Проверка статуса:$(NC)"
+	@make cluster-ps
+	@$(DOCKER_COMPOSE) ps api-gateway frontend search-service
+
+down: ## Остановка всей системы
+	@echo "$(YELLOW)🛑 Остановка системы...$(NC)"
+	@$(DOCKER_COMPOSE) --profile full down
+	@$(DOCKER_COMPOSE) -f docker-compose.cluster.yml --profile cluster down
+	@echo "$(GREEN)✅ Система остановлена$(NC)"
+
+dev: up ## Запуск в режиме разработки
 	@echo "$(CYAN)🔧 Запуск сервисов разработки...$(NC)"
 	@$(PNPM) dev
 
@@ -87,13 +130,9 @@ format: ## Форматирование кода
 
 # ==================== Docker команды ====================
 
-docker-up: ## Запуск Docker контейнеров
-	@echo "$(CYAN)🐳 Запуск Docker контейнеров...$(NC)"
-	@$(DOCKER_COMPOSE) up -d
+docker-up: up ## Запуск Docker контейнеров (алиас для make up)
 
-docker-down: ## Остановка Docker контейнеров
-	@echo "$(YELLOW)🛑 Остановка Docker контейнеров...$(NC)"
-	@$(DOCKER_COMPOSE) down
+docker-down: down ## Остановка Docker контейнеров (алиас для make down)
 
 docker-logs: ## Просмотр логов Docker
 	@$(DOCKER_COMPOSE) logs -f
@@ -210,40 +249,25 @@ db-reset: ## Сброс базы данных
 db-shell: ## Открыть psql консоль
 	@$(DOCKER_COMPOSE) exec postgres psql -U postgres -d egrul
 
-# ==================== ClickHouse ====================
+# ==================== ClickHouse Cluster ====================
+# Примечание: Single-node режим ClickHouse отключен, используется только кластер
 
-ch-migrate: ## Применение миграций ClickHouse
-	@echo "$(CYAN)📊 Применение миграций ClickHouse...$(NC)"
-	@$(DOCKER_COMPOSE) --profile setup up --force-recreate --remove-orphans clickhouse-migrations
+ch-shell: ## Открыть ClickHouse консоль (подключение к node-01)
+	@docker exec -it egrul-clickhouse-01 clickhouse-client --user egrul_app --password test
 
-ch-shell: ## Открыть ClickHouse консоль
-	@$(DOCKER_COMPOSE) exec clickhouse clickhouse-client --user admin --password admin
+ch-stats: ## Показать статистику ClickHouse кластера
+	@echo "$(CYAN)📊 Статистика ClickHouse кластера...$(NC)"
+	@docker exec egrul-clickhouse-01 clickhouse-client --user egrul_app --password test --query "\
+		SELECT 'Companies' as table, count() as rows FROM egrul.companies UNION ALL \
+		SELECT 'Entrepreneurs', count() FROM egrul.entrepreneurs UNION ALL \
+		SELECT 'Founders', count() FROM egrul.founders UNION ALL \
+		SELECT 'Licenses', count() FROM egrul.licenses UNION ALL \
+		SELECT 'Branches', count() FROM egrul.branches \
+		FORMAT PrettyCompact"
 
-ch-stats: ## Показать статистику ClickHouse
-	@echo "$(CYAN)📊 Статистика ClickHouse...$(NC)"
-	@./infrastructure/scripts/import-data.sh --stats
+ch-truncate: cluster-truncate ## Очистить все таблицы ClickHouse кластера (алиас)
 
-ch-truncate: ## Очистить все таблицы ClickHouse
-	@echo "$(YELLOW)⚠️  Очистка всех таблиц ClickHouse...$(NC)"
-	@$(DOCKER_COMPOSE) exec clickhouse clickhouse-client --user admin --password admin --multiquery -q "\
-		TRUNCATE TABLE IF EXISTS egrul.companies; \
-		TRUNCATE TABLE IF EXISTS egrul.entrepreneurs; \
-		TRUNCATE TABLE IF EXISTS egrul.founders; \
-		TRUNCATE TABLE IF EXISTS egrul.company_history; \
-		TRUNCATE TABLE IF EXISTS egrul.licenses; \
-		TRUNCATE TABLE IF EXISTS egrul.branches; \
-		TRUNCATE TABLE IF EXISTS egrul.ownership_graph; \
-		TRUNCATE TABLE IF EXISTS egrul.import_log;"
-	@echo "$(GREEN)✅ Таблицы очищены$(NC)"
-
-ch-reset: ## Полное пересоздание всех таблиц ClickHouse (удаление и применение миграций)
-	@echo "$(YELLOW)⚠️  Полное пересоздание таблиц ClickHouse...$(NC)"
-	@echo "$(YELLOW)⚠️  ВНИМАНИЕ: Все данные будут удалены!$(NC)"
-	@$(DOCKER_COMPOSE) exec clickhouse clickhouse-client --user admin --password admin --multiquery -q "\
-		DROP DATABASE IF EXISTS egrul; \
-		CREATE DATABASE egrul ENGINE = Atomic;"
-	@echo "$(GREEN)✅ База данных пересоздана$(NC)"
-	@echo "$(CYAN)📊 Применение миграций...$(NC)"
+ch-reset: cluster-reset ## Полное пересоздание таблиц ClickHouse кластера (алиас)
 	@make ch-migrate
 	@echo "$(GREEN)✅ Таблицы пересозданы$(NC)"
 
@@ -311,9 +335,7 @@ update-deps: ## Обновление зависимостей
 
 # ==================== Docker Profiles ====================
 
-docker-up-full: ## Запуск всех сервисов (profile: full)
-	@echo "$(CYAN)🐳 Запуск всех сервисов (full profile)...$(NC)"
-	@$(DOCKER_COMPOSE) --profile full up -d
+docker-up-full: up ## Запуск всех сервисов (алиас для make up)
 
 docker-up-tools: ## Запуск с UI инструментами (profile: tools)
 	@echo "$(CYAN)🔧 Запуск с UI инструментами...$(NC)"
@@ -354,6 +376,62 @@ kafka-create-topic: ## Создать Kafka топик (TOPIC=name)
 kafka-console: ## Kafka console consumer (TOPIC=name)
 	@echo "$(CYAN)🎧 Консоль Kafka для топика: $(TOPIC)$(NC)"
 	@$(DOCKER_COMPOSE) exec kafka kafka-console-consumer --bootstrap-server localhost:9092 --topic $(TOPIC) --from-beginning
+
+# ==================== Notification System ====================
+
+notifications-up: ## Запуск полной системы уведомлений (full profile)
+	@echo "$(CYAN)🔔 Запуск системы уведомлений...$(NC)"
+	@$(DOCKER_COMPOSE) --profile full up -d
+	@echo "$(YELLOW)⏳ Ожидание готовности Kafka...$(NC)"
+	@sleep 5
+	@echo "$(CYAN)📝 Создание Kafka топиков...$(NC)"
+	@$(DOCKER_COMPOSE) exec kafka kafka-topics --create --topic company-changes --partitions 3 --replication-factor 1 --if-not-exists --bootstrap-server localhost:9092 2>/dev/null || echo "  ✓ company-changes уже существует"
+	@$(DOCKER_COMPOSE) exec kafka kafka-topics --create --topic entrepreneur-changes --partitions 3 --replication-factor 1 --if-not-exists --bootstrap-server localhost:9092 2>/dev/null || echo "  ✓ entrepreneur-changes уже существует"
+	@echo "$(CYAN)🗄️  Применение PostgreSQL миграций...$(NC)"
+	@$(DOCKER_COMPOSE) exec postgres psql -U postgres -d egrul -c "\dt subscriptions.*" -t | grep -q "entity_subscriptions" && echo "  ✓ Миграции уже применены" || \
+		($(DOCKER_COMPOSE) exec -T postgres psql -U postgres -d egrul < infrastructure/migrations/postgresql/001_subscriptions.sql && echo "  ✓ Миграция 001_subscriptions применена")
+	@echo "$(GREEN)✅ Система уведомлений готова!$(NC)"
+	@echo ""
+	@echo "$(CYAN)Доступные сервисы:$(NC)"
+	@echo "  - Change Detection Service: http://localhost:8082/health"
+	@echo "  - Notification Service: http://localhost:8083/health"
+	@echo "  - MailHog (SMTP Web UI): http://localhost:8025"
+	@echo ""
+	@echo "$(CYAN)Kafka топики:$(NC)"
+	@$(DOCKER_COMPOSE) exec kafka kafka-topics --list --bootstrap-server localhost:9092 | grep -E "(company|entrepreneur)-changes" || true
+
+notifications-down: ## Остановка сервисов уведомлений
+	@echo "$(YELLOW)🛑 Остановка сервисов уведомлений...$(NC)"
+	@$(DOCKER_COMPOSE) stop change-detection-service notification-service mailhog
+	@echo "$(GREEN)✅ Сервисы остановлены$(NC)"
+
+notifications-logs: ## Просмотр логов сервисов уведомлений
+	@echo "$(CYAN)📜 Логи сервисов уведомлений:$(NC)"
+	@$(DOCKER_COMPOSE) logs -f change-detection-service notification-service
+
+notifications-test: ## Тестирование системы уведомлений (отправка тестового события)
+	@echo "$(CYAN)🧪 Тестирование системы уведомлений...$(NC)"
+	@echo "$(YELLOW)1. Проверка статуса сервисов...$(NC)"
+	@curl -sf http://localhost:8082/health && echo "  ✓ Change Detection Service: OK" || echo "  ✗ Change Detection Service: FAILED"
+	@curl -sf http://localhost:8083/health && echo "  ✓ Notification Service: OK" || echo "  ✗ Notification Service: FAILED"
+	@echo ""
+	@echo "$(YELLOW)2. Проверка Kafka топиков...$(NC)"
+	@$(DOCKER_COMPOSE) exec kafka kafka-topics --list --bootstrap-server localhost:9092 | grep -E "(company|entrepreneur)-changes" && echo "  ✓ Kafka топики созданы" || echo "  ✗ Kafka топики не найдены"
+	@echo ""
+	@echo "$(YELLOW)3. Проверка PostgreSQL схемы...$(NC)"
+	@$(DOCKER_COMPOSE) exec postgres psql -U postgres -d egrul -c "\dt subscriptions.*" -t | grep -q "entity_subscriptions" && echo "  ✓ PostgreSQL схема subscriptions готова" || echo "  ✗ PostgreSQL схема не найдена"
+	@echo ""
+	@echo "$(CYAN)Для отправки тестового события используйте:$(NC)"
+	@echo "  curl -X POST http://localhost:8082/detect -H 'Content-Type: application/json' -d '{\"entity_type\":\"company\",\"entity_ids\":[\"1234567890123\"]}'"
+
+dev-notifications: ## Запуск с MailHog для разработки
+	@echo "$(CYAN)🚀 Запуск системы уведомлений (dev режим с MailHog)...$(NC)"
+	@$(DOCKER_COMPOSE) --profile full --profile tools up -d
+	@echo "$(GREEN)✅ Сервисы запущены$(NC)"
+	@echo ""
+	@echo "$(CYAN)MailHog Web UI: $(NC)http://localhost:8025"
+	@echo "$(CYAN)Change Detection Service: $(NC)http://localhost:8082/health"
+	@echo "$(CYAN)Notification Service: $(NC)http://localhost:8083/health"
 
 # ==================== Elasticsearch ====================
 
@@ -507,32 +585,21 @@ cluster-import-okved: ## Импорт только дополнительных 
 		./infrastructure/scripts/import-okved-extra.sh
 	@echo "$(GREEN)✅ Импорт ОКВЭД завершен$(NC)"
 
-cluster-frontend: ## Запуск frontend и API Gateway для работы с кластером
-	@echo "$(CYAN)🌐 Запуск frontend и API Gateway для кластера...$(NC)"
-	@echo "$(CYAN)API Gateway подключится к кластеру (clickhouse-01)$(NC)"
-	@echo "$(CYAN)Frontend: http://localhost:3000$(NC)"
-	@echo "$(CYAN)GraphQL Playground: http://localhost:8080/playground$(NC)"
-	@echo ""
-	@echo "$(YELLOW)⚠️  Проверьте .env файл:$(NC)"
-	@echo "$(YELLOW)   NEXT_PUBLIC_GRAPHQL_URL должен быть http://localhost:8080/graphql$(NC)"
-	@echo "$(YELLOW)   NEXT_PUBLIC_API_URL должен быть http://localhost:8080/api/v1$(NC)"
+cluster-frontend: ## Перезапуск frontend и API Gateway с подключением к кластеру (опционально, уже включено в make up)
+	@echo "$(CYAN)🌐 Перезапуск frontend и API Gateway...$(NC)"
+	@echo "$(YELLOW)Примечание: Эта команда автоматически выполняется при 'make up'$(NC)"
 	@echo ""
 	@$(DOCKER_COMPOSE) stop api-gateway frontend 2>/dev/null || true
-	@echo "$(CYAN)🚀 Пересоздание контейнеров с новыми переменными...$(NC)"
-	@CLICKHOUSE_HOST=clickhouse-01 $(DOCKER_COMPOSE) up -d --force-recreate --no-deps api-gateway frontend
+	@echo "$(CYAN)🚀 Пересоздание контейнеров...$(NC)"
+	@CLICKHOUSE_HOST=clickhouse-01 CLICKHOUSE_USER=egrul_app CLICKHOUSE_PASSWORD=test $(DOCKER_COMPOSE) up -d --force-recreate --no-deps api-gateway frontend
 	@sleep 2
 	@echo "$(CYAN)🔗 Подключение к кластерной сети...$(NC)"
-	@docker network connect egrul_egrul-cluster-network egrul-api-gateway 2>/dev/null || echo "  api-gateway уже подключен"
-	@docker network connect egrul_egrul-cluster-network egrul-frontend 2>/dev/null || echo "  frontend уже подключен"
-	@echo "$(CYAN)🔄 Перезапуск контейнеров для применения сети...$(NC)"
-	@docker restart egrul-api-gateway egrul-frontend
-	@echo "$(GREEN)✅ Сервисы запущены и подключены к кластеру$(NC)"
-	@echo "$(CYAN)📊 Проверка статуса...$(NC)"
-	@sleep 5
+	@docker network connect egrul_egrul-cluster-network egrul-api-gateway 2>/dev/null || echo "  ✓ api-gateway уже подключен"
+	@docker network connect egrul_egrul-cluster-network egrul-frontend 2>/dev/null || echo "  ✓ frontend уже подключен"
+	@docker restart egrul-api-gateway egrul-frontend > /dev/null 2>&1
+	@echo "$(GREEN)✅ Сервисы перезапущены$(NC)"
+	@sleep 3
 	@$(DOCKER_COMPOSE) ps api-gateway frontend
-	@echo ""
-	@echo "$(CYAN)📝 Логи API Gateway (последние 5 строк):$(NC)"
-	@docker logs --tail 5 egrul-api-gateway
 
 cluster-backup: ## Создание backup кластера в MinIO
 	@echo "$(CYAN)💾 Создание backup...$(NC)"
@@ -549,4 +616,20 @@ cluster-logs: ## Просмотр логов кластера
 
 cluster-ps: ## Статус нод кластера
 	@$(DOCKER_COMPOSE) -f docker-compose.cluster.yml ps
+
+# ==================== Docker Network Management ====================
+
+docker-clean-networks: ## Очистка orphan контейнеров и отключение от кластерной сети
+	@echo "$(CYAN)🧹 Очистка сетевых конфликтов...$(NC)"
+	@echo "$(YELLOW)Отключение контейнеров от кластерной сети...$(NC)"
+	@docker network disconnect egrul_egrul-cluster-network egrul-api-gateway 2>/dev/null || true
+	@docker network disconnect egrul_egrul-cluster-network egrul-frontend 2>/dev/null || true
+	@echo "$(YELLOW)Удаление orphan контейнеров...$(NC)"
+	@docker compose down --remove-orphans
+	@echo "$(GREEN)✅ Очистка завершена$(NC)"
+
+docker-full-clean: docker-clean-networks ## Полная очистка с удалением volumes
+	@echo "$(YELLOW)🗑️  Удаление volumes...$(NC)"
+	@docker compose down -v
+	@echo "$(GREEN)✅ Полная очистка завершена$(NC)"
 

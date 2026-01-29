@@ -1,0 +1,75 @@
+# ==============================================================================
+# Избранное (Favorites)
+# ==============================================================================
+
+"""
+Избранная сущность пользователя
+"""
+type Favorite {
+  id: ID!
+  userId: ID!
+  user: User!
+  entityType: EntityType!
+  entityId: String!
+  entityName: String!
+  notes: String
+  createdAt: DateTime!
+}
+
+# ------------------------------------------------------------------------------
+# Входные типы (Input)
+# ------------------------------------------------------------------------------
+
+"""
+Входные данные для создания избранного
+"""
+input CreateFavoriteInput {
+  entityType: EntityType!
+  entityId: String!
+  entityName: String!
+  notes: String
+}
+
+"""
+Входные данные для обновления заметок
+"""
+input UpdateFavoriteNotesInput {
+  id: ID!
+  notes: String
+}
+
+# ------------------------------------------------------------------------------
+# Расширение корневых типов
+# ------------------------------------------------------------------------------
+
+extend type Query {
+  """
+  Получить все избранное текущего пользователя (требует авторизации)
+  """
+  myFavorites: [Favorite!]!
+
+  """
+  Проверить наличие в избранном (требует авторизации)
+  """
+  hasFavorite(
+    entityType: EntityType!
+    entityId: String!
+  ): Boolean!
+}
+
+extend type Mutation {
+  """
+  Добавить в избранное (требует авторизации)
+  """
+  createFavorite(input: CreateFavoriteInput!): Favorite!
+
+  """
+  Обновить заметки
+  """
+  updateFavoriteNotes(input: UpdateFavoriteNotesInput!): Favorite!
+
+  """
+  Удалить из избранного
+  """
+  deleteFavorite(id: ID!): Boolean!
+}

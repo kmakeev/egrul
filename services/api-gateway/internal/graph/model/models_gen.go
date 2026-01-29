@@ -6,7 +6,15 @@ import (
 	"fmt"
 	"io"
 	"strconv"
+	"time"
 )
+
+// Ответ при успешной аутентификации
+type AuthResponse struct {
+	User      *User     `json:"user"`
+	Token     string    `json:"token"`
+	ExpiresAt time.Time `json:"expiresAt"`
+}
 
 // Сортировка предпринимателей
 type EntrepreneurSort struct {
@@ -14,7 +22,37 @@ type EntrepreneurSort struct {
 	Order *SortOrder            `json:"order,omitempty"`
 }
 
+// Входные данные для входа
+type LoginInput struct {
+	Email    string `json:"email"`
+	Password string `json:"password"`
+}
+
+type Mutation struct {
+}
+
 type Query struct {
+}
+
+// Входные данные для регистрации
+type RegisterInput struct {
+	Email     string `json:"email"`
+	Password  string `json:"password"`
+	FirstName string `json:"firstName"`
+	LastName  string `json:"lastName"`
+}
+
+// Пользователь системы
+type User struct {
+	ID            string     `json:"id"`
+	Email         string     `json:"email"`
+	FirstName     string     `json:"firstName"`
+	LastName      string     `json:"lastName"`
+	IsActive      bool       `json:"isActive"`
+	EmailVerified bool       `json:"emailVerified"`
+	CreatedAt     time.Time  `json:"createdAt"`
+	UpdatedAt     time.Time  `json:"updatedAt"`
+	LastLoginAt   *time.Time `json:"lastLoginAt,omitempty"`
 }
 
 // Поле для сортировки предпринимателей
