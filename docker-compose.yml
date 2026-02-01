@@ -418,8 +418,6 @@ services:
       context: .
       dockerfile: services/notification-service/Dockerfile
     container_name: egrul-notification
-    ports:
-      - "${NOTIFICATION_SERVICE_PORT:-8083}:8083"
     environment:
       - PORT=8083
       - POSTGRES_HOST=${POSTGRES_HOST:-postgres}
@@ -439,6 +437,7 @@ services:
       - SMTP_FROM=${SMTP_FROM}
       - SMTP_FROM_NAME=${SMTP_FROM_NAME:-ЕГРЮЛ/ЕГРИП Мониторинг}
       - SMTP_TLS=${SMTP_TLS:-true}
+      - EMAIL_DRY_RUN=${EMAIL_DRY_RUN:-false}
       - LOG_LEVEL=${NOTIFICATION_SERVICE_LOG_LEVEL:-info}
       - LOG_FORMAT=${LOG_FORMAT:-json}
     depends_on:
@@ -446,11 +445,6 @@ services:
         condition: service_healthy
       kafka:
         condition: service_healthy
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8083/health"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
     networks:
       - egrul-network
     profiles:

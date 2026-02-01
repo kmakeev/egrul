@@ -44,7 +44,7 @@ func (r *ChangeRepository) SaveCompanyChange(ctx context.Context, change *model.
 			new_value,
 			is_significant,
 			detected_at,
-			description,
+			change_description,
 			region_code,
 			inn
 		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -98,7 +98,7 @@ func (r *ChangeRepository) SaveCompanyChanges(ctx context.Context, changes []*mo
 			new_value,
 			is_significant,
 			detected_at,
-			description,
+			change_description,
 			region_code,
 			inn
 		)
@@ -172,9 +172,9 @@ func (r *ChangeRepository) SaveEntrepreneurChange(ctx context.Context, change *m
 			new_value,
 			is_significant,
 			detected_at,
-			description,
-			region_code,
-			inn
+			change_description,
+			inn,
+			full_name
 		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 
@@ -188,8 +188,8 @@ func (r *ChangeRepository) SaveEntrepreneurChange(ctx context.Context, change *m
 		boolToUInt8(change.IsSignificant),
 		change.DetectedAt,
 		change.Description,
-		change.RegionCode,
 		change.INN,
+		change.EntityName,
 	)
 
 	if err != nil {
@@ -226,9 +226,9 @@ func (r *ChangeRepository) SaveEntrepreneurChanges(ctx context.Context, changes 
 			new_value,
 			is_significant,
 			detected_at,
-			description,
-			region_code,
-			inn
+			change_description,
+			inn,
+			full_name
 		)
 	`)
 	if err != nil {
@@ -256,8 +256,8 @@ func (r *ChangeRepository) SaveEntrepreneurChanges(ctx context.Context, changes 
 			boolToUInt8(change.IsSignificant),
 			change.DetectedAt,
 			change.Description,
-			change.RegionCode,
 			change.INN,
+			change.EntityName,
 		)
 		if err != nil {
 			r.logger.Error("failed to append change to batch",
@@ -292,7 +292,7 @@ func (r *ChangeRepository) GetCompanyChanges(ctx context.Context, ogrn string, l
 			new_value,
 			is_significant,
 			detected_at,
-			description,
+			change_description,
 			region_code,
 			inn
 		FROM company_changes
@@ -353,7 +353,7 @@ func (r *ChangeRepository) GetEntrepreneurChanges(ctx context.Context, ogrnip st
 			new_value,
 			is_significant,
 			detected_at,
-			description,
+			change_description,
 			region_code,
 			inn
 		FROM entrepreneur_changes
@@ -418,7 +418,7 @@ func (r *ChangeRepository) GetRecentChanges(ctx context.Context, entityType stri
 				new_value,
 				is_significant,
 				detected_at,
-				description,
+				change_description,
 				region_code,
 				inn
 			FROM company_changes
@@ -437,7 +437,7 @@ func (r *ChangeRepository) GetRecentChanges(ctx context.Context, entityType stri
 				new_value,
 				is_significant,
 				detected_at,
-				description,
+				change_description,
 				region_code,
 				inn
 			FROM entrepreneur_changes

@@ -1,6 +1,7 @@
 "use client";
 
-import { Building2, User, Trash2, BellOff, BellRing } from "lucide-react";
+import { useState } from "react";
+import { Building2, User, Trash2, BellOff, BellRing, Edit } from "lucide-react";
 import Link from "next/link";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -24,6 +25,7 @@ import {
   useDeleteSubscriptionMutation,
   useToggleSubscriptionMutation,
 } from "@/lib/api/subscription-hooks";
+import { EditSubscriptionFiltersDialog } from "./edit-subscription-filters-dialog";
 
 interface SubscriptionsListProps {
   subscriptions: EntitySubscription[];
@@ -32,6 +34,7 @@ interface SubscriptionsListProps {
 export function SubscriptionsList({ subscriptions }: SubscriptionsListProps) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const [editingSubscription, setEditingSubscription] = useState<EntitySubscription | null>(null);
 
   const deleteSubscription = useDeleteSubscriptionMutation({
     onSuccess: () => {
@@ -91,6 +94,10 @@ export function SubscriptionsList({ subscriptions }: SubscriptionsListProps) {
     toggleSubscription.mutate({ id, isActive: !currentStatus });
   };
 
+  const handleEdit = (subscription: EntitySubscription) => {
+    setEditingSubscription(subscription);
+  };
+
   if (subscriptions.length === 0) {
     return (
       <Card>
@@ -126,14 +133,14 @@ export function SubscriptionsList({ subscriptions }: SubscriptionsListProps) {
             key={subscription.id}
             className={subscription.isActive ? "" : "opacity-60"}
           >
-            <CardHeader className="pb-3">
+            <CardHeader className="pb-2">
               <div className="flex items-start justify-between">
-                <div className="flex items-start gap-3 flex-1">
+                <div className="flex items-start gap-2 flex-1">
                   <div className="p-2 rounded-lg bg-primary/10">
                     {isCompany ? (
-                      <Building2 className="h-5 w-5 text-primary" />
+                      <Building2 className="h-4 w-4 text-primary" />
                     ) : (
-                      <User className="h-5 w-5 text-primary" />
+                      <User className="h-4 w-4 text-primary" />
                     )}
                   </div>
                   <div className="flex-1">
@@ -167,21 +174,25 @@ export function SubscriptionsList({ subscriptions }: SubscriptionsListProps) {
               </div>
             </CardHeader>
 
-            <CardContent className="space-y-3">
+            <CardContent className="space-y-2">
               {/* Фильтры */}
               <div>
-                <p className="text-sm font-medium mb-2">
+                <p className="text-xs font-medium mb-1">
                   Отслеживаемые изменения:
                 </p>
                 <div className="flex flex-wrap gap-1">
                   {activeFilters.length > 0 ? (
                     activeFilters.map((filter) => (
-                      <Badge key={filter} variant="outline" className="text-xs">
+                      <Badge
+                        key={filter}
+                        variant="outline"
+                        className={`text-xs ${getFilterColor(filter)}`}
+                      >
                         {getFilterLabel(filter)}
                       </Badge>
                     ))
                   ) : (
-                    <span className="text-sm text-muted-foreground">
+                    <span className="text-xs text-muted-foreground">
                       Не выбрано
                     </span>
                   )}
@@ -189,7 +200,7 @@ export function SubscriptionsList({ subscriptions }: SubscriptionsListProps) {
               </div>
 
               {/* Метаданные */}
-              <div className="flex items-center justify-between text-xs text-muted-foreground pt-2 border-t">
+              <div className="flex items-center justify-between text-xs text-muted-foreground pt-1">
                 <span>
                   Создана: {new Date(subscription.createdAt).toLocaleDateString("ru-RU")}
                 </span>
@@ -222,6 +233,15 @@ export function SubscriptionsList({ subscriptions }: SubscriptionsListProps) {
                       Возобновить
                     </>
                   )}
+                </Button>
+
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleEdit(subscription)}
+                >
+                  <Edit className="h-4 w-4 mr-1" />
+                  Изменить
                 </Button>
 
                 <AlertDialog>
@@ -259,6 +279,13 @@ export function SubscriptionsList({ subscriptions }: SubscriptionsListProps) {
           </Card>
         );
       })}
+
+      <EditSubscriptionFiltersDialog
+        key={editingSubscription?.id}
+        subscription={editingSubscription}
+        open={!!editingSubscription}
+        onOpenChange={(open) => !open && setEditingSubscription(null)}
+      />
     </div>
   );
 }
@@ -273,4 +300,16 @@ function getFilterLabel(filter: string): string {
     activities: "ОКВЭД",
   };
   return labels[filter] || filter;
+}
+
+function getFilterColor(filter: string): string {
+  const colors: Record<string, string> = {
+    status: "border-orange-500 bg-orange-50 text-orange-700 dark:bg-orange-950 dark:text-orange-300",
+    director: "border-blue-500 bg-blue-50 text-blue-700 dark:bg-blue-950 dark:text-blue-300",
+    founders: "border-purple-500 bg-purple-50 text-purple-700 dark:bg-purple-950 dark:text-purple-300",
+    address: "border-green-500 bg-green-50 text-green-700 dark:bg-green-950 dark:text-green-300",
+    capital: "border-amber-500 bg-amber-50 text-amber-700 dark:bg-amber-950 dark:text-amber-300",
+    activities: "border-cyan-500 bg-cyan-50 text-cyan-700 dark:bg-cyan-950 dark:text-cyan-300",
+  };
+  return colors[filter] || "border-gray-500 bg-gray-50 text-gray-700 dark:bg-gray-950 dark:text-gray-300";
 }

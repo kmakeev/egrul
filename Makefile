@@ -57,10 +57,13 @@ up: ## Запуск всей системы (кластер + сервисы)
 		$(DOCKER_COMPOSE) --profile full up -d api-gateway search-service frontend change-detection-service notification-service sync-service
 	@sleep 5
 	@echo ""
-	@echo "$(YELLOW)5/5 Подключение API Gateway и Frontend к кластерной сети...$(NC)"
+	@echo "$(YELLOW)5/5 Подключение сервисов к кластерной сети...$(NC)"
 	@docker network connect egrul_egrul-cluster-network egrul-api-gateway 2>/dev/null || echo "  ✓ api-gateway уже подключен"
 	@docker network connect egrul_egrul-cluster-network egrul-frontend 2>/dev/null || echo "  ✓ frontend уже подключен"
-	@docker restart egrul-api-gateway egrul-frontend > /dev/null 2>&1
+	@docker network connect egrul_egrul-cluster-network egrul-change-detection 2>/dev/null || echo "  ✓ change-detection-service уже подключен"
+	@docker network connect egrul_egrul-cluster-network egrul-sync-service 2>/dev/null || echo "  ✓ sync-service уже подключен"
+	@docker network connect egrul_egrul-cluster-network egrul-search-service 2>/dev/null || echo "  ✓ search-service уже подключен"
+	@docker restart egrul-api-gateway egrul-frontend egrul-change-detection egrul-sync-service egrul-search-service > /dev/null 2>&1
 	@sleep 3
 	@echo ""
 	@echo "$(GREEN)✅ Система запущена!$(NC)"
@@ -584,6 +587,48 @@ cluster-import-okved: ## Импорт только дополнительных 
 	@CLICKHOUSE_HOST=localhost CLICKHOUSE_PORT=8123 CLICKHOUSE_USER=egrul_import CLICKHOUSE_PASSWORD=123 \
 		./infrastructure/scripts/import-okved-extra.sh
 	@echo "$(GREEN)✅ Импорт ОКВЭД завершен$(NC)"
+
+cluster-detect-changes: ## Запуск детектирования изменений вручную
+	@echo "$(CYAN)🔍 Запуск детектирования изменений...$(NC)"
+	@if ! curl -s -f http://localhost:8082/health > /dev/null 2>&1; then \
+		echo "$(RED)❌ Change-detection-service недоступен$(NC)"; \
+		echo "$(YELLOW)Запустите: make up$(NC)"; \
+		exit 1; \
+	fi
+	@echo "$(CYAN)Получение списка OGRN с изменениями...$(NC)"
+	@OGRNS=$$(docker exec egrul-clickhouse-01 clickhouse-client --query \
+		"SELECT arrayJoin(groupArray(ogrn)) FROM (SELECT ogrn FROM egrul.companies GROUP BY ogrn HAVING uniqExact(extract_date) > 1) LIMIT 10000" \
+		| jq -Rs 'split("\n") | map(select(length > 0))'); \
+	if [ -z "$$OGRNS" ] || [ "$$OGRNS" = "[]" ]; then \
+		echo "$(YELLOW)Новых изменений не обнаружено$(NC)"; \
+		exit 0; \
+	fi; \
+	COUNT=$$(echo "$$OGRNS" | jq 'length'); \
+	echo "$(CYAN)Обнаружено компаний с изменениями: $$COUNT$(NC)"; \
+	curl -X POST http://localhost:8082/detect \
+		-H 'Content-Type: application/json' \
+		-d "{\"entity_type\": \"company\", \"entity_ids\": $$OGRNS}" | jq .
+	@echo "$(GREEN)✅ Детектирование завершено$(NC)"
+
+cluster-optimize: ## Очистка старых версий данных (OPTIMIZE FINAL) - запускать после детектирования!
+	@echo "$(CYAN)🧹 Очистка старых версий данных...$(NC)"
+	@echo "$(YELLOW)⚠️  ВАЖНО: Эта операция удалит все старые версии данных!$(NC)"
+	@echo "$(YELLOW)⚠️  Убедитесь, что детектирование изменений уже выполнено!$(NC)"
+	@chmod +x infrastructure/scripts/cleanup-old-versions.sh
+	@CLICKHOUSE_HOST=localhost CLICKHOUSE_PORT=8123 \
+		./infrastructure/scripts/cleanup-old-versions.sh
+
+cluster-optimize-force: ## Очистка старых версий без подтверждения (для автоматизации)
+	@echo "$(CYAN)🧹 Очистка старых версий данных (без подтверждения)...$(NC)"
+	@chmod +x infrastructure/scripts/cleanup-old-versions.sh
+	@CLICKHOUSE_HOST=localhost CLICKHOUSE_PORT=8123 FORCE=true \
+		./infrastructure/scripts/cleanup-old-versions.sh
+
+cluster-optimize-stats: ## Показать статистику дублей и версий без очистки
+	@echo "$(CYAN)📊 Статистика дублей и версий...$(NC)"
+	@chmod +x infrastructure/scripts/cleanup-old-versions.sh
+	@CLICKHOUSE_HOST=localhost CLICKHOUSE_PORT=8123 \
+		./infrastructure/scripts/cleanup-old-versions.sh --stats
 
 cluster-frontend: ## Перезапуск frontend и API Gateway с подключением к кластеру (опционально, уже включено в make up)
 	@echo "$(CYAN)🌐 Перезапуск frontend и API Gateway...$(NC)"

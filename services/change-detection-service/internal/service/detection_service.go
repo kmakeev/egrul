@@ -75,12 +75,41 @@ func (s *DetectionService) DetectCompanyChanges(ctx context.Context, ogrns []str
 		}
 
 		// Для каждой компании детектируем изменения
-		// Примечание: здесь используется упрощенная логика
-		// В реальности нужно получать "старую" версию из истории или кеша
-		for range companies {
-			// TODO: Реализовать получение старой версии компании
-			// Сейчас пропускаем, так как нет механизма получения предыдущей версии
+		for _, newCompany := range companies {
+			// Получаем предыдущую версию компании (с максимальной extract_date меньше текущей)
+			oldCompany, err := s.companyRepo.GetPreviousByOGRN(ctx, newCompany.OGRN, newCompany.ExtractDate.Format("2006-01-02"))
+			if err != nil {
+				s.logger.Error("failed to get previous company version",
+					zap.String("ogrn", newCompany.OGRN),
+					zap.Error(err),
+				)
+				errorCount++
+				continue
+			}
+
+			// Если нет предыдущей версии - это первая загрузка, пропускаем
+			if oldCompany == nil {
+				s.logger.Debug("no previous version found, skipping",
+					zap.String("ogrn", newCompany.OGRN),
+				)
+				processedCount++
+				continue
+			}
+
+			// Детектируем изменения между старой и новой версиями
+			err = s.DetectCompanyChange(ctx, oldCompany, newCompany)
+			if err != nil {
+				s.logger.Error("failed to detect company changes",
+					zap.String("ogrn", newCompany.OGRN),
+					zap.Error(err),
+				)
+				errorCount++
+				continue
+			}
+
 			processedCount++
+			// Подсчитываем количество обнаруженных изменений (можно улучшить, сохраняя результат DetectCompanyChange)
+			// Пока просто инкрементируем processedCount
 		}
 	}
 
@@ -195,9 +224,38 @@ func (s *DetectionService) DetectEntrepreneurChanges(ctx context.Context, ogrnip
 		}
 
 		// Для каждого ИП детектируем изменения
-		// Примечание: здесь используется упрощенная логика
-		for range entrepreneurs {
-			// TODO: Реализовать получение старой версии ИП
+		for _, newEntrepreneur := range entrepreneurs {
+			// Получаем предыдущую версию ИП (с максимальной extract_date меньше текущей)
+			oldEntrepreneur, err := s.entrepreneurRepo.GetPreviousByOGRNIP(ctx, newEntrepreneur.OGRNIP, newEntrepreneur.ExtractDate.Format("2006-01-02"))
+			if err != nil {
+				s.logger.Error("failed to get previous entrepreneur version",
+					zap.String("ogrnip", newEntrepreneur.OGRNIP),
+					zap.Error(err),
+				)
+				errorCount++
+				continue
+			}
+
+			// Если нет предыдущей версии - это первая загрузка, пропускаем
+			if oldEntrepreneur == nil {
+				s.logger.Debug("no previous version found, skipping",
+					zap.String("ogrnip", newEntrepreneur.OGRNIP),
+				)
+				processedCount++
+				continue
+			}
+
+			// Детектируем изменения между старой и новой версиями
+			err = s.DetectEntrepreneurChange(ctx, oldEntrepreneur, newEntrepreneur)
+			if err != nil {
+				s.logger.Error("failed to detect entrepreneur changes",
+					zap.String("ogrnip", newEntrepreneur.OGRNIP),
+					zap.Error(err),
+				)
+				errorCount++
+				continue
+			}
+
 			processedCount++
 		}
 	}

@@ -57,9 +57,9 @@ USER appuser
 # Expose порт сервиса
 EXPOSE 8083
 
-# Health check (можно добавить HTTP эндпоинт позже)
+# Health check (проверка запущенного процесса)
 HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
-    CMD pgrep notification-service || exit 1
+    CMD pgrep -f notification-service || exit 1
 
 # Точка входа
 ENTRYPOINT ["/app/notification-service"]

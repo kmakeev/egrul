@@ -14,6 +14,9 @@ type CompanyRepository interface {
 	// GetByOGRNs возвращает несколько компаний по списку ОГРН (для батчинга)
 	GetByOGRNs(ctx context.Context, ogrns []string) ([]*model.Company, error)
 
+	// GetPreviousByOGRN возвращает предыдущую версию компании (с максимальной extract_date меньше beforeDate)
+	GetPreviousByOGRN(ctx context.Context, ogrn string, beforeDate string) (*model.Company, error)
+
 	// GetFounders возвращает учредителей компании
 	GetFounders(ctx context.Context, ogrn string) ([]model.Founder, error)
 
@@ -34,6 +37,9 @@ type EntrepreneurRepository interface {
 
 	// GetByOGRNIPs возвращает несколько ИП по списку ОГРНИП (для батчинга)
 	GetByOGRNIPs(ctx context.Context, ogrnips []string) ([]*model.Entrepreneur, error)
+
+	// GetPreviousByOGRNIP возвращает предыдущую версию ИП (с максимальной extract_date меньше beforeDate)
+	GetPreviousByOGRNIP(ctx context.Context, ogrnip string, beforeDate string) (*model.Entrepreneur, error)
 
 	// GetActivities возвращает виды деятельности ИП
 	GetActivities(ctx context.Context, ogrnip string) (mainOKVED string, additionalOKVED []string, err error)

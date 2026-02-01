@@ -789,6 +789,100 @@ show_stats() {
     FORMAT Pretty"
 }
 
+# Функция для запуска детектирования изменений
+trigger_change_detection() {
+    log_info "Проверка доступности change-detection-service..."
+
+    # Проверяем доступность сервиса
+    if ! curl -s -f http://localhost:8082/health > /dev/null 2>&1; then
+        log_warning "Change-detection-service недоступен, пропускаем автоматическое детектирование"
+        log_warning "Запустите детектирование вручную: curl -X POST http://localhost:8082/detect -d '{\"entity_type\":\"company\",\"entity_ids\":[...]}'"
+        return 0
+    fi
+
+    # ========== КОМПАНИИ ==========
+    log_info "Получение списка OGRN компаний с изменениями..."
+
+    # Получаем OGRN компаний с множественными версиями (разные extract_date)
+    local changed_ogrns=$(clickhouse_query "
+        SELECT arrayJoin(groupArray(ogrn))
+        FROM (
+            SELECT ogrn
+            FROM ${CLICKHOUSE_DATABASE}.companies
+            GROUP BY ogrn
+            HAVING uniqExact(extract_date) > 1
+        )
+        LIMIT 10000
+    " | jq -Rs 'split("\n") | map(select(length > 0))')
+
+    if [ ! -z "$changed_ogrns" ] && [ "$changed_ogrns" != "[]" ]; then
+        local changes_count=$(echo "$changed_ogrns" | jq 'length')
+        log_info "Обнаружено компаний с изменениями: $changes_count"
+
+        # Запускаем детектирование для компаний
+        log_info "Запуск детектирования изменений для компаний..."
+        local response=$(curl -s -X POST http://localhost:8082/detect \
+            -H 'Content-Type: application/json' \
+            -d "{\"entity_type\": \"company\", \"entity_ids\": $changed_ogrns}" 2>&1)
+
+        if [ $? -eq 0 ]; then
+            local success=$(echo "$response" | jq -r '.success' 2>/dev/null)
+            if [ "$success" = "true" ]; then
+                local count=$(echo "$response" | jq -r '.count' 2>/dev/null)
+                local duration=$(echo "$response" | jq -r '.duration' 2>/dev/null)
+                log_success "Детектирование компаний завершено: обработано $count за $duration"
+            else
+                log_warning "Детектирование компаний завершилось с предупреждениями"
+            fi
+        else
+            log_error "Ошибка при запуске детектирования компаний: $response"
+        fi
+    else
+        log_info "Новых изменений компаний не обнаружено"
+    fi
+
+    # ========== ПРЕДПРИНИМАТЕЛИ ==========
+    log_info "Получение списка ОГРНИП предпринимателей с изменениями..."
+
+    # Получаем ОГРНИП ИП с множественными версиями (разные extract_date)
+    local changed_ogrnips=$(clickhouse_query "
+        SELECT arrayJoin(groupArray(ogrnip))
+        FROM (
+            SELECT ogrnip
+            FROM ${CLICKHOUSE_DATABASE}.entrepreneurs
+            GROUP BY ogrnip
+            HAVING uniqExact(extract_date) > 1
+        )
+        LIMIT 10000
+    " | jq -Rs 'split("\n") | map(select(length > 0))')
+
+    if [ ! -z "$changed_ogrnips" ] && [ "$changed_ogrnips" != "[]" ]; then
+        local changes_count=$(echo "$changed_ogrnips" | jq 'length')
+        log_info "Обнаружено предпринимателей с изменениями: $changes_count"
+
+        # Запускаем детектирование для ИП
+        log_info "Запуск детектирования изменений для ИП..."
+        local response=$(curl -s -X POST http://localhost:8082/detect \
+            -H 'Content-Type: application/json' \
+            -d "{\"entity_type\": \"entrepreneur\", \"entity_ids\": $changed_ogrnips}" 2>&1)
+
+        if [ $? -eq 0 ]; then
+            local success=$(echo "$response" | jq -r '.success' 2>/dev/null)
+            if [ "$success" = "true" ]; then
+                local count=$(echo "$response" | jq -r '.count' 2>/dev/null)
+                local duration=$(echo "$response" | jq -r '.duration' 2>/dev/null)
+                log_success "Детектирование ИП завершено: обработано $count за $duration"
+            else
+                log_warning "Детектирование ИП завершилось с предупреждениями"
+            fi
+        else
+            log_error "Ошибка при запуске детектирования ИП: $response"
+        fi
+    else
+        log_info "Новых изменений ИП не обнаружено"
+    fi
+}
+
 # Главная функция
 main() {
     echo ""
@@ -796,7 +890,7 @@ main() {
     echo "  ЕГРЮЛ/ЕГРИП Data Import Tool"
     echo "======================================"
     echo ""
-    
+
     # Проверяем подключение
     check_connection || exit 1
     
@@ -829,10 +923,42 @@ main() {
     fi
     
     echo ""
-    
+
     # Показываем статистику
     show_stats
-    
+
+    echo ""
+
+    # Запускаем детектирование изменений (если включено)
+    if [ "${AUTO_DETECT_CHANGES:-true}" = "true" ]; then
+        trigger_change_detection
+    else
+        log_info "Автоматическое детектирование изменений отключено (AUTO_DETECT_CHANGES=false)"
+    fi
+
+    echo ""
+
+    # Автоматическая очистка старых версий после детектирования (если включено)
+    if [ "${AUTO_OPTIMIZE_AFTER_DETECT:-false}" = "true" ]; then
+        log_info "Автоматическая очистка старых версий после детектирования..."
+        log_warning "Это удалит все старые версии данных (дубли и история)"
+
+        # Запускаем очистку
+        clickhouse_query "OPTIMIZE TABLE ${CLICKHOUSE_DATABASE}.companies_local ON CLUSTER egrul_cluster FINAL" 2>&1 | head -5
+        log_success "Компании оптимизированы"
+
+        clickhouse_query "OPTIMIZE TABLE ${CLICKHOUSE_DATABASE}.entrepreneurs_local ON CLUSTER egrul_cluster FINAL" 2>&1 | head -5
+        log_success "ИП оптимизированы"
+
+        clickhouse_query "OPTIMIZE TABLE ${CLICKHOUSE_DATABASE}.founders_local ON CLUSTER egrul_cluster FINAL" 2>&1 | head -5
+        log_success "Учредители оптимизированы"
+
+        log_success "Автоматическая очистка завершена"
+    else
+        log_info "Автоматическая очистка старых версий отключена (AUTO_OPTIMIZE_AFTER_DETECT=false)"
+        log_info "Для очистки запустите: make cluster-optimize"
+    fi
+
     echo ""
     log_success "Импорт данных завершен!"
 }

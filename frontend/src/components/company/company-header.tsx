@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -10,6 +9,7 @@ import { decodeHtmlEntities } from "@/lib/html-utils";
 import { formatDate } from "@/lib/format-utils";
 import { CompanyStatusBadge } from "./company-status-badge";
 import { SubscriptionForm } from "@/components/subscriptions/subscription-form";
+import { LoginDialog } from "@/components/auth/login-dialog";
 import { useHasSubscriptionQuery } from "@/lib/api/subscription-hooks";
 import { EntityType } from "@/lib/api/subscription-hooks";
 import {
@@ -27,12 +27,14 @@ interface CompanyHeaderProps {
 }
 
 export function CompanyHeader({ company }: CompanyHeaderProps) {
-  const router = useRouter();
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
   // State for subscription modal
   const [subscriptionDialogOpen, setSubscriptionDialogOpen] = useState(false);
+
+  // State for login modal
+  const [loginDialogOpen, setLoginDialogOpen] = useState(false);
 
   // Get user from auth store
   const { isAuthenticated } = useAuthStore();
@@ -75,10 +77,11 @@ export function CompanyHeader({ company }: CompanyHeaderProps) {
         description: "Компания добавлена в избранное"
       });
     },
-    onError: (error: any) => {
+    onError: (error: unknown) => {
+      const message = error instanceof Error ? error.message : "Не удалось добавить в избранное";
       toast({
         title: "Ошибка",
-        description: error?.message || "Не удалось добавить в избранное",
+        description: message,
         variant: "destructive"
       });
     }
@@ -98,10 +101,11 @@ export function CompanyHeader({ company }: CompanyHeaderProps) {
         description: "Компания удалена из избранного"
       });
     },
-    onError: (error: any) => {
+    onError: (error: unknown) => {
+      const message = error instanceof Error ? error.message : "Не удалось удалить из избранного";
       toast({
         title: "Ошибка",
-        description: error?.message || "Не удалось удалить из избранного",
+        description: message,
         variant: "destructive"
       });
     }
@@ -109,15 +113,7 @@ export function CompanyHeader({ company }: CompanyHeaderProps) {
 
   const handleSubscribeClick = () => {
     if (!isAuthenticated) {
-      toast({
-        title: "Требуется авторизация",
-        description: "Войдите или зарегистрируйтесь для подписки на изменения",
-        action: (
-          <Button onClick={() => router.push("/login")} size="sm">
-            Войти
-          </Button>
-        ),
-      });
+      setLoginDialogOpen(true);
       return;
     }
     setSubscriptionDialogOpen(true);
@@ -125,15 +121,7 @@ export function CompanyHeader({ company }: CompanyHeaderProps) {
 
   const handleAddToFavorites = () => {
     if (!isAuthenticated) {
-      toast({
-        title: "Требуется авторизация",
-        description: "Войдите или зарегистрируйтесь для добавления в избранное",
-        action: (
-          <Button onClick={() => router.push("/login")} size="sm">
-            Войти
-          </Button>
-        ),
-      });
+      setLoginDialogOpen(true);
       return;
     }
 
@@ -284,6 +272,11 @@ export function CompanyHeader({ company }: CompanyHeaderProps) {
         entityName={primaryName}
         open={subscriptionDialogOpen}
         onOpenChange={setSubscriptionDialogOpen}
+      />
+
+      <LoginDialog
+        open={loginDialogOpen}
+        onOpenChange={setLoginDialogOpen}
       />
     </Card>
   );

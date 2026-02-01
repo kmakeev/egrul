@@ -50,7 +50,8 @@ type Company struct {
 
 	// Метаданные
 	RegistrationDate time.Time `json:"registration_date"` // Дата регистрации
-	LastUpdate       time.Time `json:"last_update"`       // Дата последнего обновления
+	ExtractDate      time.Time `json:"extract_date"`      // Дата выписки (версия данных)
+	LastUpdate       time.Time `json:"last_update"`       // Дата последнего обновления записи
 }
 
 // Founder представляет учредителя компании

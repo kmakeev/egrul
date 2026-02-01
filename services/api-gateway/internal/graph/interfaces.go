@@ -48,11 +48,24 @@ type StatisticsResolver interface {
 	ByActivity(ctx context.Context, obj *model.Statistics, limit *int) ([]*model.ActivityStatistics, error)
 }
 
+// MutationResolver interface for Mutation resolvers
+type MutationResolver interface {
+	CreateSubscription(ctx context.Context, input model.CreateSubscriptionInput) (*model.EntitySubscription, error)
+	UpdateSubscriptionFilters(ctx context.Context, input model.UpdateSubscriptionFiltersInput) (*model.EntitySubscription, error)
+	UpdateSubscriptionChannels(ctx context.Context, input model.UpdateSubscriptionChannelsInput) (*model.EntitySubscription, error)
+	DeleteSubscription(ctx context.Context, id string) (bool, error)
+	ToggleSubscription(ctx context.Context, input model.ToggleSubscriptionInput) (*model.EntitySubscription, error)
+	CreateFavorite(ctx context.Context, input model.CreateFavoriteInput) (*model.Favorite, error)
+	UpdateFavoriteNotes(ctx context.Context, input model.UpdateFavoriteNotesInput) (*model.Favorite, error)
+	DeleteFavorite(ctx context.Context, id string) (bool, error)
+}
+
 // ResolverRoot is the main resolver interface
 type ResolverRoot interface {
 	Query() QueryResolver
 	Company() CompanyResolver
 	Entrepreneur() EntrepreneurResolver
 	Statistics() StatisticsResolver
+	Mutation() MutationResolver
 }
 

@@ -16,7 +16,8 @@
 --   2. Distributed таблица поверх _local (точка входа для запросов)
 --
 -- Ключи шардирования:
--- - companies, entrepreneurs: cityHash64(coalesce(region_code, '00'))
+-- - companies: cityHash64(ogrn)
+-- - entrepreneurs: cityHash64(ogrnip)
 -- - company_history, ownership_graph, founders: cityHash64(entity_id/ogrn/ogrnip)
 -- - licenses, branches: cityHash64(entity_ogrn/company_ogrn)
 -- - *_okved_additional: cityHash64(ogrn/ogrnip)
@@ -189,13 +190,15 @@ ALTER TABLE egrul.companies_local ON CLUSTER egrul_cluster
     ADD INDEX IF NOT EXISTS idx_companies_version_date version_date TYPE minmax GRANULARITY 4;
 
 -- Создаем Distributed таблицу
+-- ВАЖНО: Шардирование по OGRN гарантирует, что все версии одной компании попадут на один шард
+-- Это позволяет ReplacingMergeTree правильно дедуплицировать записи
 CREATE TABLE IF NOT EXISTS egrul.companies ON CLUSTER egrul_cluster
 AS egrul.companies_local
 ENGINE = Distributed(
     egrul_cluster,
     egrul,
     companies_local,
-    cityHash64(coalesce(region_code, '00'))
+    cityHash64(ogrn)
 );
 
 -- ============================================================================
@@ -327,13 +330,15 @@ ALTER TABLE egrul.entrepreneurs_local ON CLUSTER egrul_cluster
     ADD INDEX IF NOT EXISTS idx_entrepreneurs_version_date version_date TYPE minmax GRANULARITY 4;
 
 -- Создаем Distributed таблицу
+-- ВАЖНО: Шардирование по ОГРНИП гарантирует, что все версии одного ИП попадут на один шард
+-- Это позволяет ReplacingMergeTree правильно дедуплицировать записи
 CREATE TABLE IF NOT EXISTS egrul.entrepreneurs ON CLUSTER egrul_cluster
 AS egrul.entrepreneurs_local
 ENGINE = Distributed(
     egrul_cluster,
     egrul,
     entrepreneurs_local,
-    cityHash64(coalesce(region_code, '00'))
+    cityHash64(ogrnip)
 );
 
 -- ============================================================================

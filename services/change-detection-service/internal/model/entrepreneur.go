@@ -12,8 +12,7 @@ type Entrepreneur struct {
 	RegionCode string `json:"region_code"` // Код региона
 
 	// Статус
-	Status         string     `json:"status"`           // Статус (ДЕЙСТВУЮЩИЙ, ПРЕКРАТИЛ ДЕЯТЕЛЬНОСТЬ)
-	StatusDate     *time.Time `json:"status_date"`      // Дата изменения статуса
+	Status          string     `json:"status"`           // Статус (ДЕЙСТВУЮЩИЙ, ПРЕКРАТИЛ ДЕЯТЕЛЬНОСТЬ)
 	TerminationDate *time.Time `json:"termination_date"` // Дата прекращения деятельности
 
 	// Адрес
@@ -33,6 +32,7 @@ type Entrepreneur struct {
 
 	// Метаданные
 	RegistrationDate time.Time `json:"registration_date"` // Дата регистрации
+	ExtractDate      time.Time `json:"extract_date"`      // Дата выписки (версия данных)
 	LastUpdate       time.Time `json:"last_update"`       // Дата последнего обновления
 
 	// Дополнительная информация

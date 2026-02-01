@@ -175,7 +175,8 @@ type ComplexityRoot struct {
 		LastNotifiedAt       func(childComplexity int) int
 		NotificationChannels func(childComplexity int) int
 		UpdatedAt            func(childComplexity int) int
-		UserEmail            func(childComplexity int) int
+		User                 func(childComplexity int) int
+		UserID               func(childComplexity int) int
 	}
 
 	Entrepreneur struct {
@@ -229,6 +230,17 @@ type ComplexityRoot struct {
 		Node   func(childComplexity int) int
 	}
 
+	Favorite struct {
+		CreatedAt  func(childComplexity int) int
+		EntityID   func(childComplexity int) int
+		EntityName func(childComplexity int) int
+		EntityType func(childComplexity int) int
+		ID         func(childComplexity int) int
+		Notes      func(childComplexity int) int
+		User       func(childComplexity int) int
+		UserID     func(childComplexity int) int
+	}
+
 	Founder struct {
 		Citizenship       func(childComplexity int) int
 		Country           func(childComplexity int) int
@@ -280,13 +292,15 @@ type ComplexityRoot struct {
 	}
 
 	Mutation struct {
+		CreateFavorite             func(childComplexity int, input model.CreateFavoriteInput) int
 		CreateSubscription         func(childComplexity int, input model.CreateSubscriptionInput) int
+		DeleteFavorite             func(childComplexity int, id string) int
 		DeleteSubscription         func(childComplexity int, id string) int
-		Empty                      func(childComplexity int) int
 		Login                      func(childComplexity int, input model.LoginInput) int
 		Logout                     func(childComplexity int) int
 		Register                   func(childComplexity int, input model.RegisterInput) int
 		ToggleSubscription         func(childComplexity int, input model.ToggleSubscriptionInput) int
+		UpdateFavoriteNotes        func(childComplexity int, input model.UpdateFavoriteNotesInput) int
 		UpdateSubscriptionChannels func(childComplexity int, input model.UpdateSubscriptionChannelsInput) int
 		UpdateSubscriptionFilters  func(childComplexity int, input model.UpdateSubscriptionFiltersInput) int
 	}
@@ -304,7 +318,7 @@ type ComplexityRoot struct {
 		SentAt         func(childComplexity int) int
 		Status         func(childComplexity int) int
 		SubscriptionID func(childComplexity int) int
-		UserEmail      func(childComplexity int) int
+		UserID         func(childComplexity int) int
 	}
 
 	OldRegistration struct {
@@ -340,9 +354,11 @@ type ComplexityRoot struct {
 		Entrepreneur        func(childComplexity int, ogrnip string) int
 		EntrepreneurByInn   func(childComplexity int, inn string) int
 		Entrepreneurs       func(childComplexity int, filter *model.EntrepreneurFilter, pagination *model.Pagination, sort *model.EntrepreneurSort) int
-		HasSubscription     func(childComplexity int, email string, entityType model.EntityType, entityID string) int
+		HasFavorite         func(childComplexity int, entityType model.EntityType, entityID string) int
+		HasSubscription     func(childComplexity int, entityType model.EntityType, entityID string) int
 		Me                  func(childComplexity int) int
-		MySubscriptions     func(childComplexity int, email string) int
+		MyFavorites         func(childComplexity int) int
+		MySubscriptions     func(childComplexity int) int
 		NotificationHistory func(childComplexity int, subscriptionID string, limit *int, offset *int) int
 		RelatedCompanies    func(childComplexity int, inn string, limit *int, offset *int) int
 		Search              func(childComplexity int, query string, limit *int) int
@@ -427,15 +443,17 @@ type EntrepreneurResolver interface {
 	HistoryCount(ctx context.Context, obj *model.Entrepreneur) (int, error)
 }
 type MutationResolver interface {
-	Empty(ctx context.Context) (*string, error)
-	Register(ctx context.Context, input model.RegisterInput) (*model.AuthResponse, error)
-	Login(ctx context.Context, input model.LoginInput) (*model.AuthResponse, error)
-	Logout(ctx context.Context) (bool, error)
 	CreateSubscription(ctx context.Context, input model.CreateSubscriptionInput) (*model.EntitySubscription, error)
 	UpdateSubscriptionFilters(ctx context.Context, input model.UpdateSubscriptionFiltersInput) (*model.EntitySubscription, error)
 	UpdateSubscriptionChannels(ctx context.Context, input model.UpdateSubscriptionChannelsInput) (*model.EntitySubscription, error)
 	DeleteSubscription(ctx context.Context, id string) (bool, error)
 	ToggleSubscription(ctx context.Context, input model.ToggleSubscriptionInput) (*model.EntitySubscription, error)
+	Register(ctx context.Context, input model.RegisterInput) (*model.AuthResponse, error)
+	Login(ctx context.Context, input model.LoginInput) (*model.AuthResponse, error)
+	Logout(ctx context.Context) (bool, error)
+	CreateFavorite(ctx context.Context, input model.CreateFavoriteInput) (*model.Favorite, error)
+	UpdateFavoriteNotes(ctx context.Context, input model.UpdateFavoriteNotesInput) (*model.Favorite, error)
+	DeleteFavorite(ctx context.Context, id string) (bool, error)
 }
 type QueryResolver interface {
 	Company(ctx context.Context, ogrn string) (*model.Company, error)
@@ -453,10 +471,12 @@ type QueryResolver interface {
 	CompanyFounders(ctx context.Context, ogrn string, limit *int, offset *int) ([]*model.Founder, error)
 	RelatedCompanies(ctx context.Context, inn string, limit *int, offset *int) ([]*model.Company, error)
 	Me(ctx context.Context) (*model.User, error)
-	MySubscriptions(ctx context.Context, email string) ([]*model.EntitySubscription, error)
+	MyFavorites(ctx context.Context) ([]*model.Favorite, error)
+	HasFavorite(ctx context.Context, entityType model.EntityType, entityID string) (bool, error)
+	MySubscriptions(ctx context.Context) ([]*model.EntitySubscription, error)
 	Subscription(ctx context.Context, id string) (*model.EntitySubscription, error)
 	NotificationHistory(ctx context.Context, subscriptionID string, limit *int, offset *int) ([]*model.NotificationLogEntry, error)
-	HasSubscription(ctx context.Context, email string, entityType model.EntityType, entityID string) (bool, error)
+	HasSubscription(ctx context.Context, entityType model.EntityType, entityID string) (bool, error)
 }
 
 type executableSchema struct {
@@ -1158,12 +1178,19 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 
 		return e.complexity.EntitySubscription.UpdatedAt(childComplexity), true
 
-	case "EntitySubscription.userEmail":
-		if e.complexity.EntitySubscription.UserEmail == nil {
+	case "EntitySubscription.user":
+		if e.complexity.EntitySubscription.User == nil {
 			break
 		}
 
-		return e.complexity.EntitySubscription.UserEmail(childComplexity), true
+		return e.complexity.EntitySubscription.User(childComplexity), true
+
+	case "EntitySubscription.userId":
+		if e.complexity.EntitySubscription.UserID == nil {
+			break
+		}
+
+		return e.complexity.EntitySubscription.UserID(childComplexity), true
 
 	case "Entrepreneur.activities":
 		if e.complexity.Entrepreneur.Activities == nil {
@@ -1464,6 +1491,62 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 
 		return e.complexity.EntrepreneurEdge.Node(childComplexity), true
 
+	case "Favorite.createdAt":
+		if e.complexity.Favorite.CreatedAt == nil {
+			break
+		}
+
+		return e.complexity.Favorite.CreatedAt(childComplexity), true
+
+	case "Favorite.entityId":
+		if e.complexity.Favorite.EntityID == nil {
+			break
+		}
+
+		return e.complexity.Favorite.EntityID(childComplexity), true
+
+	case "Favorite.entityName":
+		if e.complexity.Favorite.EntityName == nil {
+			break
+		}
+
+		return e.complexity.Favorite.EntityName(childComplexity), true
+
+	case "Favorite.entityType":
+		if e.complexity.Favorite.EntityType == nil {
+			break
+		}
+
+		return e.complexity.Favorite.EntityType(childComplexity), true
+
+	case "Favorite.id":
+		if e.complexity.Favorite.ID == nil {
+			break
+		}
+
+		return e.complexity.Favorite.ID(childComplexity), true
+
+	case "Favorite.notes":
+		if e.complexity.Favorite.Notes == nil {
+			break
+		}
+
+		return e.complexity.Favorite.Notes(childComplexity), true
+
+	case "Favorite.user":
+		if e.complexity.Favorite.User == nil {
+			break
+		}
+
+		return e.complexity.Favorite.User(childComplexity), true
+
+	case "Favorite.userId":
+		if e.complexity.Favorite.UserID == nil {
+			break
+		}
+
+		return e.complexity.Favorite.UserID(childComplexity), true
+
 	case "Founder.citizenship":
 		if e.complexity.Founder.Citizenship == nil {
 			break
@@ -1709,6 +1792,18 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 
 		return e.complexity.Money.Currency(childComplexity), true
 
+	case "Mutation.createFavorite":
+		if e.complexity.Mutation.CreateFavorite == nil {
+			break
+		}
+
+		args, err := ec.field_Mutation_createFavorite_args(context.TODO(), rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.complexity.Mutation.CreateFavorite(childComplexity, args["input"].(model.CreateFavoriteInput)), true
+
 	case "Mutation.createSubscription":
 		if e.complexity.Mutation.CreateSubscription == nil {
 			break
@@ -1721,6 +1816,18 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 
 		return e.complexity.Mutation.CreateSubscription(childComplexity, args["input"].(model.CreateSubscriptionInput)), true
 
+	case "Mutation.deleteFavorite":
+		if e.complexity.Mutation.DeleteFavorite == nil {
+			break
+		}
+
+		args, err := ec.field_Mutation_deleteFavorite_args(context.TODO(), rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.complexity.Mutation.DeleteFavorite(childComplexity, args["id"].(string)), true
+
 	case "Mutation.deleteSubscription":
 		if e.complexity.Mutation.DeleteSubscription == nil {
 			break
@@ -1732,13 +1839,6 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 		}
 
 		return e.complexity.Mutation.DeleteSubscription(childComplexity, args["id"].(string)), true
-
-	case "Mutation._empty":
-		if e.complexity.Mutation.Empty == nil {
-			break
-		}
-
-		return e.complexity.Mutation.Empty(childComplexity), true
 
 	case "Mutation.login":
 		if e.complexity.Mutation.Login == nil {
@@ -1782,6 +1882,18 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 		}
 
 		return e.complexity.Mutation.ToggleSubscription(childComplexity, args["input"].(model.ToggleSubscriptionInput)), true
+
+	case "Mutation.updateFavoriteNotes":
+		if e.complexity.Mutation.UpdateFavoriteNotes == nil {
+			break
+		}
+
+		args, err := ec.field_Mutation_updateFavoriteNotes_args(context.TODO(), rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.complexity.Mutation.UpdateFavoriteNotes(childComplexity, args["input"].(model.UpdateFavoriteNotesInput)), true
 
 	case "Mutation.updateSubscriptionChannels":
 		if e.complexity.Mutation.UpdateSubscriptionChannels == nil {
@@ -1870,12 +1982,12 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 
 		return e.complexity.NotificationLogEntry.SubscriptionID(childComplexity), true
 
-	case "NotificationLogEntry.userEmail":
-		if e.complexity.NotificationLogEntry.UserEmail == nil {
+	case "NotificationLogEntry.userId":
+		if e.complexity.NotificationLogEntry.UserID == nil {
 			break
 		}
 
-		return e.complexity.NotificationLogEntry.UserEmail(childComplexity), true
+		return e.complexity.NotificationLogEntry.UserID(childComplexity), true
 
 	case "OldRegistration.authority":
 		if e.complexity.OldRegistration.Authority == nil {
@@ -2083,6 +2195,18 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 
 		return e.complexity.Query.Entrepreneurs(childComplexity, args["filter"].(*model.EntrepreneurFilter), args["pagination"].(*model.Pagination), args["sort"].(*model.EntrepreneurSort)), true
 
+	case "Query.hasFavorite":
+		if e.complexity.Query.HasFavorite == nil {
+			break
+		}
+
+		args, err := ec.field_Query_hasFavorite_args(context.TODO(), rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.complexity.Query.HasFavorite(childComplexity, args["entityType"].(model.EntityType), args["entityId"].(string)), true
+
 	case "Query.hasSubscription":
 		if e.complexity.Query.HasSubscription == nil {
 			break
@@ -2093,7 +2217,7 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 			return 0, false
 		}
 
-		return e.complexity.Query.HasSubscription(childComplexity, args["email"].(string), args["entityType"].(model.EntityType), args["entityId"].(string)), true
+		return e.complexity.Query.HasSubscription(childComplexity, args["entityType"].(model.EntityType), args["entityId"].(string)), true
 
 	case "Query.me":
 		if e.complexity.Query.Me == nil {
@@ -2102,17 +2226,19 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 
 		return e.complexity.Query.Me(childComplexity), true
 
+	case "Query.myFavorites":
+		if e.complexity.Query.MyFavorites == nil {
+			break
+		}
+
+		return e.complexity.Query.MyFavorites(childComplexity), true
+
 	case "Query.mySubscriptions":
 		if e.complexity.Query.MySubscriptions == nil {
 			break
 		}
 
-		args, err := ec.field_Query_mySubscriptions_args(context.TODO(), rawArgs)
-		if err != nil {
-			return 0, false
-		}
-
-		return e.complexity.Query.MySubscriptions(childComplexity, args["email"].(string)), true
+		return e.complexity.Query.MySubscriptions(childComplexity), true
 
 	case "Query.notificationHistory":
 		if e.complexity.Query.NotificationHistory == nil {
@@ -2480,6 +2606,7 @@ func (e *executableSchema) Exec(ctx context.Context) graphql.ResponseHandler {
 		ec.unmarshalInputChangeFiltersInput,
 		ec.unmarshalInputCompanyFilter,
 		ec.unmarshalInputCompanySort,
+		ec.unmarshalInputCreateFavoriteInput,
 		ec.unmarshalInputCreateSubscriptionInput,
 		ec.unmarshalInputEntrepreneurFilter,
 		ec.unmarshalInputEntrepreneurSort,
@@ -2489,6 +2616,7 @@ func (e *executableSchema) Exec(ctx context.Context) graphql.ResponseHandler {
 		ec.unmarshalInputRegisterInput,
 		ec.unmarshalInputStatsFilter,
 		ec.unmarshalInputToggleSubscriptionInput,
+		ec.unmarshalInputUpdateFavoriteNotesInput,
 		ec.unmarshalInputUpdateSubscriptionChannelsInput,
 		ec.unmarshalInputUpdateSubscriptionFiltersInput,
 	)
@@ -2656,6 +2784,82 @@ extend type Mutation {
   Выход (опционально, для logout на сервере)
   """
   logout: Boolean!
+}
+`, BuiltIn: false},
+	{Name: "../favorites.graphqls", Input: `# ==============================================================================
+# Избранное (Favorites)
+# ==============================================================================
+
+"""
+Избранная сущность пользователя
+"""
+type Favorite {
+  id: ID!
+  userId: ID!
+  user: User!
+  entityType: EntityType!
+  entityId: String!
+  entityName: String!
+  notes: String
+  createdAt: DateTime!
+}
+
+# ------------------------------------------------------------------------------
+# Входные типы (Input)
+# ------------------------------------------------------------------------------
+
+"""
+Входные данные для создания избранного
+"""
+input CreateFavoriteInput {
+  entityType: EntityType!
+  entityId: String!
+  entityName: String!
+  notes: String
+}
+
+"""
+Входные данные для обновления заметок
+"""
+input UpdateFavoriteNotesInput {
+  id: ID!
+  notes: String
+}
+
+# ------------------------------------------------------------------------------
+# Расширение корневых типов
+# ------------------------------------------------------------------------------
+
+extend type Query {
+  """
+  Получить все избранное текущего пользователя (требует авторизации)
+  """
+  myFavorites: [Favorite!]!
+
+  """
+  Проверить наличие в избранном (требует авторизации)
+  """
+  hasFavorite(
+    entityType: EntityType!
+    entityId: String!
+  ): Boolean!
+}
+
+extend type Mutation {
+  """
+  Добавить в избранное (требует авторизации)
+  """
+  createFavorite(input: CreateFavoriteInput!): Favorite!
+
+  """
+  Обновить заметки
+  """
+  updateFavoriteNotes(input: UpdateFavoriteNotesInput!): Favorite!
+
+  """
+  Удалить из избранного
+  """
+  deleteFavorite(id: ID!): Boolean!
 }
 `, BuiltIn: false},
 	{Name: "../schema.graphqls", Input: `# ==============================================================================
@@ -3364,7 +3568,8 @@ enum NotificationStatus {
 """
 type EntitySubscription {
   id: ID!
-  userEmail: String!
+  userId: ID!
+  user: User!
   entityType: EntityType!
   entityId: String!
   entityName: String!
@@ -3402,7 +3607,7 @@ type NotificationLogEntry {
   id: ID!
   subscriptionId: ID!
   changeEventId: ID!
-  userEmail: String!
+  userId: ID!
   channel: String!
   status: NotificationStatus!
   sentAt: DateTime
@@ -3437,7 +3642,6 @@ input NotificationChannelsInput {
 Входные данные для создания подписки
 """
 input CreateSubscriptionInput {
-  userEmail: String!
   entityType: EntityType!
   entityId: String!
   entityName: String!
@@ -3475,9 +3679,9 @@ input ToggleSubscriptionInput {
 
 extend type Query {
   """
-  Получить все подписки пользователя по email
+  Получить все подписки текущего пользователя (требует авторизации)
   """
-  mySubscriptions(email: String!): [EntitySubscription!]!
+  mySubscriptions: [EntitySubscription!]!
 
   """
   Получить подписку по ID
@@ -3494,16 +3698,15 @@ extend type Query {
   ): [NotificationLogEntry!]!
 
   """
-  Проверить, есть ли подписка на конкретную сущность
+  Проверить наличие подписки на конкретную сущность (требует авторизации)
   """
   hasSubscription(
-    email: String!
     entityType: EntityType!
     entityId: String!
   ): Boolean!
 }
 
-extend type Mutation {
+type Mutation {
   """
   Создать новую подписку
   """
@@ -3528,10 +3731,6 @@ extend type Mutation {
   Приостановить/возобновить подписку
   """
   toggleSubscription(input: ToggleSubscriptionInput!): EntitySubscription!
-}
-
-type Mutation {
-  _empty: String
 }
 `, BuiltIn: false},
 }
@@ -3777,6 +3976,38 @@ func (ec *executionContext) field_Entrepreneur_history_argsOffset(
 	return zeroVal, nil
 }
 
+func (ec *executionContext) field_Mutation_createFavorite_args(ctx context.Context, rawArgs map[string]interface{}) (map[string]interface{}, error) {
+	var err error
+	args := map[string]interface{}{}
+	arg0, err := ec.field_Mutation_createFavorite_argsInput(ctx, rawArgs)
+	if err != nil {
+		return nil, err
+	}
+	args["input"] = arg0
+	return args, nil
+}
+func (ec *executionContext) field_Mutation_createFavorite_argsInput(
+	ctx context.Context,
+	rawArgs map[string]interface{},
+) (model.CreateFavoriteInput, error) {
+	// We won't call the directive if the argument is null.
+	// Set call_argument_directives_with_null to true to call directives
+	// even if the argument is null.
+	_, ok := rawArgs["input"]
+	if !ok {
+		var zeroVal model.CreateFavoriteInput
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("input"))
+	if tmp, ok := rawArgs["input"]; ok {
+		return ec.unmarshalNCreateFavoriteInput2githubᚗcomᚋegrulᚑsystemᚋservicesᚋapiᚑgatewayᚋinternalᚋgraphᚋmodelᚐCreateFavoriteInput(ctx, tmp)
+	}
+
+	var zeroVal model.CreateFavoriteInput
+	return zeroVal, nil
+}
+
 func (ec *executionContext) field_Mutation_createSubscription_args(ctx context.Context, rawArgs map[string]interface{}) (map[string]interface{}, error) {
 	var err error
 	args := map[string]interface{}{}
@@ -3806,6 +4037,38 @@ func (ec *executionContext) field_Mutation_createSubscription_argsInput(
 	}
 
 	var zeroVal model.CreateSubscriptionInput
+	return zeroVal, nil
+}
+
+func (ec *executionContext) field_Mutation_deleteFavorite_args(ctx context.Context, rawArgs map[string]interface{}) (map[string]interface{}, error) {
+	var err error
+	args := map[string]interface{}{}
+	arg0, err := ec.field_Mutation_deleteFavorite_argsID(ctx, rawArgs)
+	if err != nil {
+		return nil, err
+	}
+	args["id"] = arg0
+	return args, nil
+}
+func (ec *executionContext) field_Mutation_deleteFavorite_argsID(
+	ctx context.Context,
+	rawArgs map[string]interface{},
+) (string, error) {
+	// We won't call the directive if the argument is null.
+	// Set call_argument_directives_with_null to true to call directives
+	// even if the argument is null.
+	_, ok := rawArgs["id"]
+	if !ok {
+		var zeroVal string
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("id"))
+	if tmp, ok := rawArgs["id"]; ok {
+		return ec.unmarshalNID2string(ctx, tmp)
+	}
+
+	var zeroVal string
 	return zeroVal, nil
 }
 
@@ -3934,6 +4197,38 @@ func (ec *executionContext) field_Mutation_toggleSubscription_argsInput(
 	}
 
 	var zeroVal model.ToggleSubscriptionInput
+	return zeroVal, nil
+}
+
+func (ec *executionContext) field_Mutation_updateFavoriteNotes_args(ctx context.Context, rawArgs map[string]interface{}) (map[string]interface{}, error) {
+	var err error
+	args := map[string]interface{}{}
+	arg0, err := ec.field_Mutation_updateFavoriteNotes_argsInput(ctx, rawArgs)
+	if err != nil {
+		return nil, err
+	}
+	args["input"] = arg0
+	return args, nil
+}
+func (ec *executionContext) field_Mutation_updateFavoriteNotes_argsInput(
+	ctx context.Context,
+	rawArgs map[string]interface{},
+) (model.UpdateFavoriteNotesInput, error) {
+	// We won't call the directive if the argument is null.
+	// Set call_argument_directives_with_null to true to call directives
+	// even if the argument is null.
+	_, ok := rawArgs["input"]
+	if !ok {
+		var zeroVal model.UpdateFavoriteNotesInput
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("input"))
+	if tmp, ok := rawArgs["input"]; ok {
+		return ec.unmarshalNUpdateFavoriteNotesInput2githubᚗcomᚋegrulᚑsystemᚋservicesᚋapiᚑgatewayᚋinternalᚋgraphᚋmodelᚐUpdateFavoriteNotesInput(ctx, tmp)
+	}
+
+	var zeroVal model.UpdateFavoriteNotesInput
 	return zeroVal, nil
 }
 
@@ -4591,41 +4886,58 @@ func (ec *executionContext) field_Query_entrepreneurs_argsSort(
 	return zeroVal, nil
 }
 
-func (ec *executionContext) field_Query_hasSubscription_args(ctx context.Context, rawArgs map[string]interface{}) (map[string]interface{}, error) {
+func (ec *executionContext) field_Query_hasFavorite_args(ctx context.Context, rawArgs map[string]interface{}) (map[string]interface{}, error) {
 	var err error
 	args := map[string]interface{}{}
-	arg0, err := ec.field_Query_hasSubscription_argsEmail(ctx, rawArgs)
+	arg0, err := ec.field_Query_hasFavorite_argsEntityType(ctx, rawArgs)
 	if err != nil {
 		return nil, err
 	}
-	args["email"] = arg0
-	arg1, err := ec.field_Query_hasSubscription_argsEntityType(ctx, rawArgs)
+	args["entityType"] = arg0
+	arg1, err := ec.field_Query_hasFavorite_argsEntityID(ctx, rawArgs)
 	if err != nil {
 		return nil, err
 	}
-	args["entityType"] = arg1
-	arg2, err := ec.field_Query_hasSubscription_argsEntityID(ctx, rawArgs)
-	if err != nil {
-		return nil, err
-	}
-	args["entityId"] = arg2
+	args["entityId"] = arg1
 	return args, nil
 }
-func (ec *executionContext) field_Query_hasSubscription_argsEmail(
+func (ec *executionContext) field_Query_hasFavorite_argsEntityType(
+	ctx context.Context,
+	rawArgs map[string]interface{},
+) (model.EntityType, error) {
+	// We won't call the directive if the argument is null.
+	// Set call_argument_directives_with_null to true to call directives
+	// even if the argument is null.
+	_, ok := rawArgs["entityType"]
+	if !ok {
+		var zeroVal model.EntityType
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("entityType"))
+	if tmp, ok := rawArgs["entityType"]; ok {
+		return ec.unmarshalNEntityType2githubᚗcomᚋegrulᚑsystemᚋservicesᚋapiᚑgatewayᚋinternalᚋgraphᚋmodelᚐEntityType(ctx, tmp)
+	}
+
+	var zeroVal model.EntityType
+	return zeroVal, nil
+}
+
+func (ec *executionContext) field_Query_hasFavorite_argsEntityID(
 	ctx context.Context,
 	rawArgs map[string]interface{},
 ) (string, error) {
 	// We won't call the directive if the argument is null.
 	// Set call_argument_directives_with_null to true to call directives
 	// even if the argument is null.
-	_, ok := rawArgs["email"]
+	_, ok := rawArgs["entityId"]
 	if !ok {
 		var zeroVal string
 		return zeroVal, nil
 	}
 
-	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("email"))
-	if tmp, ok := rawArgs["email"]; ok {
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("entityId"))
+	if tmp, ok := rawArgs["entityId"]; ok {
 		return ec.unmarshalNString2string(ctx, tmp)
 	}
 
@@ -4633,6 +4945,21 @@ func (ec *executionContext) field_Query_hasSubscription_argsEmail(
 	return zeroVal, nil
 }
 
+func (ec *executionContext) field_Query_hasSubscription_args(ctx context.Context, rawArgs map[string]interface{}) (map[string]interface{}, error) {
+	var err error
+	args := map[string]interface{}{}
+	arg0, err := ec.field_Query_hasSubscription_argsEntityType(ctx, rawArgs)
+	if err != nil {
+		return nil, err
+	}
+	args["entityType"] = arg0
+	arg1, err := ec.field_Query_hasSubscription_argsEntityID(ctx, rawArgs)
+	if err != nil {
+		return nil, err
+	}
+	args["entityId"] = arg1
+	return args, nil
+}
 func (ec *executionContext) field_Query_hasSubscription_argsEntityType(
 	ctx context.Context,
 	rawArgs map[string]interface{},
@@ -4670,38 +4997,6 @@ func (ec *executionContext) field_Query_hasSubscription_argsEntityID(
 
 	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("entityId"))
 	if tmp, ok := rawArgs["entityId"]; ok {
-		return ec.unmarshalNString2string(ctx, tmp)
-	}
-
-	var zeroVal string
-	return zeroVal, nil
-}
-
-func (ec *executionContext) field_Query_mySubscriptions_args(ctx context.Context, rawArgs map[string]interface{}) (map[string]interface{}, error) {
-	var err error
-	args := map[string]interface{}{}
-	arg0, err := ec.field_Query_mySubscriptions_argsEmail(ctx, rawArgs)
-	if err != nil {
-		return nil, err
-	}
-	args["email"] = arg0
-	return args, nil
-}
-func (ec *executionContext) field_Query_mySubscriptions_argsEmail(
-	ctx context.Context,
-	rawArgs map[string]interface{},
-) (string, error) {
-	// We won't call the directive if the argument is null.
-	// Set call_argument_directives_with_null to true to call directives
-	// even if the argument is null.
-	_, ok := rawArgs["email"]
-	if !ok {
-		var zeroVal string
-		return zeroVal, nil
-	}
-
-	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("email"))
-	if tmp, ok := rawArgs["email"]; ok {
 		return ec.unmarshalNString2string(ctx, tmp)
 	}
 
@@ -9315,8 +9610,8 @@ func (ec *executionContext) fieldContext_EntitySubscription_id(_ context.Context
 	return fc, nil
 }
 
-func (ec *executionContext) _EntitySubscription_userEmail(ctx context.Context, field graphql.CollectedField, obj *model.EntitySubscription) (ret graphql.Marshaler) {
-	fc, err := ec.fieldContext_EntitySubscription_userEmail(ctx, field)
+func (ec *executionContext) _EntitySubscription_userId(ctx context.Context, field graphql.CollectedField, obj *model.EntitySubscription) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_EntitySubscription_userId(ctx, field)
 	if err != nil {
 		return graphql.Null
 	}
@@ -9329,7 +9624,7 @@ func (ec *executionContext) _EntitySubscription_userEmail(ctx context.Context, f
 	}()
 	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
 		ctx = rctx // use context from middleware stack in children
-		return obj.UserEmail, nil
+		return obj.UserID, nil
 	})
 	if err != nil {
 		ec.Error(ctx, err)
@@ -9343,17 +9638,81 @@ func (ec *executionContext) _EntitySubscription_userEmail(ctx context.Context, f
 	}
 	res := resTmp.(string)
 	fc.Result = res
-	return ec.marshalNString2string(ctx, field.Selections, res)
+	return ec.marshalNID2string(ctx, field.Selections, res)
 }
 
-func (ec *executionContext) fieldContext_EntitySubscription_userEmail(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+func (ec *executionContext) fieldContext_EntitySubscription_userId(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
 	fc = &graphql.FieldContext{
 		Object:     "EntitySubscription",
 		Field:      field,
 		IsMethod:   false,
 		IsResolver: false,
 		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
-			return nil, errors.New("field of type String does not have child fields")
+			return nil, errors.New("field of type ID does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _EntitySubscription_user(ctx context.Context, field graphql.CollectedField, obj *model.EntitySubscription) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_EntitySubscription_user(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.User, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(*model.User)
+	fc.Result = res
+	return ec.marshalNUser2ᚖgithubᚗcomᚋegrulᚑsystemᚋservicesᚋapiᚑgatewayᚋinternalᚋgraphᚋmodelᚐUser(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_EntitySubscription_user(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "EntitySubscription",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "id":
+				return ec.fieldContext_User_id(ctx, field)
+			case "email":
+				return ec.fieldContext_User_email(ctx, field)
+			case "firstName":
+				return ec.fieldContext_User_firstName(ctx, field)
+			case "lastName":
+				return ec.fieldContext_User_lastName(ctx, field)
+			case "isActive":
+				return ec.fieldContext_User_isActive(ctx, field)
+			case "emailVerified":
+				return ec.fieldContext_User_emailVerified(ctx, field)
+			case "createdAt":
+				return ec.fieldContext_User_createdAt(ctx, field)
+			case "updatedAt":
+				return ec.fieldContext_User_updatedAt(ctx, field)
+			case "lastLoginAt":
+				return ec.fieldContext_User_lastLoginAt(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type User", field.Name)
 		},
 	}
 	return fc, nil
@@ -11752,6 +12111,375 @@ func (ec *executionContext) fieldContext_EntrepreneurEdge_cursor(_ context.Conte
 	return fc, nil
 }
 
+func (ec *executionContext) _Favorite_id(ctx context.Context, field graphql.CollectedField, obj *model.Favorite) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_Favorite_id(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.ID, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(string)
+	fc.Result = res
+	return ec.marshalNID2string(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_Favorite_id(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Favorite",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type ID does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Favorite_userId(ctx context.Context, field graphql.CollectedField, obj *model.Favorite) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_Favorite_userId(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.UserID, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(string)
+	fc.Result = res
+	return ec.marshalNID2string(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_Favorite_userId(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Favorite",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type ID does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Favorite_user(ctx context.Context, field graphql.CollectedField, obj *model.Favorite) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_Favorite_user(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.User, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(*model.User)
+	fc.Result = res
+	return ec.marshalNUser2ᚖgithubᚗcomᚋegrulᚑsystemᚋservicesᚋapiᚑgatewayᚋinternalᚋgraphᚋmodelᚐUser(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_Favorite_user(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Favorite",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "id":
+				return ec.fieldContext_User_id(ctx, field)
+			case "email":
+				return ec.fieldContext_User_email(ctx, field)
+			case "firstName":
+				return ec.fieldContext_User_firstName(ctx, field)
+			case "lastName":
+				return ec.fieldContext_User_lastName(ctx, field)
+			case "isActive":
+				return ec.fieldContext_User_isActive(ctx, field)
+			case "emailVerified":
+				return ec.fieldContext_User_emailVerified(ctx, field)
+			case "createdAt":
+				return ec.fieldContext_User_createdAt(ctx, field)
+			case "updatedAt":
+				return ec.fieldContext_User_updatedAt(ctx, field)
+			case "lastLoginAt":
+				return ec.fieldContext_User_lastLoginAt(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type User", field.Name)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Favorite_entityType(ctx context.Context, field graphql.CollectedField, obj *model.Favorite) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_Favorite_entityType(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.EntityType, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(model.EntityType)
+	fc.Result = res
+	return ec.marshalNEntityType2githubᚗcomᚋegrulᚑsystemᚋservicesᚋapiᚑgatewayᚋinternalᚋgraphᚋmodelᚐEntityType(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_Favorite_entityType(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Favorite",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type EntityType does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Favorite_entityId(ctx context.Context, field graphql.CollectedField, obj *model.Favorite) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_Favorite_entityId(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.EntityID, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(string)
+	fc.Result = res
+	return ec.marshalNString2string(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_Favorite_entityId(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Favorite",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type String does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Favorite_entityName(ctx context.Context, field graphql.CollectedField, obj *model.Favorite) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_Favorite_entityName(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.EntityName, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(string)
+	fc.Result = res
+	return ec.marshalNString2string(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_Favorite_entityName(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Favorite",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type String does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Favorite_notes(ctx context.Context, field graphql.CollectedField, obj *model.Favorite) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_Favorite_notes(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.Notes, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		return graphql.Null
+	}
+	res := resTmp.(*string)
+	fc.Result = res
+	return ec.marshalOString2ᚖstring(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_Favorite_notes(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Favorite",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type String does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Favorite_createdAt(ctx context.Context, field graphql.CollectedField, obj *model.Favorite) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_Favorite_createdAt(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.CreatedAt, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(time.Time)
+	fc.Result = res
+	return ec.marshalNDateTime2timeᚐTime(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_Favorite_createdAt(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Favorite",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type DateTime does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
 func (ec *executionContext) _Founder_type(ctx context.Context, field graphql.CollectedField, obj *model.Founder) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Founder_type(ctx, field)
 	if err != nil {
@@ -13220,8 +13948,8 @@ func (ec *executionContext) fieldContext_Money_currency(_ context.Context, field
 	return fc, nil
 }
 
-func (ec *executionContext) _Mutation__empty(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
-	fc, err := ec.fieldContext_Mutation__empty(ctx, field)
+func (ec *executionContext) _Mutation_createSubscription(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_Mutation_createSubscription(ctx, field)
 	if err != nil {
 		return graphql.Null
 	}
@@ -13234,29 +13962,367 @@ func (ec *executionContext) _Mutation__empty(ctx context.Context, field graphql.
 	}()
 	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
 		ctx = rctx // use context from middleware stack in children
-		return ec.resolvers.Mutation().Empty(rctx)
+		return ec.resolvers.Mutation().CreateSubscription(rctx, fc.Args["input"].(model.CreateSubscriptionInput))
 	})
 	if err != nil {
 		ec.Error(ctx, err)
 		return graphql.Null
 	}
 	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
 		return graphql.Null
 	}
-	res := resTmp.(*string)
+	res := resTmp.(*model.EntitySubscription)
 	fc.Result = res
-	return ec.marshalOString2ᚖstring(ctx, field.Selections, res)
+	return ec.marshalNEntitySubscription2ᚖgithubᚗcomᚋegrulᚑsystemᚋservicesᚋapiᚑgatewayᚋinternalᚋgraphᚋmodelᚐEntitySubscription(ctx, field.Selections, res)
 }
 
-func (ec *executionContext) fieldContext_Mutation__empty(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+func (ec *executionContext) fieldContext_Mutation_createSubscription(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
 	fc = &graphql.FieldContext{
 		Object:     "Mutation",
 		Field:      field,
 		IsMethod:   true,
 		IsResolver: true,
 		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
-			return nil, errors.New("field of type String does not have child fields")
+			switch field.Name {
+			case "id":
+				return ec.fieldContext_EntitySubscription_id(ctx, field)
+			case "userId":
+				return ec.fieldContext_EntitySubscription_userId(ctx, field)
+			case "user":
+				return ec.fieldContext_EntitySubscription_user(ctx, field)
+			case "entityType":
+				return ec.fieldContext_EntitySubscription_entityType(ctx, field)
+			case "entityId":
+				return ec.fieldContext_EntitySubscription_entityId(ctx, field)
+			case "entityName":
+				return ec.fieldContext_EntitySubscription_entityName(ctx, field)
+			case "changeFilters":
+				return ec.fieldContext_EntitySubscription_changeFilters(ctx, field)
+			case "notificationChannels":
+				return ec.fieldContext_EntitySubscription_notificationChannels(ctx, field)
+			case "isActive":
+				return ec.fieldContext_EntitySubscription_isActive(ctx, field)
+			case "createdAt":
+				return ec.fieldContext_EntitySubscription_createdAt(ctx, field)
+			case "updatedAt":
+				return ec.fieldContext_EntitySubscription_updatedAt(ctx, field)
+			case "lastNotifiedAt":
+				return ec.fieldContext_EntitySubscription_lastNotifiedAt(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type EntitySubscription", field.Name)
 		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Mutation_createSubscription_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Mutation_updateSubscriptionFilters(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_Mutation_updateSubscriptionFilters(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return ec.resolvers.Mutation().UpdateSubscriptionFilters(rctx, fc.Args["input"].(model.UpdateSubscriptionFiltersInput))
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(*model.EntitySubscription)
+	fc.Result = res
+	return ec.marshalNEntitySubscription2ᚖgithubᚗcomᚋegrulᚑsystemᚋservicesᚋapiᚑgatewayᚋinternalᚋgraphᚋmodelᚐEntitySubscription(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_Mutation_updateSubscriptionFilters(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Mutation",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "id":
+				return ec.fieldContext_EntitySubscription_id(ctx, field)
+			case "userId":
+				return ec.fieldContext_EntitySubscription_userId(ctx, field)
+			case "user":
+				return ec.fieldContext_EntitySubscription_user(ctx, field)
+			case "entityType":
+				return ec.fieldContext_EntitySubscription_entityType(ctx, field)
+			case "entityId":
+				return ec.fieldContext_EntitySubscription_entityId(ctx, field)
+			case "entityName":
+				return ec.fieldContext_EntitySubscription_entityName(ctx, field)
+			case "changeFilters":
+				return ec.fieldContext_EntitySubscription_changeFilters(ctx, field)
+			case "notificationChannels":
+				return ec.fieldContext_EntitySubscription_notificationChannels(ctx, field)
+			case "isActive":
+				return ec.fieldContext_EntitySubscription_isActive(ctx, field)
+			case "createdAt":
+				return ec.fieldContext_EntitySubscription_createdAt(ctx, field)
+			case "updatedAt":
+				return ec.fieldContext_EntitySubscription_updatedAt(ctx, field)
+			case "lastNotifiedAt":
+				return ec.fieldContext_EntitySubscription_lastNotifiedAt(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type EntitySubscription", field.Name)
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Mutation_updateSubscriptionFilters_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Mutation_updateSubscriptionChannels(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_Mutation_updateSubscriptionChannels(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return ec.resolvers.Mutation().UpdateSubscriptionChannels(rctx, fc.Args["input"].(model.UpdateSubscriptionChannelsInput))
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(*model.EntitySubscription)
+	fc.Result = res
+	return ec.marshalNEntitySubscription2ᚖgithubᚗcomᚋegrulᚑsystemᚋservicesᚋapiᚑgatewayᚋinternalᚋgraphᚋmodelᚐEntitySubscription(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_Mutation_updateSubscriptionChannels(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Mutation",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "id":
+				return ec.fieldContext_EntitySubscription_id(ctx, field)
+			case "userId":
+				return ec.fieldContext_EntitySubscription_userId(ctx, field)
+			case "user":
+				return ec.fieldContext_EntitySubscription_user(ctx, field)
+			case "entityType":
+				return ec.fieldContext_EntitySubscription_entityType(ctx, field)
+			case "entityId":
+				return ec.fieldContext_EntitySubscription_entityId(ctx, field)
+			case "entityName":
+				return ec.fieldContext_EntitySubscription_entityName(ctx, field)
+			case "changeFilters":
+				return ec.fieldContext_EntitySubscription_changeFilters(ctx, field)
+			case "notificationChannels":
+				return ec.fieldContext_EntitySubscription_notificationChannels(ctx, field)
+			case "isActive":
+				return ec.fieldContext_EntitySubscription_isActive(ctx, field)
+			case "createdAt":
+				return ec.fieldContext_EntitySubscription_createdAt(ctx, field)
+			case "updatedAt":
+				return ec.fieldContext_EntitySubscription_updatedAt(ctx, field)
+			case "lastNotifiedAt":
+				return ec.fieldContext_EntitySubscription_lastNotifiedAt(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type EntitySubscription", field.Name)
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Mutation_updateSubscriptionChannels_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Mutation_deleteSubscription(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_Mutation_deleteSubscription(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return ec.resolvers.Mutation().DeleteSubscription(rctx, fc.Args["id"].(string))
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(bool)
+	fc.Result = res
+	return ec.marshalNBoolean2bool(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_Mutation_deleteSubscription(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Mutation",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Boolean does not have child fields")
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Mutation_deleteSubscription_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Mutation_toggleSubscription(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_Mutation_toggleSubscription(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return ec.resolvers.Mutation().ToggleSubscription(rctx, fc.Args["input"].(model.ToggleSubscriptionInput))
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(*model.EntitySubscription)
+	fc.Result = res
+	return ec.marshalNEntitySubscription2ᚖgithubᚗcomᚋegrulᚑsystemᚋservicesᚋapiᚑgatewayᚋinternalᚋgraphᚋmodelᚐEntitySubscription(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_Mutation_toggleSubscription(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Mutation",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "id":
+				return ec.fieldContext_EntitySubscription_id(ctx, field)
+			case "userId":
+				return ec.fieldContext_EntitySubscription_userId(ctx, field)
+			case "user":
+				return ec.fieldContext_EntitySubscription_user(ctx, field)
+			case "entityType":
+				return ec.fieldContext_EntitySubscription_entityType(ctx, field)
+			case "entityId":
+				return ec.fieldContext_EntitySubscription_entityId(ctx, field)
+			case "entityName":
+				return ec.fieldContext_EntitySubscription_entityName(ctx, field)
+			case "changeFilters":
+				return ec.fieldContext_EntitySubscription_changeFilters(ctx, field)
+			case "notificationChannels":
+				return ec.fieldContext_EntitySubscription_notificationChannels(ctx, field)
+			case "isActive":
+				return ec.fieldContext_EntitySubscription_isActive(ctx, field)
+			case "createdAt":
+				return ec.fieldContext_EntitySubscription_createdAt(ctx, field)
+			case "updatedAt":
+				return ec.fieldContext_EntitySubscription_updatedAt(ctx, field)
+			case "lastNotifiedAt":
+				return ec.fieldContext_EntitySubscription_lastNotifiedAt(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type EntitySubscription", field.Name)
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Mutation_toggleSubscription_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
 	}
 	return fc, nil
 }
@@ -13431,8 +14497,8 @@ func (ec *executionContext) fieldContext_Mutation_logout(_ context.Context, fiel
 	return fc, nil
 }
 
-func (ec *executionContext) _Mutation_createSubscription(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
-	fc, err := ec.fieldContext_Mutation_createSubscription(ctx, field)
+func (ec *executionContext) _Mutation_createFavorite(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_Mutation_createFavorite(ctx, field)
 	if err != nil {
 		return graphql.Null
 	}
@@ -13445,7 +14511,7 @@ func (ec *executionContext) _Mutation_createSubscription(ctx context.Context, fi
 	}()
 	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
 		ctx = rctx // use context from middleware stack in children
-		return ec.resolvers.Mutation().CreateSubscription(rctx, fc.Args["input"].(model.CreateSubscriptionInput))
+		return ec.resolvers.Mutation().CreateFavorite(rctx, fc.Args["input"].(model.CreateFavoriteInput))
 	})
 	if err != nil {
 		ec.Error(ctx, err)
@@ -13457,12 +14523,12 @@ func (ec *executionContext) _Mutation_createSubscription(ctx context.Context, fi
 		}
 		return graphql.Null
 	}
-	res := resTmp.(*model.EntitySubscription)
+	res := resTmp.(*model.Favorite)
 	fc.Result = res
-	return ec.marshalNEntitySubscription2ᚖgithubᚗcomᚋegrulᚑsystemᚋservicesᚋapiᚑgatewayᚋinternalᚋgraphᚋmodelᚐEntitySubscription(ctx, field.Selections, res)
+	return ec.marshalNFavorite2ᚖgithubᚗcomᚋegrulᚑsystemᚋservicesᚋapiᚑgatewayᚋinternalᚋgraphᚋmodelᚐFavorite(ctx, field.Selections, res)
 }
 
-func (ec *executionContext) fieldContext_Mutation_createSubscription(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+func (ec *executionContext) fieldContext_Mutation_createFavorite(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
 	fc = &graphql.FieldContext{
 		Object:     "Mutation",
 		Field:      field,
@@ -13471,29 +14537,23 @@ func (ec *executionContext) fieldContext_Mutation_createSubscription(ctx context
 		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
 			switch field.Name {
 			case "id":
-				return ec.fieldContext_EntitySubscription_id(ctx, field)
-			case "userEmail":
-				return ec.fieldContext_EntitySubscription_userEmail(ctx, field)
+				return ec.fieldContext_Favorite_id(ctx, field)
+			case "userId":
+				return ec.fieldContext_Favorite_userId(ctx, field)
+			case "user":
+				return ec.fieldContext_Favorite_user(ctx, field)
 			case "entityType":
-				return ec.fieldContext_EntitySubscription_entityType(ctx, field)
+				return ec.fieldContext_Favorite_entityType(ctx, field)
 			case "entityId":
-				return ec.fieldContext_EntitySubscription_entityId(ctx, field)
+				return ec.fieldContext_Favorite_entityId(ctx, field)
 			case "entityName":
-				return ec.fieldContext_EntitySubscription_entityName(ctx, field)
-			case "changeFilters":
-				return ec.fieldContext_EntitySubscription_changeFilters(ctx, field)
-			case "notificationChannels":
-				return ec.fieldContext_EntitySubscription_notificationChannels(ctx, field)
-			case "isActive":
-				return ec.fieldContext_EntitySubscription_isActive(ctx, field)
+				return ec.fieldContext_Favorite_entityName(ctx, field)
+			case "notes":
+				return ec.fieldContext_Favorite_notes(ctx, field)
 			case "createdAt":
-				return ec.fieldContext_EntitySubscription_createdAt(ctx, field)
-			case "updatedAt":
-				return ec.fieldContext_EntitySubscription_updatedAt(ctx, field)
-			case "lastNotifiedAt":
-				return ec.fieldContext_EntitySubscription_lastNotifiedAt(ctx, field)
+				return ec.fieldContext_Favorite_createdAt(ctx, field)
 			}
-			return nil, fmt.Errorf("no field named %q was found under type EntitySubscription", field.Name)
+			return nil, fmt.Errorf("no field named %q was found under type Favorite", field.Name)
 		},
 	}
 	defer func() {
@@ -13503,15 +14563,15 @@ func (ec *executionContext) fieldContext_Mutation_createSubscription(ctx context
 		}
 	}()
 	ctx = graphql.WithFieldContext(ctx, fc)
-	if fc.Args, err = ec.field_Mutation_createSubscription_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+	if fc.Args, err = ec.field_Mutation_createFavorite_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
 		ec.Error(ctx, err)
 		return fc, err
 	}
 	return fc, nil
 }
 
-func (ec *executionContext) _Mutation_updateSubscriptionFilters(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
-	fc, err := ec.fieldContext_Mutation_updateSubscriptionFilters(ctx, field)
+func (ec *executionContext) _Mutation_updateFavoriteNotes(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_Mutation_updateFavoriteNotes(ctx, field)
 	if err != nil {
 		return graphql.Null
 	}
@@ -13524,7 +14584,7 @@ func (ec *executionContext) _Mutation_updateSubscriptionFilters(ctx context.Cont
 	}()
 	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
 		ctx = rctx // use context from middleware stack in children
-		return ec.resolvers.Mutation().UpdateSubscriptionFilters(rctx, fc.Args["input"].(model.UpdateSubscriptionFiltersInput))
+		return ec.resolvers.Mutation().UpdateFavoriteNotes(rctx, fc.Args["input"].(model.UpdateFavoriteNotesInput))
 	})
 	if err != nil {
 		ec.Error(ctx, err)
@@ -13536,12 +14596,12 @@ func (ec *executionContext) _Mutation_updateSubscriptionFilters(ctx context.Cont
 		}
 		return graphql.Null
 	}
-	res := resTmp.(*model.EntitySubscription)
+	res := resTmp.(*model.Favorite)
 	fc.Result = res
-	return ec.marshalNEntitySubscription2ᚖgithubᚗcomᚋegrulᚑsystemᚋservicesᚋapiᚑgatewayᚋinternalᚋgraphᚋmodelᚐEntitySubscription(ctx, field.Selections, res)
+	return ec.marshalNFavorite2ᚖgithubᚗcomᚋegrulᚑsystemᚋservicesᚋapiᚑgatewayᚋinternalᚋgraphᚋmodelᚐFavorite(ctx, field.Selections, res)
 }
 
-func (ec *executionContext) fieldContext_Mutation_updateSubscriptionFilters(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+func (ec *executionContext) fieldContext_Mutation_updateFavoriteNotes(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
 	fc = &graphql.FieldContext{
 		Object:     "Mutation",
 		Field:      field,
@@ -13550,29 +14610,23 @@ func (ec *executionContext) fieldContext_Mutation_updateSubscriptionFilters(ctx 
 		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
 			switch field.Name {
 			case "id":
-				return ec.fieldContext_EntitySubscription_id(ctx, field)
-			case "userEmail":
-				return ec.fieldContext_EntitySubscription_userEmail(ctx, field)
+				return ec.fieldContext_Favorite_id(ctx, field)
+			case "userId":
+				return ec.fieldContext_Favorite_userId(ctx, field)
+			case "user":
+				return ec.fieldContext_Favorite_user(ctx, field)
 			case "entityType":
-				return ec.fieldContext_EntitySubscription_entityType(ctx, field)
+				return ec.fieldContext_Favorite_entityType(ctx, field)
 			case "entityId":
-				return ec.fieldContext_EntitySubscription_entityId(ctx, field)
+				return ec.fieldContext_Favorite_entityId(ctx, field)
 			case "entityName":
-				return ec.fieldContext_EntitySubscription_entityName(ctx, field)
-			case "changeFilters":
-				return ec.fieldContext_EntitySubscription_changeFilters(ctx, field)
-			case "notificationChannels":
-				return ec.fieldContext_EntitySubscription_notificationChannels(ctx, field)
-			case "isActive":
-				return ec.fieldContext_EntitySubscription_isActive(ctx, field)
+				return ec.fieldContext_Favorite_entityName(ctx, field)
+			case "notes":
+				return ec.fieldContext_Favorite_notes(ctx, field)
 			case "createdAt":
-				return ec.fieldContext_EntitySubscription_createdAt(ctx, field)
-			case "updatedAt":
-				return ec.fieldContext_EntitySubscription_updatedAt(ctx, field)
-			case "lastNotifiedAt":
-				return ec.fieldContext_EntitySubscription_lastNotifiedAt(ctx, field)
+				return ec.fieldContext_Favorite_createdAt(ctx, field)
 			}
-			return nil, fmt.Errorf("no field named %q was found under type EntitySubscription", field.Name)
+			return nil, fmt.Errorf("no field named %q was found under type Favorite", field.Name)
 		},
 	}
 	defer func() {
@@ -13582,15 +14636,15 @@ func (ec *executionContext) fieldContext_Mutation_updateSubscriptionFilters(ctx 
 		}
 	}()
 	ctx = graphql.WithFieldContext(ctx, fc)
-	if fc.Args, err = ec.field_Mutation_updateSubscriptionFilters_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+	if fc.Args, err = ec.field_Mutation_updateFavoriteNotes_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
 		ec.Error(ctx, err)
 		return fc, err
 	}
 	return fc, nil
 }
 
-func (ec *executionContext) _Mutation_updateSubscriptionChannels(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
-	fc, err := ec.fieldContext_Mutation_updateSubscriptionChannels(ctx, field)
+func (ec *executionContext) _Mutation_deleteFavorite(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_Mutation_deleteFavorite(ctx, field)
 	if err != nil {
 		return graphql.Null
 	}
@@ -13603,86 +14657,7 @@ func (ec *executionContext) _Mutation_updateSubscriptionChannels(ctx context.Con
 	}()
 	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
 		ctx = rctx // use context from middleware stack in children
-		return ec.resolvers.Mutation().UpdateSubscriptionChannels(rctx, fc.Args["input"].(model.UpdateSubscriptionChannelsInput))
-	})
-	if err != nil {
-		ec.Error(ctx, err)
-		return graphql.Null
-	}
-	if resTmp == nil {
-		if !graphql.HasFieldError(ctx, fc) {
-			ec.Errorf(ctx, "must not be null")
-		}
-		return graphql.Null
-	}
-	res := resTmp.(*model.EntitySubscription)
-	fc.Result = res
-	return ec.marshalNEntitySubscription2ᚖgithubᚗcomᚋegrulᚑsystemᚋservicesᚋapiᚑgatewayᚋinternalᚋgraphᚋmodelᚐEntitySubscription(ctx, field.Selections, res)
-}
-
-func (ec *executionContext) fieldContext_Mutation_updateSubscriptionChannels(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
-	fc = &graphql.FieldContext{
-		Object:     "Mutation",
-		Field:      field,
-		IsMethod:   true,
-		IsResolver: true,
-		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
-			switch field.Name {
-			case "id":
-				return ec.fieldContext_EntitySubscription_id(ctx, field)
-			case "userEmail":
-				return ec.fieldContext_EntitySubscription_userEmail(ctx, field)
-			case "entityType":
-				return ec.fieldContext_EntitySubscription_entityType(ctx, field)
-			case "entityId":
-				return ec.fieldContext_EntitySubscription_entityId(ctx, field)
-			case "entityName":
-				return ec.fieldContext_EntitySubscription_entityName(ctx, field)
-			case "changeFilters":
-				return ec.fieldContext_EntitySubscription_changeFilters(ctx, field)
-			case "notificationChannels":
-				return ec.fieldContext_EntitySubscription_notificationChannels(ctx, field)
-			case "isActive":
-				return ec.fieldContext_EntitySubscription_isActive(ctx, field)
-			case "createdAt":
-				return ec.fieldContext_EntitySubscription_createdAt(ctx, field)
-			case "updatedAt":
-				return ec.fieldContext_EntitySubscription_updatedAt(ctx, field)
-			case "lastNotifiedAt":
-				return ec.fieldContext_EntitySubscription_lastNotifiedAt(ctx, field)
-			}
-			return nil, fmt.Errorf("no field named %q was found under type EntitySubscription", field.Name)
-		},
-	}
-	defer func() {
-		if r := recover(); r != nil {
-			err = ec.Recover(ctx, r)
-			ec.Error(ctx, err)
-		}
-	}()
-	ctx = graphql.WithFieldContext(ctx, fc)
-	if fc.Args, err = ec.field_Mutation_updateSubscriptionChannels_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
-		ec.Error(ctx, err)
-		return fc, err
-	}
-	return fc, nil
-}
-
-func (ec *executionContext) _Mutation_deleteSubscription(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
-	fc, err := ec.fieldContext_Mutation_deleteSubscription(ctx, field)
-	if err != nil {
-		return graphql.Null
-	}
-	ctx = graphql.WithFieldContext(ctx, fc)
-	defer func() {
-		if r := recover(); r != nil {
-			ec.Error(ctx, ec.Recover(ctx, r))
-			ret = graphql.Null
-		}
-	}()
-	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
-		ctx = rctx // use context from middleware stack in children
-		return ec.resolvers.Mutation().DeleteSubscription(rctx, fc.Args["id"].(string))
+		return ec.resolvers.Mutation().DeleteFavorite(rctx, fc.Args["id"].(string))
 	})
 	if err != nil {
 		ec.Error(ctx, err)
@@ -13699,7 +14674,7 @@ func (ec *executionContext) _Mutation_deleteSubscription(ctx context.Context, fi
 	return ec.marshalNBoolean2bool(ctx, field.Selections, res)
 }
 
-func (ec *executionContext) fieldContext_Mutation_deleteSubscription(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+func (ec *executionContext) fieldContext_Mutation_deleteFavorite(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
 	fc = &graphql.FieldContext{
 		Object:     "Mutation",
 		Field:      field,
@@ -13716,86 +14691,7 @@ func (ec *executionContext) fieldContext_Mutation_deleteSubscription(ctx context
 		}
 	}()
 	ctx = graphql.WithFieldContext(ctx, fc)
-	if fc.Args, err = ec.field_Mutation_deleteSubscription_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
-		ec.Error(ctx, err)
-		return fc, err
-	}
-	return fc, nil
-}
-
-func (ec *executionContext) _Mutation_toggleSubscription(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
-	fc, err := ec.fieldContext_Mutation_toggleSubscription(ctx, field)
-	if err != nil {
-		return graphql.Null
-	}
-	ctx = graphql.WithFieldContext(ctx, fc)
-	defer func() {
-		if r := recover(); r != nil {
-			ec.Error(ctx, ec.Recover(ctx, r))
-			ret = graphql.Null
-		}
-	}()
-	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
-		ctx = rctx // use context from middleware stack in children
-		return ec.resolvers.Mutation().ToggleSubscription(rctx, fc.Args["input"].(model.ToggleSubscriptionInput))
-	})
-	if err != nil {
-		ec.Error(ctx, err)
-		return graphql.Null
-	}
-	if resTmp == nil {
-		if !graphql.HasFieldError(ctx, fc) {
-			ec.Errorf(ctx, "must not be null")
-		}
-		return graphql.Null
-	}
-	res := resTmp.(*model.EntitySubscription)
-	fc.Result = res
-	return ec.marshalNEntitySubscription2ᚖgithubᚗcomᚋegrulᚑsystemᚋservicesᚋapiᚑgatewayᚋinternalᚋgraphᚋmodelᚐEntitySubscription(ctx, field.Selections, res)
-}
-
-func (ec *executionContext) fieldContext_Mutation_toggleSubscription(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
-	fc = &graphql.FieldContext{
-		Object:     "Mutation",
-		Field:      field,
-		IsMethod:   true,
-		IsResolver: true,
-		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
-			switch field.Name {
-			case "id":
-				return ec.fieldContext_EntitySubscription_id(ctx, field)
-			case "userEmail":
-				return ec.fieldContext_EntitySubscription_userEmail(ctx, field)
-			case "entityType":
-				return ec.fieldContext_EntitySubscription_entityType(ctx, field)
-			case "entityId":
-				return ec.fieldContext_EntitySubscription_entityId(ctx, field)
-			case "entityName":
-				return ec.fieldContext_EntitySubscription_entityName(ctx, field)
-			case "changeFilters":
-				return ec.fieldContext_EntitySubscription_changeFilters(ctx, field)
-			case "notificationChannels":
-				return ec.fieldContext_EntitySubscription_notificationChannels(ctx, field)
-			case "isActive":
-				return ec.fieldContext_EntitySubscription_isActive(ctx, field)
-			case "createdAt":
-				return ec.fieldContext_EntitySubscription_createdAt(ctx, field)
-			case "updatedAt":
-				return ec.fieldContext_EntitySubscription_updatedAt(ctx, field)
-			case "lastNotifiedAt":
-				return ec.fieldContext_EntitySubscription_lastNotifiedAt(ctx, field)
-			}
-			return nil, fmt.Errorf("no field named %q was found under type EntitySubscription", field.Name)
-		},
-	}
-	defer func() {
-		if r := recover(); r != nil {
-			err = ec.Recover(ctx, r)
-			ec.Error(ctx, err)
-		}
-	}()
-	ctx = graphql.WithFieldContext(ctx, fc)
-	if fc.Args, err = ec.field_Mutation_toggleSubscription_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+	if fc.Args, err = ec.field_Mutation_deleteFavorite_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
 		ec.Error(ctx, err)
 		return fc, err
 	}
@@ -13978,8 +14874,8 @@ func (ec *executionContext) fieldContext_NotificationLogEntry_changeEventId(_ co
 	return fc, nil
 }
 
-func (ec *executionContext) _NotificationLogEntry_userEmail(ctx context.Context, field graphql.CollectedField, obj *model.NotificationLogEntry) (ret graphql.Marshaler) {
-	fc, err := ec.fieldContext_NotificationLogEntry_userEmail(ctx, field)
+func (ec *executionContext) _NotificationLogEntry_userId(ctx context.Context, field graphql.CollectedField, obj *model.NotificationLogEntry) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_NotificationLogEntry_userId(ctx, field)
 	if err != nil {
 		return graphql.Null
 	}
@@ -13992,7 +14888,7 @@ func (ec *executionContext) _NotificationLogEntry_userEmail(ctx context.Context,
 	}()
 	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
 		ctx = rctx // use context from middleware stack in children
-		return obj.UserEmail, nil
+		return obj.UserID, nil
 	})
 	if err != nil {
 		ec.Error(ctx, err)
@@ -14006,17 +14902,17 @@ func (ec *executionContext) _NotificationLogEntry_userEmail(ctx context.Context,
 	}
 	res := resTmp.(string)
 	fc.Result = res
-	return ec.marshalNString2string(ctx, field.Selections, res)
+	return ec.marshalNID2string(ctx, field.Selections, res)
 }
 
-func (ec *executionContext) fieldContext_NotificationLogEntry_userEmail(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+func (ec *executionContext) fieldContext_NotificationLogEntry_userId(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
 	fc = &graphql.FieldContext{
 		Object:     "NotificationLogEntry",
 		Field:      field,
 		IsMethod:   false,
 		IsResolver: false,
 		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
-			return nil, errors.New("field of type String does not have child fields")
+			return nil, errors.New("field of type ID does not have child fields")
 		},
 	}
 	return fc, nil
@@ -16340,6 +17236,123 @@ func (ec *executionContext) fieldContext_Query_me(_ context.Context, field graph
 	return fc, nil
 }
 
+func (ec *executionContext) _Query_myFavorites(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_Query_myFavorites(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return ec.resolvers.Query().MyFavorites(rctx)
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.([]*model.Favorite)
+	fc.Result = res
+	return ec.marshalNFavorite2ᚕᚖgithubᚗcomᚋegrulᚑsystemᚋservicesᚋapiᚑgatewayᚋinternalᚋgraphᚋmodelᚐFavoriteᚄ(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_Query_myFavorites(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Query",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "id":
+				return ec.fieldContext_Favorite_id(ctx, field)
+			case "userId":
+				return ec.fieldContext_Favorite_userId(ctx, field)
+			case "user":
+				return ec.fieldContext_Favorite_user(ctx, field)
+			case "entityType":
+				return ec.fieldContext_Favorite_entityType(ctx, field)
+			case "entityId":
+				return ec.fieldContext_Favorite_entityId(ctx, field)
+			case "entityName":
+				return ec.fieldContext_Favorite_entityName(ctx, field)
+			case "notes":
+				return ec.fieldContext_Favorite_notes(ctx, field)
+			case "createdAt":
+				return ec.fieldContext_Favorite_createdAt(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type Favorite", field.Name)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Query_hasFavorite(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_Query_hasFavorite(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return ec.resolvers.Query().HasFavorite(rctx, fc.Args["entityType"].(model.EntityType), fc.Args["entityId"].(string))
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(bool)
+	fc.Result = res
+	return ec.marshalNBoolean2bool(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_Query_hasFavorite(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Query",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Boolean does not have child fields")
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Query_hasFavorite_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
 func (ec *executionContext) _Query_mySubscriptions(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Query_mySubscriptions(ctx, field)
 	if err != nil {
@@ -16354,7 +17367,7 @@ func (ec *executionContext) _Query_mySubscriptions(ctx context.Context, field gr
 	}()
 	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
 		ctx = rctx // use context from middleware stack in children
-		return ec.resolvers.Query().MySubscriptions(rctx, fc.Args["email"].(string))
+		return ec.resolvers.Query().MySubscriptions(rctx)
 	})
 	if err != nil {
 		ec.Error(ctx, err)
@@ -16371,7 +17384,7 @@ func (ec *executionContext) _Query_mySubscriptions(ctx context.Context, field gr
 	return ec.marshalNEntitySubscription2ᚕᚖgithubᚗcomᚋegrulᚑsystemᚋservicesᚋapiᚑgatewayᚋinternalᚋgraphᚋmodelᚐEntitySubscriptionᚄ(ctx, field.Selections, res)
 }
 
-func (ec *executionContext) fieldContext_Query_mySubscriptions(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+func (ec *executionContext) fieldContext_Query_mySubscriptions(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
 	fc = &graphql.FieldContext{
 		Object:     "Query",
 		Field:      field,
@@ -16381,8 +17394,10 @@ func (ec *executionContext) fieldContext_Query_mySubscriptions(ctx context.Conte
 			switch field.Name {
 			case "id":
 				return ec.fieldContext_EntitySubscription_id(ctx, field)
-			case "userEmail":
-				return ec.fieldContext_EntitySubscription_userEmail(ctx, field)
+			case "userId":
+				return ec.fieldContext_EntitySubscription_userId(ctx, field)
+			case "user":
+				return ec.fieldContext_EntitySubscription_user(ctx, field)
 			case "entityType":
 				return ec.fieldContext_EntitySubscription_entityType(ctx, field)
 			case "entityId":
@@ -16404,17 +17419,6 @@ func (ec *executionContext) fieldContext_Query_mySubscriptions(ctx context.Conte
 			}
 			return nil, fmt.Errorf("no field named %q was found under type EntitySubscription", field.Name)
 		},
-	}
-	defer func() {
-		if r := recover(); r != nil {
-			err = ec.Recover(ctx, r)
-			ec.Error(ctx, err)
-		}
-	}()
-	ctx = graphql.WithFieldContext(ctx, fc)
-	if fc.Args, err = ec.field_Query_mySubscriptions_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
-		ec.Error(ctx, err)
-		return fc, err
 	}
 	return fc, nil
 }
@@ -16457,8 +17461,10 @@ func (ec *executionContext) fieldContext_Query_subscription(ctx context.Context,
 			switch field.Name {
 			case "id":
 				return ec.fieldContext_EntitySubscription_id(ctx, field)
-			case "userEmail":
-				return ec.fieldContext_EntitySubscription_userEmail(ctx, field)
+			case "userId":
+				return ec.fieldContext_EntitySubscription_userId(ctx, field)
+			case "user":
+				return ec.fieldContext_EntitySubscription_user(ctx, field)
 			case "entityType":
 				return ec.fieldContext_EntitySubscription_entityType(ctx, field)
 			case "entityId":
@@ -16540,8 +17546,8 @@ func (ec *executionContext) fieldContext_Query_notificationHistory(ctx context.C
 				return ec.fieldContext_NotificationLogEntry_subscriptionId(ctx, field)
 			case "changeEventId":
 				return ec.fieldContext_NotificationLogEntry_changeEventId(ctx, field)
-			case "userEmail":
-				return ec.fieldContext_NotificationLogEntry_userEmail(ctx, field)
+			case "userId":
+				return ec.fieldContext_NotificationLogEntry_userId(ctx, field)
 			case "channel":
 				return ec.fieldContext_NotificationLogEntry_channel(ctx, field)
 			case "status":
@@ -16584,7 +17590,7 @@ func (ec *executionContext) _Query_hasSubscription(ctx context.Context, field gr
 	}()
 	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
 		ctx = rctx // use context from middleware stack in children
-		return ec.resolvers.Query().HasSubscription(rctx, fc.Args["email"].(string), fc.Args["entityType"].(model.EntityType), fc.Args["entityId"].(string))
+		return ec.resolvers.Query().HasSubscription(rctx, fc.Args["entityType"].(model.EntityType), fc.Args["entityId"].(string))
 	})
 	if err != nil {
 		ec.Error(ctx, err)
@@ -20783,6 +21789,54 @@ func (ec *executionContext) unmarshalInputCompanySort(ctx context.Context, obj i
 	return it, nil
 }
 
+func (ec *executionContext) unmarshalInputCreateFavoriteInput(ctx context.Context, obj interface{}) (model.CreateFavoriteInput, error) {
+	var it model.CreateFavoriteInput
+	asMap := map[string]interface{}{}
+	for k, v := range obj.(map[string]interface{}) {
+		asMap[k] = v
+	}
+
+	fieldsInOrder := [...]string{"entityType", "entityId", "entityName", "notes"}
+	for _, k := range fieldsInOrder {
+		v, ok := asMap[k]
+		if !ok {
+			continue
+		}
+		switch k {
+		case "entityType":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("entityType"))
+			data, err := ec.unmarshalNEntityType2githubᚗcomᚋegrulᚑsystemᚋservicesᚋapiᚑgatewayᚋinternalᚋgraphᚋmodelᚐEntityType(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.EntityType = data
+		case "entityId":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("entityId"))
+			data, err := ec.unmarshalNString2string(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.EntityID = data
+		case "entityName":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("entityName"))
+			data, err := ec.unmarshalNString2string(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.EntityName = data
+		case "notes":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("notes"))
+			data, err := ec.unmarshalOString2ᚖstring(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.Notes = data
+		}
+	}
+
+	return it, nil
+}
+
 func (ec *executionContext) unmarshalInputCreateSubscriptionInput(ctx context.Context, obj interface{}) (model.CreateSubscriptionInput, error) {
 	var it model.CreateSubscriptionInput
 	asMap := map[string]interface{}{}
@@ -20790,20 +21844,13 @@ func (ec *executionContext) unmarshalInputCreateSubscriptionInput(ctx context.Co
 		asMap[k] = v
 	}
 
-	fieldsInOrder := [...]string{"userEmail", "entityType", "entityId", "entityName", "changeFilters", "notificationChannels"}
+	fieldsInOrder := [...]string{"entityType", "entityId", "entityName", "changeFilters", "notificationChannels"}
 	for _, k := range fieldsInOrder {
 		v, ok := asMap[k]
 		if !ok {
 			continue
 		}
 		switch k {
-		case "userEmail":
-			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("userEmail"))
-			data, err := ec.unmarshalNString2string(ctx, v)
-			if err != nil {
-				return it, err
-			}
-			it.UserEmail = data
 		case "entityType":
 			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("entityType"))
 			data, err := ec.unmarshalNEntityType2githubᚗcomᚋegrulᚑsystemᚋservicesᚋapiᚑgatewayᚋinternalᚋgraphᚋmodelᚐEntityType(ctx, v)
@@ -21262,6 +22309,40 @@ func (ec *executionContext) unmarshalInputToggleSubscriptionInput(ctx context.Co
 				return it, err
 			}
 			it.IsActive = data
+		}
+	}
+
+	return it, nil
+}
+
+func (ec *executionContext) unmarshalInputUpdateFavoriteNotesInput(ctx context.Context, obj interface{}) (model.UpdateFavoriteNotesInput, error) {
+	var it model.UpdateFavoriteNotesInput
+	asMap := map[string]interface{}{}
+	for k, v := range obj.(map[string]interface{}) {
+		asMap[k] = v
+	}
+
+	fieldsInOrder := [...]string{"id", "notes"}
+	for _, k := range fieldsInOrder {
+		v, ok := asMap[k]
+		if !ok {
+			continue
+		}
+		switch k {
+		case "id":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("id"))
+			data, err := ec.unmarshalNID2string(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.ID = data
+		case "notes":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("notes"))
+			data, err := ec.unmarshalOString2ᚖstring(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.Notes = data
 		}
 	}
 
@@ -22185,8 +23266,13 @@ func (ec *executionContext) _EntitySubscription(ctx context.Context, sel ast.Sel
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
 			}
-		case "userEmail":
-			out.Values[i] = ec._EntitySubscription_userEmail(ctx, field, obj)
+		case "userId":
+			out.Values[i] = ec._EntitySubscription_userId(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "user":
+			out.Values[i] = ec._EntitySubscription_user(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
 			}
@@ -22591,6 +23677,77 @@ func (ec *executionContext) _EntrepreneurEdge(ctx context.Context, sel ast.Selec
 	return out
 }
 
+var favoriteImplementors = []string{"Favorite"}
+
+func (ec *executionContext) _Favorite(ctx context.Context, sel ast.SelectionSet, obj *model.Favorite) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, favoriteImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferred := make(map[string]*graphql.FieldSet)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("Favorite")
+		case "id":
+			out.Values[i] = ec._Favorite_id(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "userId":
+			out.Values[i] = ec._Favorite_userId(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "user":
+			out.Values[i] = ec._Favorite_user(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "entityType":
+			out.Values[i] = ec._Favorite_entityType(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "entityId":
+			out.Values[i] = ec._Favorite_entityId(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "entityName":
+			out.Values[i] = ec._Favorite_entityName(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "notes":
+			out.Values[i] = ec._Favorite_notes(ctx, field, obj)
+		case "createdAt":
+			out.Values[i] = ec._Favorite_createdAt(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.deferred, int32(len(deferred)))
+
+	for label, dfs := range deferred {
+		ec.processDeferredGroup(graphql.DeferredGroup{
+			Label:    label,
+			Path:     graphql.GetPath(ctx),
+			FieldSet: dfs,
+			Context:  ctx,
+		})
+	}
+
+	return out
+}
+
 var founderImplementors = []string{"Founder"}
 
 func (ec *executionContext) _Founder(ctx context.Context, sel ast.SelectionSet, obj *model.Founder) graphql.Marshaler {
@@ -22877,31 +24034,6 @@ func (ec *executionContext) _Mutation(ctx context.Context, sel ast.SelectionSet)
 		switch field.Name {
 		case "__typename":
 			out.Values[i] = graphql.MarshalString("Mutation")
-		case "_empty":
-			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
-				return ec._Mutation__empty(ctx, field)
-			})
-		case "register":
-			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
-				return ec._Mutation_register(ctx, field)
-			})
-			if out.Values[i] == graphql.Null {
-				out.Invalids++
-			}
-		case "login":
-			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
-				return ec._Mutation_login(ctx, field)
-			})
-			if out.Values[i] == graphql.Null {
-				out.Invalids++
-			}
-		case "logout":
-			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
-				return ec._Mutation_logout(ctx, field)
-			})
-			if out.Values[i] == graphql.Null {
-				out.Invalids++
-			}
 		case "createSubscription":
 			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
 				return ec._Mutation_createSubscription(ctx, field)
@@ -22933,6 +24065,48 @@ func (ec *executionContext) _Mutation(ctx context.Context, sel ast.SelectionSet)
 		case "toggleSubscription":
 			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
 				return ec._Mutation_toggleSubscription(ctx, field)
+			})
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "register":
+			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
+				return ec._Mutation_register(ctx, field)
+			})
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "login":
+			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
+				return ec._Mutation_login(ctx, field)
+			})
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "logout":
+			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
+				return ec._Mutation_logout(ctx, field)
+			})
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "createFavorite":
+			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
+				return ec._Mutation_createFavorite(ctx, field)
+			})
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "updateFavoriteNotes":
+			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
+				return ec._Mutation_updateFavoriteNotes(ctx, field)
+			})
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "deleteFavorite":
+			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
+				return ec._Mutation_deleteFavorite(ctx, field)
 			})
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
@@ -23025,8 +24199,8 @@ func (ec *executionContext) _NotificationLogEntry(ctx context.Context, sel ast.S
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
 			}
-		case "userEmail":
-			out.Values[i] = ec._NotificationLogEntry_userEmail(ctx, field, obj)
+		case "userId":
+			out.Values[i] = ec._NotificationLogEntry_userId(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
 			}
@@ -23542,6 +24716,50 @@ func (ec *executionContext) _Query(ctx context.Context, sel ast.SelectionSet) gr
 					}
 				}()
 				res = ec._Query_me(ctx, field)
+				return res
+			}
+
+			rrm := func(ctx context.Context) graphql.Marshaler {
+				return ec.OperationContext.RootResolverMiddleware(ctx,
+					func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
+			}
+
+			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return rrm(innerCtx) })
+		case "myFavorites":
+			field := field
+
+			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Query_myFavorites(ctx, field)
+				if res == graphql.Null {
+					atomic.AddUint32(&fs.Invalids, 1)
+				}
+				return res
+			}
+
+			rrm := func(ctx context.Context) graphql.Marshaler {
+				return ec.OperationContext.RootResolverMiddleware(ctx,
+					func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
+			}
+
+			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return rrm(innerCtx) })
+		case "hasFavorite":
+			field := field
+
+			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Query_hasFavorite(ctx, field)
+				if res == graphql.Null {
+					atomic.AddUint32(&fs.Invalids, 1)
+				}
 				return res
 			}
 
@@ -24736,6 +25954,11 @@ func (ec *executionContext) marshalNCompanySortField2githubᚗcomᚋegrulᚑsyst
 	return res
 }
 
+func (ec *executionContext) unmarshalNCreateFavoriteInput2githubᚗcomᚋegrulᚑsystemᚋservicesᚋapiᚑgatewayᚋinternalᚋgraphᚋmodelᚐCreateFavoriteInput(ctx context.Context, v interface{}) (model.CreateFavoriteInput, error) {
+	res, err := ec.unmarshalInputCreateFavoriteInput(ctx, v)
+	return res, graphql.ErrorOnPath(ctx, err)
+}
+
 func (ec *executionContext) unmarshalNCreateSubscriptionInput2githubᚗcomᚋegrulᚑsystemᚋservicesᚋapiᚑgatewayᚋinternalᚋgraphᚋmodelᚐCreateSubscriptionInput(ctx context.Context, v interface{}) (model.CreateSubscriptionInput, error) {
 	res, err := ec.unmarshalInputCreateSubscriptionInput(ctx, v)
 	return res, graphql.ErrorOnPath(ctx, err)
@@ -24991,6 +26214,64 @@ func (ec *executionContext) unmarshalNEntrepreneurSortField2githubᚗcomᚋegrul
 
 func (ec *executionContext) marshalNEntrepreneurSortField2githubᚗcomᚋegrulᚑsystemᚋservicesᚋapiᚑgatewayᚋinternalᚋgraphᚋmodelᚐEntrepreneurSortField(ctx context.Context, sel ast.SelectionSet, v model.EntrepreneurSortField) graphql.Marshaler {
 	return v
+}
+
+func (ec *executionContext) marshalNFavorite2githubᚗcomᚋegrulᚑsystemᚋservicesᚋapiᚑgatewayᚋinternalᚋgraphᚋmodelᚐFavorite(ctx context.Context, sel ast.SelectionSet, v model.Favorite) graphql.Marshaler {
+	return ec._Favorite(ctx, sel, &v)
+}
+
+func (ec *executionContext) marshalNFavorite2ᚕᚖgithubᚗcomᚋegrulᚑsystemᚋservicesᚋapiᚑgatewayᚋinternalᚋgraphᚋmodelᚐFavoriteᚄ(ctx context.Context, sel ast.SelectionSet, v []*model.Favorite) graphql.Marshaler {
+	ret := make(graphql.Array, len(v))
+	var wg sync.WaitGroup
+	isLen1 := len(v) == 1
+	if !isLen1 {
+		wg.Add(len(v))
+	}
+	for i := range v {
+		i := i
+		fc := &graphql.FieldContext{
+			Index:  &i,
+			Result: &v[i],
+		}
+		ctx := graphql.WithFieldContext(ctx, fc)
+		f := func(i int) {
+			defer func() {
+				if r := recover(); r != nil {
+					ec.Error(ctx, ec.Recover(ctx, r))
+					ret = nil
+				}
+			}()
+			if !isLen1 {
+				defer wg.Done()
+			}
+			ret[i] = ec.marshalNFavorite2ᚖgithubᚗcomᚋegrulᚑsystemᚋservicesᚋapiᚑgatewayᚋinternalᚋgraphᚋmodelᚐFavorite(ctx, sel, v[i])
+		}
+		if isLen1 {
+			f(i)
+		} else {
+			go f(i)
+		}
+
+	}
+	wg.Wait()
+
+	for _, e := range ret {
+		if e == graphql.Null {
+			return graphql.Null
+		}
+	}
+
+	return ret
+}
+
+func (ec *executionContext) marshalNFavorite2ᚖgithubᚗcomᚋegrulᚑsystemᚋservicesᚋapiᚑgatewayᚋinternalᚋgraphᚋmodelᚐFavorite(ctx context.Context, sel ast.SelectionSet, v *model.Favorite) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			ec.Errorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._Favorite(ctx, sel, v)
 }
 
 func (ec *executionContext) unmarshalNFloat2float64(ctx context.Context, v interface{}) (float64, error) {
@@ -25500,6 +26781,11 @@ func (ec *executionContext) marshalNString2string(ctx context.Context, sel ast.S
 
 func (ec *executionContext) unmarshalNToggleSubscriptionInput2githubᚗcomᚋegrulᚑsystemᚋservicesᚋapiᚑgatewayᚋinternalᚋgraphᚋmodelᚐToggleSubscriptionInput(ctx context.Context, v interface{}) (model.ToggleSubscriptionInput, error) {
 	res, err := ec.unmarshalInputToggleSubscriptionInput(ctx, v)
+	return res, graphql.ErrorOnPath(ctx, err)
+}
+
+func (ec *executionContext) unmarshalNUpdateFavoriteNotesInput2githubᚗcomᚋegrulᚑsystemᚋservicesᚋapiᚑgatewayᚋinternalᚋgraphᚋmodelᚐUpdateFavoriteNotesInput(ctx context.Context, v interface{}) (model.UpdateFavoriteNotesInput, error) {
+	res, err := ec.unmarshalInputUpdateFavoriteNotesInput(ctx, v)
 	return res, graphql.ErrorOnPath(ctx, err)
 }
 

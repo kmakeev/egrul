@@ -162,7 +162,7 @@ extend type Query {
   ): Boolean!
 }
 
-extend type Mutation {
+type Mutation {
   """
   Создать новую подписку
   """
@@ -187,8 +187,4 @@ extend type Mutation {
   Приостановить/возобновить подписку
   """
   toggleSubscription(input: ToggleSubscriptionInput!): EntitySubscription!
-}
-
-type Mutation {
-  _empty: String
 }

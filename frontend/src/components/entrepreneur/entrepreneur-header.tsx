@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader } from "@/components/ui/card";
@@ -9,6 +8,7 @@ import { Heart, Download, Share2, Bell, BellRing } from "lucide-react";
 import { formatDate } from "@/lib/format-utils";
 import { EntrepreneurStatusBadge } from "./entrepreneur-status-badge";
 import { SubscriptionForm } from "@/components/subscriptions/subscription-form";
+import { LoginDialog } from "@/components/auth/login-dialog";
 import { useHasSubscriptionQuery } from "@/lib/api/subscription-hooks";
 import { EntityType } from "@/lib/api/subscription-hooks";
 import {
@@ -26,12 +26,14 @@ interface EntrepreneurHeaderProps {
 }
 
 export function EntrepreneurHeader({ entrepreneur }: EntrepreneurHeaderProps) {
-  const router = useRouter();
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
   // State for subscription modal
   const [subscriptionDialogOpen, setSubscriptionDialogOpen] = useState(false);
+
+  // State for login modal
+  const [loginDialogOpen, setLoginDialogOpen] = useState(false);
 
   // Get user from auth store
   const { isAuthenticated } = useAuthStore();
@@ -74,10 +76,11 @@ export function EntrepreneurHeader({ entrepreneur }: EntrepreneurHeaderProps) {
         description: "ИП добавлен в избранное"
       });
     },
-    onError: (error: any) => {
+    onError: (error: unknown) => {
+      const message = error instanceof Error ? error.message : "Не удалось добавить в избранное";
       toast({
         title: "Ошибка",
-        description: error?.message || "Не удалось добавить в избранное",
+        description: message,
         variant: "destructive"
       });
     }
@@ -97,10 +100,11 @@ export function EntrepreneurHeader({ entrepreneur }: EntrepreneurHeaderProps) {
         description: "ИП удален из избранного"
       });
     },
-    onError: (error: any) => {
+    onError: (error: unknown) => {
+      const message = error instanceof Error ? error.message : "Не удалось удалить из избранного";
       toast({
         title: "Ошибка",
-        description: error?.message || "Не удалось удалить из избранного",
+        description: message,
         variant: "destructive"
       });
     }
@@ -108,15 +112,7 @@ export function EntrepreneurHeader({ entrepreneur }: EntrepreneurHeaderProps) {
 
   const handleSubscribeClick = () => {
     if (!isAuthenticated) {
-      toast({
-        title: "Требуется авторизация",
-        description: "Войдите или зарегистрируйтесь для подписки на изменения",
-        action: (
-          <Button onClick={() => router.push("/login")} size="sm">
-            Войти
-          </Button>
-        ),
-      });
+      setLoginDialogOpen(true);
       return;
     }
     setSubscriptionDialogOpen(true);
@@ -124,15 +120,7 @@ export function EntrepreneurHeader({ entrepreneur }: EntrepreneurHeaderProps) {
 
   const handleAddToFavorites = () => {
     if (!isAuthenticated) {
-      toast({
-        title: "Требуется авторизация",
-        description: "Войдите или зарегистрируйтесь для добавления в избранное",
-        action: (
-          <Button onClick={() => router.push("/login")} size="sm">
-            Войти
-          </Button>
-        ),
-      });
+      setLoginDialogOpen(true);
       return;
     }
 
@@ -265,6 +253,11 @@ export function EntrepreneurHeader({ entrepreneur }: EntrepreneurHeaderProps) {
         entityName={fullName}
         open={subscriptionDialogOpen}
         onOpenChange={setSubscriptionDialogOpen}
+      />
+
+      <LoginDialog
+        open={loginDialogOpen}
+        onOpenChange={setLoginDialogOpen}
       />
     </Card>
   );

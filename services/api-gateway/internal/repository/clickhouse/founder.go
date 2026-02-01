@@ -169,7 +169,7 @@ func (r *FounderRepository) GetCompaniesWithCommonFounders(ctx context.Context, 
 		FROM egrul.founders FINAL
 		WHERE founder_inn IN (
 			SELECT DISTINCT founder_inn
-			FROM egrul.founders FINAL
+			FROM egrul.founders_local FINAL
 			WHERE company_ogrn = ?
 			  AND founder_type = 'person'
 			  AND founder_inn != ''
@@ -245,7 +245,7 @@ func (r *FounderRepository) GetFounderCompanies(ctx context.Context, ogrn string
 func (r *FounderRepository) GetCommonFoundersDetails(ctx context.Context, ogrn1, ogrn2 string) ([]*model.Founder, error) {
 	r.logger.Info("GetCommonFoundersDetails called", zap.String("ogrn1", ogrn1), zap.String("ogrn2", ogrn2))
 	
-	query := `SELECT DISTINCT f1.founder_inn, f1.founder_name, f1.founder_last_name, f1.founder_first_name, f1.founder_middle_name, f1.founder_citizenship, f1.share_percent as share_percent_1, f2.share_percent as share_percent_2 FROM egrul.founders f1 FINAL INNER JOIN egrul.founders f2 FINAL ON f1.founder_inn = f2.founder_inn WHERE f1.company_ogrn = ? AND f2.company_ogrn = ? AND f1.founder_type = 'person' AND f2.founder_type = 'person' AND f1.founder_inn != '' ORDER BY f1.founder_name`
+	query := `SELECT DISTINCT f1.founder_inn, f1.founder_name, f1.founder_last_name, f1.founder_first_name, f1.founder_middle_name, f1.founder_citizenship, f1.share_percent as share_percent_1, f2.share_percent as share_percent_2 FROM egrul.founders f1 FINAL GLOBAL INNER JOIN egrul.founders f2 FINAL ON f1.founder_inn = f2.founder_inn WHERE f1.company_ogrn = ? AND f2.company_ogrn = ? AND f1.founder_type = 'person' AND f2.founder_type = 'person' AND f1.founder_inn != '' ORDER BY f1.founder_name`
 
 	rows, err := r.client.conn.Query(ctx, query, ogrn1, ogrn2)
 	if err != nil {
@@ -308,7 +308,7 @@ func (r *FounderRepository) GetCommonFoundersDetails(ctx context.Context, ogrn1,
 func (r *FounderRepository) GetCompaniesWithCommonDirectors(ctx context.Context, ogrn string, limit, offset int) ([]string, error) {
 	r.logger.Info("GetCompaniesWithCommonDirectors called", zap.String("ogrn", ogrn), zap.Int("limit", limit), zap.Int("offset", offset))
 	
-	query := `SELECT DISTINCT c2.ogrn FROM egrul.companies c1 FINAL INNER JOIN egrul.companies c2 FINAL ON c1.head_inn = c2.head_inn WHERE c1.ogrn = ? AND c2.ogrn != ? AND c1.head_inn != '' AND c2.head_inn != '' ORDER BY c2.ogrn LIMIT ? OFFSET ?`
+	query := `SELECT DISTINCT c2.ogrn FROM egrul.companies c1 FINAL GLOBAL INNER JOIN egrul.companies c2 FINAL ON c1.head_inn = c2.head_inn WHERE c1.ogrn = ? AND c2.ogrn != ? AND c1.head_inn != '' AND c2.head_inn != '' ORDER BY c2.ogrn LIMIT ? OFFSET ?`
 
 	rows, err := r.client.conn.Query(ctx, query, ogrn, ogrn, limit, offset)
 	if err != nil {
@@ -335,7 +335,7 @@ func (r *FounderRepository) GetCompaniesWithCommonDirectors(ctx context.Context,
 func (r *FounderRepository) GetCommonDirectorsDetails(ctx context.Context, ogrn1, ogrn2 string) ([]*model.Person, error) {
 	r.logger.Info("GetCommonDirectorsDetails called", zap.String("ogrn1", ogrn1), zap.String("ogrn2", ogrn2))
 	
-	query := `SELECT DISTINCT c1.head_inn, c1.head_last_name, c1.head_first_name, c1.head_middle_name, c1.head_position FROM egrul.companies c1 FINAL INNER JOIN egrul.companies c2 FINAL ON c1.head_inn = c2.head_inn WHERE c1.ogrn = ? AND c2.ogrn = ? AND c1.head_inn != '' AND c2.head_inn != '' ORDER BY c1.head_last_name, c1.head_first_name`
+	query := `SELECT DISTINCT c1.head_inn, c1.head_last_name, c1.head_first_name, c1.head_middle_name, c1.head_position FROM egrul.companies c1 FINAL GLOBAL INNER JOIN egrul.companies c2 FINAL ON c1.head_inn = c2.head_inn WHERE c1.ogrn = ? AND c2.ogrn = ? AND c1.head_inn != '' AND c2.head_inn != '' ORDER BY c1.head_last_name, c1.head_first_name`
 
 	rows, err := r.client.conn.Query(ctx, query, ogrn1, ogrn2)
 	if err != nil {
@@ -392,7 +392,7 @@ func (r *FounderRepository) GetCommonDirectorsDetails(ctx context.Context, ogrn1
 func (r *FounderRepository) GetCompaniesWhereFounderIsDirector(ctx context.Context, ogrn string, limit, offset int) ([]string, error) {
 	r.logger.Info("GetCompaniesWhereFounderIsDirector called", zap.String("ogrn", ogrn), zap.Int("limit", limit), zap.Int("offset", offset))
 	
-	query := `SELECT DISTINCT c.ogrn FROM egrul.founders f FINAL INNER JOIN egrul.companies c FINAL ON f.founder_inn = c.head_inn WHERE f.company_ogrn = ? AND f.founder_type = 'person' AND f.founder_inn != '' AND c.head_inn != '' AND c.ogrn != ? ORDER BY c.ogrn LIMIT ? OFFSET ?`
+	query := `SELECT DISTINCT c.ogrn FROM egrul.founders f FINAL GLOBAL INNER JOIN egrul.companies c FINAL ON f.founder_inn = c.head_inn WHERE f.company_ogrn = ? AND f.founder_type = 'person' AND f.founder_inn != '' AND c.head_inn != '' AND c.ogrn != ? ORDER BY c.ogrn LIMIT ? OFFSET ?`
 
 	rows, err := r.client.conn.Query(ctx, query, ogrn, ogrn, limit, offset)
 	if err != nil {
@@ -419,7 +419,7 @@ func (r *FounderRepository) GetCompaniesWhereFounderIsDirector(ctx context.Conte
 func (r *FounderRepository) GetCompaniesWhereDirectorIsFounder(ctx context.Context, ogrn string, limit, offset int) ([]string, error) {
 	r.logger.Info("GetCompaniesWhereDirectorIsFounder called", zap.String("ogrn", ogrn), zap.Int("limit", limit), zap.Int("offset", offset))
 	
-	query := `SELECT DISTINCT f.company_ogrn FROM egrul.companies c FINAL INNER JOIN egrul.founders f FINAL ON c.head_inn = f.founder_inn WHERE c.ogrn = ? AND c.head_inn != '' AND f.founder_type = 'person' AND f.founder_inn != '' AND f.company_ogrn != ? ORDER BY f.company_ogrn LIMIT ? OFFSET ?`
+	query := `SELECT DISTINCT f.company_ogrn FROM egrul.companies c FINAL GLOBAL INNER JOIN egrul.founders f FINAL ON c.head_inn = f.founder_inn WHERE c.ogrn = ? AND c.head_inn != '' AND f.founder_type = 'person' AND f.founder_inn != '' AND f.company_ogrn != ? ORDER BY f.company_ogrn LIMIT ? OFFSET ?`
 
 	rows, err := r.client.conn.Query(ctx, query, ogrn, ogrn, limit, offset)
 	if err != nil {
@@ -449,10 +449,10 @@ func (r *FounderRepository) GetCrossPersonDetails(ctx context.Context, ogrn1, og
 	var query string
 	if crossType == "founder_to_director" {
 		// Учредители ogrn1, которые являются руководителями ogrn2
-		query = `SELECT DISTINCT f.founder_inn, f.founder_last_name, f.founder_first_name, f.founder_middle_name, c.head_position FROM egrul.founders f FINAL INNER JOIN egrul.companies c FINAL ON f.founder_inn = c.head_inn WHERE f.company_ogrn = ? AND c.ogrn = ? AND f.founder_type = 'person' AND f.founder_inn != '' AND c.head_inn != ''`
+		query = `SELECT DISTINCT f.founder_inn, f.founder_last_name, f.founder_first_name, f.founder_middle_name, c.head_position FROM egrul.founders f FINAL GLOBAL INNER JOIN egrul.companies c FINAL ON f.founder_inn = c.head_inn WHERE f.company_ogrn = ? AND c.ogrn = ? AND f.founder_type = 'person' AND f.founder_inn != '' AND c.head_inn != ''`
 	} else {
 		// Руководитель ogrn1, который является учредителем ogrn2
-		query = `SELECT DISTINCT c.head_inn, c.head_last_name, c.head_first_name, c.head_middle_name, c.head_position FROM egrul.companies c FINAL INNER JOIN egrul.founders f FINAL ON c.head_inn = f.founder_inn WHERE c.ogrn = ? AND f.company_ogrn = ? AND c.head_inn != '' AND f.founder_type = 'person' AND f.founder_inn != ''`
+		query = `SELECT DISTINCT c.head_inn, c.head_last_name, c.head_first_name, c.head_middle_name, c.head_position FROM egrul.companies c FINAL GLOBAL INNER JOIN egrul.founders f FINAL ON c.head_inn = f.founder_inn WHERE c.ogrn = ? AND f.company_ogrn = ? AND c.head_inn != '' AND f.founder_type = 'person' AND f.founder_inn != ''`
 	}
 
 	rows, err := r.client.conn.Query(ctx, query, ogrn1, ogrn2)
@@ -507,7 +507,7 @@ func (r *FounderRepository) GetCompaniesWithCommonAddress(ctx context.Context, o
 	query := `
 		SELECT DISTINCT c2.ogrn
 		FROM egrul.companies c1 FINAL
-		INNER JOIN egrul.companies c2 FINAL ON c1.full_address = c2.full_address
+		GLOBAL INNER JOIN egrul.companies c2 FINAL ON c1.full_address = c2.full_address
 		WHERE c1.ogrn = ?
 		  AND c2.ogrn != ?
 		  AND c1.full_address IS NOT NULL
@@ -543,7 +543,7 @@ func (r *FounderRepository) GetCommonAddressDetails(ctx context.Context, ogrn1, 
 	r.logger.Info("GetCommonAddressDetails called", zap.String("ogrn1", ogrn1), zap.String("ogrn2", ogrn2))
 	
 	query := `
-		SELECT DISTINCT 
+		SELECT DISTINCT
 			c1.postal_code,
 			c1.region_code,
 			c1.region,
@@ -557,7 +557,7 @@ func (r *FounderRepository) GetCommonAddressDetails(ctx context.Context, ogrn1, 
 			c1.full_address,
 			c1.fias_id
 		FROM egrul.companies c1 FINAL
-		INNER JOIN egrul.companies c2 FINAL ON c1.full_address = c2.full_address
+		GLOBAL INNER JOIN egrul.companies c2 FINAL ON c1.full_address = c2.full_address
 		WHERE c1.ogrn = ? AND c2.ogrn = ?
 		  AND c1.full_address IS NOT NULL
 		  AND c1.full_address != ''

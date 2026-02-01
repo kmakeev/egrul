@@ -160,6 +160,10 @@ func (h *ManualHandler) execute(ctx context.Context, req *GraphQLRequest) (*Grap
 		h.resolver.Logger.Info("→ Routing to handleCreateSubscriptionMutation")
 		return h.handleCreateSubscriptionMutation(ctx, req)
 	}
+	if opName == "updatesubscriptionfilters" || queryName == "updatesubscriptionfilters" || strings.Contains(query, "updateSubscriptionFilters(") {
+		h.resolver.Logger.Info("→ Routing to handleUpdateSubscriptionFiltersMutation")
+		return h.handleUpdateSubscriptionFiltersMutation(ctx, req)
+	}
 
 	// Favorites operations
 	if opName == "myfavorites" || queryName == "myfavorites" {
@@ -1429,15 +1433,26 @@ func (h *ManualHandler) handleMySubscriptionsQuery(ctx context.Context, req *Gra
 	subscriptionsData := make([]map[string]interface{}, len(subscriptions))
 	for i, sub := range subscriptions {
 		subscriptionsData[i] = map[string]interface{}{
-			"id":                   sub.ID,
-			"userId":               sub.UserID,
-			"entityType":           sub.EntityType,
-			"entityId":             sub.EntityID,
-			"entityName":           sub.EntityName,
-			"isActive":             sub.IsActive,
-			"createdAt":            sub.CreatedAt,
-			"updatedAt":            sub.UpdatedAt,
-			"lastNotifiedAt":       sub.LastNotifiedAt,
+			"id":             sub.ID,
+			"userId":         sub.UserID,
+			"entityType":     sub.EntityType,
+			"entityId":       sub.EntityID,
+			"entityName":     sub.EntityName,
+			"changeFilters": map[string]interface{}{
+				"status":     sub.ChangeFilters.Status,
+				"director":   sub.ChangeFilters.Director,
+				"founders":   sub.ChangeFilters.Founders,
+				"address":    sub.ChangeFilters.Address,
+				"capital":    sub.ChangeFilters.Capital,
+				"activities": sub.ChangeFilters.Activities,
+			},
+			"notificationChannels": map[string]interface{}{
+				"email": sub.NotificationChannels.Email,
+			},
+			"isActive":       sub.IsActive,
+			"createdAt":      sub.CreatedAt,
+			"updatedAt":      sub.UpdatedAt,
+			"lastNotifiedAt": sub.LastNotifiedAt,
 		}
 	}
 
@@ -1575,6 +1590,52 @@ func (h *ManualHandler) handleToggleSubscriptionMutation(ctx context.Context, re
 			"toggleSubscription": map[string]interface{}{
 				"id":        subscription.ID,
 				"isActive":  subscription.IsActive,
+				"updatedAt": subscription.UpdatedAt,
+			},
+		},
+	}, nil
+}
+
+// handleUpdateSubscriptionFiltersMutation обрабатывает updateSubscriptionFilters mutation
+func (h *ManualHandler) handleUpdateSubscriptionFiltersMutation(ctx context.Context, req *GraphQLRequest) (*GraphQLResponse, error) {
+	var input model.UpdateSubscriptionFiltersInput
+
+	if inputData, ok := req.Variables["input"].(map[string]interface{}); ok {
+		if id, ok := inputData["id"].(string); ok {
+			input.ID = id
+		}
+		if changeFilters, ok := inputData["changeFilters"].(map[string]interface{}); ok {
+			input.ChangeFilters = &model.ChangeFiltersInput{
+				Status:     getBoolPtr(changeFilters["status"]),
+				Director:   getBoolPtr(changeFilters["director"]),
+				Founders:   getBoolPtr(changeFilters["founders"]),
+				Address:    getBoolPtr(changeFilters["address"]),
+				Capital:    getBoolPtr(changeFilters["capital"]),
+				Activities: getBoolPtr(changeFilters["activities"]),
+			}
+		}
+	}
+
+	mutationResolver := &mutationResolver{h.resolver}
+	subscription, err := mutationResolver.UpdateSubscriptionFilters(ctx, input)
+	if err != nil {
+		return &GraphQLResponse{
+			Errors: []GraphQLError{{Message: err.Error()}},
+		}, nil
+	}
+
+	return &GraphQLResponse{
+		Data: map[string]interface{}{
+			"updateSubscriptionFilters": map[string]interface{}{
+				"id": subscription.ID,
+				"changeFilters": map[string]interface{}{
+					"status":     subscription.ChangeFilters.Status,
+					"director":   subscription.ChangeFilters.Director,
+					"founders":   subscription.ChangeFilters.Founders,
+					"address":    subscription.ChangeFilters.Address,
+					"capital":    subscription.ChangeFilters.Capital,
+					"activities": subscription.ChangeFilters.Activities,
+				},
 				"updatedAt": subscription.UpdatedAt,
 			},
 		},
@@ -1760,6 +1821,17 @@ func (h *ManualHandler) handleDeleteFavoriteMutation(ctx context.Context, req *G
 			"deleteFavorite": success,
 		},
 	}, nil
+}
+
+// getBoolPtr преобразует interface{} в *bool
+func getBoolPtr(v interface{}) *bool {
+	if v == nil {
+		return nil
+	}
+	if b, ok := v.(bool); ok {
+		return &b
+	}
+	return nil
 }
 
 // NewDefaultExecutableSchema возвращает handler для совместимости

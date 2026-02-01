@@ -35,33 +35,32 @@ func (r *CompanyRepository) GetByOGRN(ctx context.Context, ogrn string) (*model.
 			short_name,
 			region_code,
 			status,
-			status_date,
-			liquidation_date,
-			director_full_name,
-			director_inn,
-			director_position,
-			address_full,
-			address_postal_code,
-			address_region,
-			address_city,
-			address_street,
-			address_house,
-			authorized_capital,
-			authorized_capital_currency,
-			main_okved_code,
+			concat(head_last_name, ' ', head_first_name, ' ', head_middle_name) as director_full_name,
+			head_inn,
+			head_position,
+			full_address,
+			postal_code,
+			region,
+			city,
+			street,
+			house,
+			capital_amount,
+			capital_currency,
+			okved_main_code,
 			registration_date,
-			last_update
+			extract_date,
+			updated_at
 		FROM companies
 		WHERE ogrn = ?
+		ORDER BY extract_date DESC
 		LIMIT 1
 	`
 
 	row := r.conn.QueryRow(ctx, query, ogrn)
 
 	var company model.Company
-	var statusDate, liquidationDate sql.NullTime
 	var authorizedCapital sql.NullFloat64
-	var capitalCurrency sql.NullString
+	var capitalCurrency, directorFullName, directorINN, directorPosition, addressFull, postalCode, addressRegion, addressCity, addressStreet, addressHouse sql.NullString
 
 	err := row.Scan(
 		&company.OGRN,
@@ -71,21 +70,20 @@ func (r *CompanyRepository) GetByOGRN(ctx context.Context, ogrn string) (*model.
 		&company.ShortName,
 		&company.RegionCode,
 		&company.Status,
-		&statusDate,
-		&liquidationDate,
-		&company.DirectorFullName,
-		&company.DirectorINN,
-		&company.DirectorPosition,
-		&company.AddressFull,
-		&company.AddressPostalCode,
-		&company.AddressRegion,
-		&company.AddressCity,
-		&company.AddressStreet,
-		&company.AddressHouse,
+		&directorFullName,
+		&directorINN,
+		&directorPosition,
+		&addressFull,
+		&postalCode,
+		&addressRegion,
+		&addressCity,
+		&addressStreet,
+		&addressHouse,
 		&authorizedCapital,
 		&capitalCurrency,
 		&company.MainOKVED,
 		&company.RegistrationDate,
+		&company.ExtractDate,
 		&company.LastUpdate,
 	)
 
@@ -101,11 +99,32 @@ func (r *CompanyRepository) GetByOGRN(ctx context.Context, ogrn string) (*model.
 	}
 
 	// Преобразование nullable полей
-	if statusDate.Valid {
-		company.StatusDate = &statusDate.Time
+	if directorFullName.Valid {
+		company.DirectorFullName = directorFullName.String
 	}
-	if liquidationDate.Valid {
-		company.LiquidationDate = &liquidationDate.Time
+	if directorINN.Valid {
+		company.DirectorINN = directorINN.String
+	}
+	if directorPosition.Valid {
+		company.DirectorPosition = directorPosition.String
+	}
+	if addressFull.Valid {
+		company.AddressFull = addressFull.String
+	}
+	if postalCode.Valid {
+		company.AddressPostalCode = postalCode.String
+	}
+	if addressRegion.Valid {
+		company.AddressRegion = addressRegion.String
+	}
+	if addressCity.Valid {
+		company.AddressCity = addressCity.String
+	}
+	if addressStreet.Valid {
+		company.AddressStreet = addressStreet.String
+	}
+	if addressHouse.Valid {
+		company.AddressHouse = addressHouse.String
 	}
 	if authorizedCapital.Valid {
 		company.AuthorizedCapital = authorizedCapital.Float64
@@ -284,4 +303,146 @@ func (r *CompanyRepository) GetBranchesCount(ctx context.Context, ogrn string) (
 	}
 
 	return int(count), nil
+}
+
+// GetPreviousByOGRN возвращает предыдущую версию компании (с максимальной extract_date меньше текущей)
+func (r *CompanyRepository) GetPreviousByOGRN(ctx context.Context, ogrn string, beforeDate string) (*model.Company, error) {
+	query := `
+		SELECT
+			ogrn,
+			inn,
+			kpp,
+			full_name,
+			short_name,
+			region_code,
+			status,
+			concat(head_last_name, ' ', head_first_name, ' ', head_middle_name) as director_full_name,
+			head_inn,
+			head_position,
+			full_address,
+			postal_code,
+			region,
+			city,
+			street,
+			house,
+			capital_amount,
+			capital_currency,
+			okved_main_code,
+			registration_date,
+			extract_date,
+			updated_at
+		FROM companies
+		WHERE ogrn = ? AND extract_date < ?
+		ORDER BY extract_date DESC
+		LIMIT 1
+	`
+
+	row := r.conn.QueryRow(ctx, query, ogrn, beforeDate)
+
+	var company model.Company
+	var authorizedCapital sql.NullFloat64
+	var capitalCurrency, directorFullName, directorINN, directorPosition, addressFull, postalCode, addressRegion, addressCity, addressStreet, addressHouse sql.NullString
+
+	err := row.Scan(
+		&company.OGRN,
+		&company.INN,
+		&company.KPP,
+		&company.FullName,
+		&company.ShortName,
+		&company.RegionCode,
+		&company.Status,
+		&directorFullName,
+		&directorINN,
+		&directorPosition,
+		&addressFull,
+		&postalCode,
+		&addressRegion,
+		&addressCity,
+		&addressStreet,
+		&addressHouse,
+		&authorizedCapital,
+		&capitalCurrency,
+		&company.MainOKVED,
+		&company.RegistrationDate,
+		&company.ExtractDate,
+		&company.LastUpdate,
+	)
+
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil // Нет предыдущей версии - это не ошибка
+		}
+		r.logger.Error("failed to get previous company version by OGRN",
+			zap.String("ogrn", ogrn),
+			zap.String("before_date", beforeDate),
+			zap.Error(err),
+		)
+		return nil, fmt.Errorf("failed to get previous company version: %w", err)
+	}
+
+	// Преобразование nullable полей
+	if directorFullName.Valid {
+		company.DirectorFullName = directorFullName.String
+	}
+	if directorINN.Valid {
+		company.DirectorINN = directorINN.String
+	}
+	if directorPosition.Valid {
+		company.DirectorPosition = directorPosition.String
+	}
+	if addressFull.Valid {
+		company.AddressFull = addressFull.String
+	}
+	if postalCode.Valid {
+		company.AddressPostalCode = postalCode.String
+	}
+	if addressRegion.Valid {
+		company.AddressRegion = addressRegion.String
+	}
+	if addressCity.Valid {
+		company.AddressCity = addressCity.String
+	}
+	if addressStreet.Valid {
+		company.AddressStreet = addressStreet.String
+	}
+	if addressHouse.Valid {
+		company.AddressHouse = addressHouse.String
+	}
+	if authorizedCapital.Valid {
+		company.AuthorizedCapital = authorizedCapital.Float64
+	}
+	if capitalCurrency.Valid {
+		company.CapitalCurrency = capitalCurrency.String
+	}
+
+	// Загрузка связанных данных (опционально, для упрощения можно пропустить для предыдущей версии)
+	founders, err := r.GetFounders(ctx, ogrn)
+	if err != nil {
+		company.Founders = []model.Founder{}
+	} else {
+		company.Founders = founders
+	}
+
+	_, additionalOKVED, err := r.GetActivities(ctx, ogrn)
+	if err != nil {
+		company.AdditionalOKVED = []string{}
+	} else {
+		company.AdditionalOKVED = additionalOKVED
+	}
+
+	licensesCount, err := r.GetLicensesCount(ctx, ogrn)
+	if err != nil {
+		company.LicensesCount = 0
+	} else {
+		company.LicensesCount = licensesCount
+	}
+
+	branchesCount, err := r.GetBranchesCount(ctx, ogrn)
+	if err != nil {
+		company.BranchesCount = 0
+	} else {
+		company.BranchesCount = branchesCount
+	}
+
+	return &company, nil
 }

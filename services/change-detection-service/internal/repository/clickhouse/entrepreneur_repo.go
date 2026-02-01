@@ -30,31 +30,32 @@ func (r *EntrepreneurRepository) GetByOGRNIP(ctx context.Context, ogrnip string)
 		SELECT
 			ogrnip,
 			inn,
-			full_name,
+			concat(last_name, ' ', first_name, ' ', coalesce(middle_name, '')) AS full_name,
 			region_code,
 			status,
-			status_date,
 			termination_date,
-			address_full,
-			address_postal_code,
-			address_region,
-			address_city,
-			address_street,
-			address_house,
-			main_okved_code,
+			full_address,
+			postal_code,
+			region,
+			city,
+			street,
+			house,
+			okved_main_code,
 			registration_date,
-			last_update,
-			citizenship_code,
+			extract_date,
+			updated_at,
+			citizenship_country_code,
 			gender
 		FROM entrepreneurs
 		WHERE ogrnip = ?
+		ORDER BY extract_date DESC
 		LIMIT 1
 	`
 
 	row := r.conn.QueryRow(ctx, query, ogrnip)
 
 	var entrepreneur model.Entrepreneur
-	var statusDate, terminationDate sql.NullTime
+	var terminationDate sql.NullTime
 	var citizenshipCode, gender sql.NullString
 
 	err := row.Scan(
@@ -63,7 +64,6 @@ func (r *EntrepreneurRepository) GetByOGRNIP(ctx context.Context, ogrnip string)
 		&entrepreneur.FullName,
 		&entrepreneur.RegionCode,
 		&entrepreneur.Status,
-		&statusDate,
 		&terminationDate,
 		&entrepreneur.AddressFull,
 		&entrepreneur.AddressPostalCode,
@@ -73,6 +73,7 @@ func (r *EntrepreneurRepository) GetByOGRNIP(ctx context.Context, ogrnip string)
 		&entrepreneur.AddressHouse,
 		&entrepreneur.MainOKVED,
 		&entrepreneur.RegistrationDate,
+		&entrepreneur.ExtractDate,
 		&entrepreneur.LastUpdate,
 		&citizenshipCode,
 		&gender,
@@ -90,9 +91,6 @@ func (r *EntrepreneurRepository) GetByOGRNIP(ctx context.Context, ogrnip string)
 	}
 
 	// Преобразование nullable полей
-	if statusDate.Valid {
-		entrepreneur.StatusDate = &statusDate.Time
-	}
 	if terminationDate.Valid {
 		entrepreneur.TerminationDate = &terminationDate.Time
 	}
@@ -189,4 +187,100 @@ func (r *EntrepreneurRepository) GetLicensesCount(ctx context.Context, ogrnip st
 	}
 
 	return int(count), nil
+}
+
+// GetPreviousByOGRNIP возвращает предыдущую версию ИП (с максимальной extract_date меньше текущей)
+func (r *EntrepreneurRepository) GetPreviousByOGRNIP(ctx context.Context, ogrnip string, beforeDate string) (*model.Entrepreneur, error) {
+	query := `
+		SELECT
+			ogrnip,
+			inn,
+			concat(last_name, ' ', first_name, ' ', coalesce(middle_name, '')) AS full_name,
+			region_code,
+			status,
+			termination_date,
+			full_address,
+			postal_code,
+			region,
+			city,
+			street,
+			house,
+			okved_main_code,
+			registration_date,
+			extract_date,
+			updated_at,
+			citizenship_country_code,
+			gender
+		FROM entrepreneurs
+		WHERE ogrnip = ? AND extract_date < ?
+		ORDER BY extract_date DESC
+		LIMIT 1
+	`
+
+	row := r.conn.QueryRow(ctx, query, ogrnip, beforeDate)
+
+	var entrepreneur model.Entrepreneur
+	var terminationDate sql.NullTime
+	var citizenshipCode, gender sql.NullString
+
+	err := row.Scan(
+		&entrepreneur.OGRNIP,
+		&entrepreneur.INN,
+		&entrepreneur.FullName,
+		&entrepreneur.RegionCode,
+		&entrepreneur.Status,
+		&terminationDate,
+		&entrepreneur.AddressFull,
+		&entrepreneur.AddressPostalCode,
+		&entrepreneur.AddressRegion,
+		&entrepreneur.AddressCity,
+		&entrepreneur.AddressStreet,
+		&entrepreneur.AddressHouse,
+		&entrepreneur.MainOKVED,
+		&entrepreneur.RegistrationDate,
+		&entrepreneur.ExtractDate,
+		&entrepreneur.LastUpdate,
+		&citizenshipCode,
+		&gender,
+	)
+
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil // Нет предыдущей версии - это не ошибка
+		}
+		r.logger.Error("failed to get previous entrepreneur version by OGRNIP",
+			zap.String("ogrnip", ogrnip),
+			zap.String("before_date", beforeDate),
+			zap.Error(err),
+		)
+		return nil, fmt.Errorf("failed to get previous entrepreneur version: %w", err)
+	}
+
+	// Преобразование nullable полей
+	if terminationDate.Valid {
+		entrepreneur.TerminationDate = &terminationDate.Time
+	}
+	if citizenshipCode.Valid {
+		entrepreneur.CitizenshipCode = citizenshipCode.String
+	}
+	if gender.Valid {
+		entrepreneur.Gender = gender.String
+	}
+
+	// Загрузка связанных данных (опционально, для упрощения можно пропустить для предыдущей версии)
+	_, additionalOKVED, err := r.GetActivities(ctx, ogrnip)
+	if err != nil {
+		entrepreneur.AdditionalOKVED = []string{}
+	} else {
+		entrepreneur.AdditionalOKVED = additionalOKVED
+	}
+
+	licensesCount, err := r.GetLicensesCount(ctx, ogrnip)
+	if err != nil {
+		entrepreneur.LicensesCount = 0
+	} else {
+		entrepreneur.LicensesCount = licensesCount
+	}
+
+	return &entrepreneur, nil
 }
