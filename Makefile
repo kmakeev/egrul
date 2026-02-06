@@ -549,8 +549,17 @@ cluster-reset: ## Полное пересоздание БД кластера (�
 	@docker compose -f docker-compose.cluster.yml --profile cluster down -v 2>/dev/null || true
 	@echo "$(CYAN)🚀 Запуск чистого кластера...$(NC)"
 	@docker compose -f docker-compose.cluster.yml --profile cluster up -d
-	@echo "$(CYAN)⏳ Ожидание готовности кластера (60 сек)...$(NC)"
-	@sleep 60
+	@echo "$(CYAN)⏳ Ожидание готовности кластера (проверка health check)...$(NC)"
+	@sleep 30
+	@echo "$(CYAN)🔍 Ожидание всех нод (макс 120 сек)...$(NC)"
+	@for i in {1..12}; do \
+		if docker compose -f docker-compose.cluster.yml ps | grep -E 'clickhouse-0[1-6].*healthy' | wc -l | grep -q 6; then \
+			echo "$(GREEN)✅ Все ноды кластера готовы$(NC)"; \
+			break; \
+		fi; \
+		echo "  ⏳ Ожидание... (попытка $$i/12)"; \
+		sleep 10; \
+	done
 	@echo "$(CYAN)📊 Создание базы данных...$(NC)"
 	@docker exec egrul-clickhouse-01 clickhouse-client --user egrul_import --password 123 --query "\
 		CREATE DATABASE IF NOT EXISTS egrul ON CLUSTER egrul_cluster ENGINE = Atomic" 2>&1 | tail -1

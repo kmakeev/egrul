@@ -3,6 +3,7 @@ package postgresql
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -274,7 +275,7 @@ func (r *SubscriptionRepository) Delete(ctx context.Context, id string) error {
 	return nil
 }
 
-// GetNotificationHistory получает историю уведомлений для подписки
+// GetNotificationHistory получает историю уведомлений для подписки (для GraphQL)
 func (r *SubscriptionRepository) GetNotificationHistory(ctx context.Context, subscriptionID string, limit, offset int) ([]*model.NotificationLogEntry, error) {
 	query := fmt.Sprintf(`
 		SELECT
@@ -333,4 +334,221 @@ func (r *SubscriptionRepository) GetNotificationHistory(ctx context.Context, sub
 	}
 
 	return entries, nil
+}
+
+// EntitySubscription - структура для работы с Hub (без GraphQL model dependencies)
+type EntitySubscription struct {
+	ID                   string
+	UserEmail            string
+	EntityType           string
+	EntityID             string
+	EntityName           string
+	ChangeFilters        map[string]bool
+	NotificationChannels map[string]bool
+	IsActive             bool
+	CreatedAt            time.Time
+	UpdatedAt            time.Time
+	LastNotifiedAt       *time.Time
+}
+
+// GetActiveSubscriptionsForEntity получает активные подписки для сущности (для Notification Hub)
+func (r *SubscriptionRepository) GetActiveSubscriptionsForEntity(ctx context.Context, entityType, entityID string) ([]EntitySubscription, error) {
+	query := fmt.Sprintf(`
+		SELECT
+			id, user_email, entity_type, entity_id, entity_name,
+			change_filters, notification_channels, is_active,
+			created_at, updated_at, last_notified_at
+		FROM %s.entity_subscriptions
+		WHERE entity_type = $1 AND entity_id = $2 AND is_active = TRUE
+	`, r.schema)
+
+	entityType = strings.ToLower(entityType)
+
+	rows, err := r.db.QueryContext(ctx, query, entityType, entityID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query subscriptions: %w", err)
+	}
+	defer rows.Close()
+
+	var subscriptions []EntitySubscription
+
+	for rows.Next() {
+		var sub EntitySubscription
+		var lastNotifiedAt sql.NullTime
+		var changeFiltersJSON []byte
+		var notificationChannelsJSON []byte
+
+		err := rows.Scan(
+			&sub.ID,
+			&sub.UserEmail,
+			&sub.EntityType,
+			&sub.EntityID,
+			&sub.EntityName,
+			&changeFiltersJSON,
+			&notificationChannelsJSON,
+			&sub.IsActive,
+			&sub.CreatedAt,
+			&sub.UpdatedAt,
+			&lastNotifiedAt,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan subscription: %w", err)
+		}
+
+		// Десериализуем JSON
+		if err := json.Unmarshal(changeFiltersJSON, &sub.ChangeFilters); err != nil {
+			r.logger.Warn("failed to unmarshal change_filters", zap.Error(err))
+			sub.ChangeFilters = make(map[string]bool)
+		}
+
+		if err := json.Unmarshal(notificationChannelsJSON, &sub.NotificationChannels); err != nil {
+			r.logger.Warn("failed to unmarshal notification_channels", zap.Error(err))
+			sub.NotificationChannels = make(map[string]bool)
+		}
+
+		if lastNotifiedAt.Valid {
+			sub.LastNotifiedAt = &lastNotifiedAt.Time
+		}
+
+		subscriptions = append(subscriptions, sub)
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating subscriptions: %w", err)
+	}
+
+	return subscriptions, nil
+}
+
+// NotificationLogEntry - структура для истории уведомлений (упрощенная)
+type NotificationLogEntry struct {
+	ID            string
+	EntityType    string
+	EntityID      string
+	EntityName    string
+	ChangeType    string
+	FieldName     string
+	OldValue      string
+	NewValue      string
+	DetectedAt    time.Time
+	IsRead        bool
+	ReadAt        *time.Time
+	CreatedAt     time.Time
+}
+
+// GetNotificationHistoryByEmail получает историю уведомлений пользователя по email (для Notification Hub)
+func (r *SubscriptionRepository) GetNotificationHistoryByEmail(ctx context.Context, email string, limit, offset int) ([]NotificationLogEntry, error) {
+	query := fmt.Sprintf(`
+		SELECT
+			id, entity_type, entity_id, entity_name,
+			change_type, field_name, old_value, new_value,
+			detected_at, is_read, read_at, created_at
+		FROM %s.notification_log
+		WHERE recipient = $1
+		ORDER BY created_at DESC
+		LIMIT $2 OFFSET $3
+	`, r.schema)
+
+	rows, err := r.db.QueryContext(ctx, query, email, limit, offset)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query notification history: %w", err)
+	}
+	defer rows.Close()
+
+	var entries []NotificationLogEntry
+
+	for rows.Next() {
+		var entry NotificationLogEntry
+		var readAt sql.NullTime
+
+		err := rows.Scan(
+			&entry.ID,
+			&entry.EntityType,
+			&entry.EntityID,
+			&entry.EntityName,
+			&entry.ChangeType,
+			&entry.FieldName,
+			&entry.OldValue,
+			&entry.NewValue,
+			&entry.DetectedAt,
+			&entry.IsRead,
+			&readAt,
+			&entry.CreatedAt,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan notification entry: %w", err)
+		}
+
+		if readAt.Valid {
+			entry.ReadAt = &readAt.Time
+		}
+
+		entries = append(entries, entry)
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating notification history: %w", err)
+	}
+
+	return entries, nil
+}
+
+// MarkNotificationAsRead отмечает уведомление как прочитанное
+func (r *SubscriptionRepository) MarkNotificationAsRead(ctx context.Context, notificationID, email string) error {
+	query := fmt.Sprintf(`
+		UPDATE %s.notification_log
+		SET is_read = TRUE, read_at = $1
+		WHERE id = $2 AND recipient = $3 AND is_read = FALSE
+	`, r.schema)
+
+	now := time.Now()
+	result, err := r.db.ExecContext(ctx, query, now, notificationID, email)
+	if err != nil {
+		return fmt.Errorf("failed to mark notification as read: %w", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to get rows affected: %w", err)
+	}
+
+	if rowsAffected == 0 {
+		return sql.ErrNoRows
+	}
+
+	r.logger.Debug("notification marked as read",
+		zap.String("notification_id", notificationID),
+		zap.String("email", email),
+	)
+
+	return nil
+}
+
+// MarkAllNotificationsAsRead отмечает все уведомления пользователя как прочитанные
+func (r *SubscriptionRepository) MarkAllNotificationsAsRead(ctx context.Context, email string) (int64, error) {
+	query := fmt.Sprintf(`
+		UPDATE %s.notification_log
+		SET is_read = TRUE, read_at = $1
+		WHERE recipient = $2 AND is_read = FALSE
+	`, r.schema)
+
+	now := time.Now()
+	result, err := r.db.ExecContext(ctx, query, now, email)
+	if err != nil {
+		return 0, fmt.Errorf("failed to mark all notifications as read: %w", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("failed to get rows affected: %w", err)
+	}
+
+	if rowsAffected > 0 {
+		r.logger.Debug("all notifications marked as read",
+			zap.String("email", email),
+			zap.Int64("count", rowsAffected),
+		)
+	}
+
+	return rowsAffected, nil
 }

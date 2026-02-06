@@ -20,10 +20,7 @@ func (r *mutationResolver) CreateSubscription(ctx context.Context, input model.C
 	}
 
 	// Получаем userID из JWT context
-	userID, ok := auth.GetUserIDFromContext(ctx)
-	if !ok {
-		return nil, fmt.Errorf("unauthorized: login required")
-	}
+	userID := auth.GetUserIDFromContext(ctx)
 
 	// Получаем email пользователя из UserRepo (требуется для БД)
 	user, err := r.UserRepo.GetByID(ctx, userID)
@@ -224,10 +221,7 @@ func (r *queryResolver) MySubscriptions(ctx context.Context) ([]*model.EntitySub
 	}
 
 	// Получаем userID из JWT context
-	userID, ok := auth.GetUserIDFromContext(ctx)
-	if !ok {
-		return nil, fmt.Errorf("unauthorized: login required")
-	}
+	userID := auth.GetUserIDFromContext(ctx)
 
 	subscriptions, err := r.SubscriptionRepo.GetByUserID(ctx, userID)
 	if err != nil {
@@ -294,10 +288,7 @@ func (r *queryResolver) HasSubscription(ctx context.Context, entityType model.En
 	}
 
 	// Получаем userID из JWT context
-	userID, ok := auth.GetUserIDFromContext(ctx)
-	if !ok {
-		return false, fmt.Errorf("unauthorized: login required")
-	}
+	userID := auth.GetUserIDFromContext(ctx)
 
 	exists, err := r.SubscriptionRepo.HasSubscription(ctx, userID, string(entityType), entityID)
 	if err != nil {

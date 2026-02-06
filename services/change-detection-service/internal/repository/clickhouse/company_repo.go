@@ -52,7 +52,7 @@ func (r *CompanyRepository) GetByOGRN(ctx context.Context, ogrn string) (*model.
 			updated_at
 		FROM companies
 		WHERE ogrn = ?
-		ORDER BY extract_date DESC
+		ORDER BY updated_at DESC
 		LIMIT 1
 	`
 
@@ -196,10 +196,10 @@ func (r *CompanyRepository) GetByOGRNs(ctx context.Context, ogrns []string) ([]*
 func (r *CompanyRepository) GetFounders(ctx context.Context, ogrn string) ([]model.Founder, error) {
 	query := `
 		SELECT
-			founder_full_name,
+			founder_name,
 			founder_inn,
 			founder_ogrn,
-			share_amount,
+			share_nominal_value,
 			share_percent
 		FROM founders
 		WHERE company_ogrn = ?
@@ -247,8 +247,8 @@ func (r *CompanyRepository) GetActivities(ctx context.Context, ogrn string) (str
 	// Основной ОКВЭД уже получен в GetByOGRN, здесь получаем дополнительные
 	query := `
 		SELECT DISTINCT okved_code
-		FROM company_okved_extra
-		WHERE company_ogrn = ?
+		FROM companies_okved_additional
+		WHERE ogrn = ?
 		ORDER BY okved_code
 	`
 
@@ -276,7 +276,7 @@ func (r *CompanyRepository) GetLicensesCount(ctx context.Context, ogrn string) (
 	query := `
 		SELECT COUNT(DISTINCT license_number)
 		FROM licenses
-		WHERE company_ogrn = ?
+		WHERE entity_type = 'company' AND entity_ogrn = ?
 	`
 
 	var count uint64
@@ -305,7 +305,7 @@ func (r *CompanyRepository) GetBranchesCount(ctx context.Context, ogrn string) (
 	return int(count), nil
 }
 
-// GetPreviousByOGRN возвращает предыдущую версию компании (с максимальной extract_date меньше текущей)
+// GetPreviousByOGRN возвращает предыдущую версию компании (с максимальной updated_at меньше текущей)
 func (r *CompanyRepository) GetPreviousByOGRN(ctx context.Context, ogrn string, beforeDate string) (*model.Company, error) {
 	query := `
 		SELECT
@@ -332,8 +332,8 @@ func (r *CompanyRepository) GetPreviousByOGRN(ctx context.Context, ogrn string, 
 			extract_date,
 			updated_at
 		FROM companies
-		WHERE ogrn = ? AND extract_date < ?
-		ORDER BY extract_date DESC
+		WHERE ogrn = ? AND updated_at < toDateTime(?)
+		ORDER BY updated_at DESC
 		LIMIT 1
 	`
 

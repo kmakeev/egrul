@@ -178,10 +178,7 @@ func (r *queryResolver) Me(ctx context.Context) (*model.User, error) {
 	}
 
 	// Извлекаем userID из контекста (добавлен JWT middleware)
-	userID, ok := auth.GetUserIDFromContext(ctx)
-	if !ok {
-		return nil, errors.New("unauthorized: login required")
-	}
+	userID := auth.GetUserIDFromContext(ctx)
 
 	// Получаем пользователя из БД
 	user, err := r.UserRepo.GetByID(ctx, userID)

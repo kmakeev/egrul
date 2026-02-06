@@ -48,7 +48,7 @@ func (r *EntrepreneurRepository) GetByOGRNIP(ctx context.Context, ogrnip string)
 			gender
 		FROM entrepreneurs
 		WHERE ogrnip = ?
-		ORDER BY extract_date DESC
+		ORDER BY updated_at DESC
 		LIMIT 1
 	`
 
@@ -212,8 +212,8 @@ func (r *EntrepreneurRepository) GetPreviousByOGRNIP(ctx context.Context, ogrnip
 			citizenship_country_code,
 			gender
 		FROM entrepreneurs
-		WHERE ogrnip = ? AND extract_date < ?
-		ORDER BY extract_date DESC
+		WHERE ogrnip = ? AND updated_at < toDateTime(?)
+		ORDER BY updated_at DESC
 		LIMIT 1
 	`
 

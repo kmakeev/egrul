@@ -2,7 +2,7 @@ import * as React from "react";
 
 import type { ToastActionElement, ToastProps } from "@/components/ui/toast";
 
-const TOAST_LIMIT = 1;
+const TOAST_LIMIT = 3;
 const TOAST_REMOVE_DELAY = 1000000;
 
 type ToasterToast = ToastProps & {
@@ -10,6 +10,7 @@ type ToasterToast = ToastProps & {
   title?: React.ReactNode;
   description?: React.ReactNode;
   action?: ToastActionElement;
+  priority?: 'low' | 'normal' | 'high';
 };
 
 const _actionTypes = {
@@ -70,11 +71,21 @@ const addToRemoveQueue = (toastId: string) => {
 
 export const reducer = (state: State, action: Action): State => {
   switch (action.type) {
-    case "ADD_TOAST":
+    case "ADD_TOAST": {
+      // Добавить новый toast и отсортировать по priority
+      const newToasts = [action.toast, ...state.toasts];
+      const priorityOrder = { high: 0, normal: 1, low: 2 };
+      const sortedToasts = newToasts.sort((a, b) => {
+        const aPriority = priorityOrder[a.priority || 'normal'];
+        const bPriority = priorityOrder[b.priority || 'normal'];
+        return aPriority - bPriority;
+      });
+
       return {
         ...state,
-        toasts: [action.toast, ...state.toasts].slice(0, TOAST_LIMIT),
+        toasts: sortedToasts.slice(0, TOAST_LIMIT),
       };
+    }
 
     case "UPDATE_TOAST":
       return {

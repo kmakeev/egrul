@@ -11,14 +11,16 @@ import (
 
 // Config - основная структура конфигурации
 type Config struct {
-	Server        ServerConfig     `mapstructure:"server"`
-	ClickHouse    ClickHouseConfig `mapstructure:"clickhouse"`
-	Elasticsearch ElasticConfig    `mapstructure:"elasticsearch"`
-	PostgreSQL    PostgreSQLConfig `mapstructure:"postgresql"`
-	Redis         RedisConfig      `mapstructure:"redis"`
-	Log           LogConfig        `mapstructure:"log"`
-	GraphQL       GraphQLConfig    `mapstructure:"graphql"`
-	Auth          AuthConfig       `mapstructure:"auth"`
+	Server          ServerConfig          `mapstructure:"server"`
+	ClickHouse      ClickHouseConfig      `mapstructure:"clickhouse"`
+	Elasticsearch   ElasticConfig         `mapstructure:"elasticsearch"`
+	PostgreSQL      PostgreSQLConfig      `mapstructure:"postgresql"`
+	Redis           RedisConfig           `mapstructure:"redis"`
+	Kafka           KafkaConfig           `mapstructure:"kafka"`
+	NotificationHub NotificationHubConfig `mapstructure:"notification_hub"`
+	Log             LogConfig             `mapstructure:"log"`
+	GraphQL         GraphQLConfig         `mapstructure:"graphql"`
+	Auth            AuthConfig            `mapstructure:"auth"`
 }
 
 // ServerConfig - конфигурация HTTP сервера
@@ -88,8 +90,24 @@ type GraphQLConfig struct {
 
 // AuthConfig - конфигурация аутентификации
 type AuthConfig struct {
-	JWTSecretKey      string        `mapstructure:"jwt_secret_key"`
-	JWTTokenDuration  time.Duration `mapstructure:"jwt_token_duration"`
+	JWTSecretKey     string        `mapstructure:"jwt_secret_key"`
+	JWTTokenDuration time.Duration `mapstructure:"jwt_token_duration"`
+}
+
+// KafkaConfig - конфигурация Kafka
+type KafkaConfig struct {
+	Brokers              []string `mapstructure:"brokers"`
+	CompanyTopic         string   `mapstructure:"company_topic"`
+	EntrepreneurTopic    string   `mapstructure:"entrepreneur_topic"`
+	ConsumerGroup        string   `mapstructure:"consumer_group"`
+}
+
+// NotificationHubConfig - конфигурация Notification Hub
+type NotificationHubConfig struct {
+	Enabled           bool          `mapstructure:"enabled"`
+	BufferSize        int           `mapstructure:"buffer_size"`
+	HeartbeatInterval time.Duration `mapstructure:"heartbeat_interval"`
+	MaxClients        int           `mapstructure:"max_clients"`
 }
 
 // Load загружает конфигурацию из файла и переменных окружения
@@ -120,6 +138,16 @@ func Load() (*Config, error) {
 	var cfg Config
 	if err := v.Unmarshal(&cfg); err != nil {
 		return nil, fmt.Errorf("unmarshal config: %w", err)
+	}
+
+	// Post-processing: split KAFKA_BROKERS если это строка
+	// Viper не умеет автоматически разбивать строки в массивы при чтении из env
+	if brokerStr := v.GetString("kafka.brokers"); brokerStr != "" && brokerStr != "localhost:9092" {
+		// Если строка не пустая и не default, разбить её
+		cfg.Kafka.Brokers = strings.Split(brokerStr, ",")
+		for i := range cfg.Kafka.Brokers {
+			cfg.Kafka.Brokers[i] = strings.TrimSpace(cfg.Kafka.Brokers[i])
+		}
 	}
 
 	return &cfg, nil
@@ -180,6 +208,18 @@ func setDefaults(v *viper.Viper) {
 	// Auth
 	v.SetDefault("auth.jwt_secret_key", "CHANGE_ME_IN_PRODUCTION_MIN_32_CHARS")
 	v.SetDefault("auth.jwt_token_duration", 24*time.Hour)
+
+	// Kafka
+	v.SetDefault("kafka.brokers", []string{"localhost:9092"})
+	v.SetDefault("kafka.company_topic", "company-changes")
+	v.SetDefault("kafka.entrepreneur_topic", "entrepreneur-changes")
+	v.SetDefault("kafka.consumer_group", "api-gateway-notifications")
+
+	// Notification Hub
+	v.SetDefault("notification_hub.enabled", true)
+	v.SetDefault("notification_hub.buffer_size", 100)
+	v.SetDefault("notification_hub.heartbeat_interval", 30*time.Second)
+	v.SetDefault("notification_hub.max_clients", 1000)
 }
 
 func bindEnvVariables(v *viper.Viper) {
@@ -218,6 +258,18 @@ func bindEnvVariables(v *viper.Viper) {
 	// Auth
 	_ = v.BindEnv("auth.jwt_secret_key", "JWT_SECRET_KEY")
 	_ = v.BindEnv("auth.jwt_token_duration", "JWT_TOKEN_DURATION")
+
+	// Kafka
+	_ = v.BindEnv("kafka.brokers", "KAFKA_BROKERS")
+	_ = v.BindEnv("kafka.company_topic", "KAFKA_COMPANY_CHANGES_TOPIC")
+	_ = v.BindEnv("kafka.entrepreneur_topic", "KAFKA_ENTREPRENEUR_CHANGES_TOPIC")
+	_ = v.BindEnv("kafka.consumer_group", "NOTIFICATION_HUB_KAFKA_GROUP")
+
+	// Notification Hub
+	_ = v.BindEnv("notification_hub.enabled", "NOTIFICATION_HUB_ENABLED")
+	_ = v.BindEnv("notification_hub.buffer_size", "NOTIFICATION_HUB_BUFFER_SIZE")
+	_ = v.BindEnv("notification_hub.heartbeat_interval", "NOTIFICATION_HUB_HEARTBEAT_INTERVAL")
+	_ = v.BindEnv("notification_hub.max_clients", "NOTIFICATION_HUB_MAX_CLIENTS")
 }
 
 // Addr возвращает адрес сервера

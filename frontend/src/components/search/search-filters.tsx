@@ -21,8 +21,6 @@ import { Save, Search } from "lucide-react";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import type { SearchFiltersInput } from "@/lib/validations";
 
-// Временно отключаем логи фронтенда для просмотра логов бэкенда
-const ENABLE_FRONTEND_LOGS = false;
 
 interface SearchFiltersProps {
   filters: SearchFiltersInput;
@@ -82,27 +80,6 @@ export function SearchFilters({
             <EntityTypeSelect
               value={filters.entityType ?? "all"}
               onChange={(value) => {
-                // #region agent log: EntityTypeSelect onChange
-                if (ENABLE_FRONTEND_LOGS) {
-                  fetch("http://127.0.0.1:7242/ingest/d909b3ca-a27d-43bc-a00e-99361eba3af1", {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({
-                    sessionId: "debug-session",
-                    runId: "run-filters",
-                    hypothesisId: "H1",
-                    location: "search-filters.tsx:entityType:onChange",
-                    message: "Entity type filter changed in SearchFilters",
-                    data: { 
-                      currentEntityType: filters.entityType, 
-                      newEntityType: value,
-                      allFilters: filters,
-                    },
-                    timestamp: Date.now(),
-                  }),
-                }).catch(() => {});
-                }
-                // #endregion agent log: EntityTypeSelect onChange
                 onFiltersChange({ entityType: value });
               }}
             />
@@ -115,27 +92,6 @@ export function SearchFilters({
                 key={resetKey}
                 value={filters.region}
                 onChange={(value) => {
-                  // #region agent log: SearchFilters region onChange
-                  if (ENABLE_FRONTEND_LOGS) {
-                    fetch("http://127.0.0.1:7242/ingest/d909b3ca-a27d-43bc-a00e-99361eba3af1", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                      sessionId: "debug-session",
-                      runId: "run-filters",
-                      hypothesisId: "H1",
-                      location: "search-filters.tsx:region:onChange",
-                      message: "Region filter changed in SearchFilters",
-                      data: { 
-                        currentRegion: filters.region, 
-                        newRegion: value,
-                        allFilters: filters,
-                      },
-                      timestamp: Date.now(),
-                    }),
-                  }).catch(() => {});
-                  }
-                  // #endregion agent log: SearchFilters region onChange
                   onFiltersChange({ region: value });
                 }}
               />
@@ -155,29 +111,6 @@ export function SearchFilters({
                 value={filters.status ?? "all"}
                 onValueChange={(value) => {
                   const nextValue = value === "all" ? undefined : value;
-
-                  if (ENABLE_FRONTEND_LOGS) {
-                    fetch(
-                      "http://127.0.0.1:7242/ingest/d909b3ca-a27d-43bc-a00e-99361eba3af1",
-                      {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({
-                          sessionId: "debug-session",
-                          runId: "run-filters",
-                          hypothesisId: "H5",
-                          location: "search-filters.tsx:status:select",
-                          message: "Unified status filter changed",
-                          data: {
-                            currentStatus: filters.status,
-                            newStatus: nextValue,
-                          },
-                          timestamp: Date.now(),
-                        }),
-                      }
-                    ).catch(() => {});
-                  }
-
                   onFiltersChange({ status: nextValue });
                 }}
               >

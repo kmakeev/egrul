@@ -11,8 +11,6 @@ import {
 import { Input } from "@/components/ui/input";
 import { Search } from "lucide-react";
 
-// Временно отключаем логи фронтенда для просмотра логов бэкенда
-const ENABLE_FRONTEND_LOGS = false;
 
 // Полный список регионов РФ (коды ОКАТО)
 const REGIONS = [
@@ -119,23 +117,6 @@ export function RegionSelect({ value, onChange }: RegionSelectProps) {
     <Select
       value={value || "all"}
       onValueChange={(val) => {
-        // #region agent log: RegionSelect onChange
-        if (ENABLE_FRONTEND_LOGS) {
-          fetch("http://127.0.0.1:7242/ingest/d909b3ca-a27d-43bc-a00e-99361eba3af1", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            sessionId: "debug-session",
-            runId: "run-filters",
-            hypothesisId: "H5",
-            location: "region-select.tsx:onValueChange",
-            message: "RegionSelect value changed",
-            data: { currentValue: value, newValue: val, willSend: val === "all" ? undefined : val },
-            timestamp: Date.now(),
-          }),
-        }).catch(() => {});
-        }
-        // #endregion agent log: RegionSelect onChange
         onChange(val === "all" ? undefined : val);
       }}
     >

@@ -20,10 +20,7 @@ func (r *mutationResolver) CreateFavorite(ctx context.Context, input model.Creat
 	}
 
 	// Получаем userID из JWT context
-	userID, ok := auth.GetUserIDFromContext(ctx)
-	if !ok {
-		return nil, fmt.Errorf("unauthorized: login required")
-	}
+	userID := auth.GetUserIDFromContext(ctx)
 
 	// Проверяем, нет ли уже в избранном
 	exists, err := r.FavoriteRepo.HasFavorite(ctx, userID, string(input.EntityType), input.EntityID)
@@ -74,10 +71,7 @@ func (r *mutationResolver) UpdateFavoriteNotes(ctx context.Context, input model.
 	}
 
 	// Получаем userID из JWT context
-	userID, ok := auth.GetUserIDFromContext(ctx)
-	if !ok {
-		return nil, fmt.Errorf("unauthorized: login required")
-	}
+	userID := auth.GetUserIDFromContext(ctx)
 
 	favorite, err := r.FavoriteRepo.GetByID(ctx, input.ID)
 	if err != nil {
@@ -122,10 +116,7 @@ func (r *mutationResolver) DeleteFavorite(ctx context.Context, id string) (bool,
 	}
 
 	// Получаем userID из JWT context
-	userID, ok := auth.GetUserIDFromContext(ctx)
-	if !ok {
-		return false, fmt.Errorf("unauthorized: login required")
-	}
+	userID := auth.GetUserIDFromContext(ctx)
 
 	// Проверяем владельца
 	favorite, err := r.FavoriteRepo.GetByID(ctx, id)
@@ -167,10 +158,7 @@ func (r *queryResolver) MyFavorites(ctx context.Context) ([]*model.Favorite, err
 	}
 
 	// Получаем userID из JWT context
-	userID, ok := auth.GetUserIDFromContext(ctx)
-	if !ok {
-		return nil, fmt.Errorf("unauthorized: login required")
-	}
+	userID := auth.GetUserIDFromContext(ctx)
 
 	favorites, err := r.FavoriteRepo.GetByUserID(ctx, userID)
 	if err != nil {
@@ -191,10 +179,7 @@ func (r *queryResolver) HasFavorite(ctx context.Context, entityType model.Entity
 	}
 
 	// Получаем userID из JWT context
-	userID, ok := auth.GetUserIDFromContext(ctx)
-	if !ok {
-		return false, fmt.Errorf("unauthorized: login required")
-	}
+	userID := auth.GetUserIDFromContext(ctx)
 
 	exists, err := r.FavoriteRepo.HasFavorite(ctx, userID, string(entityType), entityID)
 	if err != nil {

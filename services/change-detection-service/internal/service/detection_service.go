@@ -76,8 +76,8 @@ func (s *DetectionService) DetectCompanyChanges(ctx context.Context, ogrns []str
 
 		// Для каждой компании детектируем изменения
 		for _, newCompany := range companies {
-			// Получаем предыдущую версию компании (с максимальной extract_date меньше текущей)
-			oldCompany, err := s.companyRepo.GetPreviousByOGRN(ctx, newCompany.OGRN, newCompany.ExtractDate.Format("2006-01-02"))
+			// Получаем предыдущую версию компании (с максимальной updated_at меньше текущей)
+			oldCompany, err := s.companyRepo.GetPreviousByOGRN(ctx, newCompany.OGRN, newCompany.LastUpdate.Format("2006-01-02 15:04:05"))
 			if err != nil {
 				s.logger.Error("failed to get previous company version",
 					zap.String("ogrn", newCompany.OGRN),
@@ -225,8 +225,8 @@ func (s *DetectionService) DetectEntrepreneurChanges(ctx context.Context, ogrnip
 
 		// Для каждого ИП детектируем изменения
 		for _, newEntrepreneur := range entrepreneurs {
-			// Получаем предыдущую версию ИП (с максимальной extract_date меньше текущей)
-			oldEntrepreneur, err := s.entrepreneurRepo.GetPreviousByOGRNIP(ctx, newEntrepreneur.OGRNIP, newEntrepreneur.ExtractDate.Format("2006-01-02"))
+			// Получаем предыдущую версию ИП (с максимальной updated_at меньше текущей)
+			oldEntrepreneur, err := s.entrepreneurRepo.GetPreviousByOGRNIP(ctx, newEntrepreneur.OGRNIP, newEntrepreneur.LastUpdate.Format("2006-01-02 15:04:05"))
 			if err != nil {
 				s.logger.Error("failed to get previous entrepreneur version",
 					zap.String("ogrnip", newEntrepreneur.OGRNIP),

@@ -5,7 +5,7 @@ server:
   host: "0.0.0.0"
   port: 8080
   read_timeout: 30s
-  write_timeout: 30s
+  write_timeout: 24h  # Увеличено для SSE поддержки (long-lived connections)
   shutdown_timeout: 10s
 
 clickhouse:

@@ -76,28 +76,7 @@ export async function rawGraphQLRequest<
         query,
         variables,
       };
-      
-      // #region agent log: GraphQL request body
-      fetch('http://127.0.0.1:7242/ingest/d909b3ca-a27d-43bc-a00e-99361eba3af1', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          sessionId: 'debug-session',
-          runId: 'debug-ogrn',
-          hypothesisId: 'H1',
-          location: 'graphql-client.ts:before-request',
-          message: 'GraphQL request body before JSON.stringify',
-          data: {
-            variables,
-            variablesHasFilter: variables && 'filter' in variables,
-            variablesFilterValue: variables && 'filter' in variables ? (variables as { filter?: unknown }).filter : undefined,
-            requestBodyStringified: JSON.stringify(requestBody),
-          },
-          timestamp: Date.now(),
-        }),
-      }).catch(() => {});
-      // #endregion agent log: GraphQL request body
-      
+
       const response = await fetch(GRAPHQL_ENDPOINT, {
         method: "POST",
         signal,

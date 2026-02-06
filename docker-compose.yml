@@ -13,6 +13,7 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./infrastructure/docker/init-db.sql:/docker-entrypoint-initdb.d/01_init.sql:ro
+      - ./infrastructure/docker/02_apply_migrations.sh:/docker-entrypoint-initdb.d/02_apply_migrations.sh:ro
       - ./infrastructure/migrations/postgresql:/docker-entrypoint-initdb.d/migrations:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
@@ -150,6 +151,15 @@ services:
       # GraphQL
       - GRAPHQL_PLAYGROUND_ENABLED=${GRAPHQL_PLAYGROUND_ENABLED:-true}
       - GRAPHQL_INTROSPECTION_ENABLED=${GRAPHQL_INTROSPECTION_ENABLED:-true}
+      # Kafka (для Notification Hub)
+      - KAFKA_BROKERS=${KAFKA_BROKERS:-kafka:9092}
+      - KAFKA_COMPANY_CHANGES_TOPIC=${KAFKA_COMPANY_CHANGES_TOPIC:-company-changes}
+      - KAFKA_ENTREPRENEUR_CHANGES_TOPIC=${KAFKA_ENTREPRENEUR_CHANGES_TOPIC:-entrepreneur-changes}
+      - NOTIFICATION_HUB_KAFKA_GROUP=${NOTIFICATION_HUB_KAFKA_GROUP:-api-gateway-notifications}
+      - NOTIFICATION_HUB_ENABLED=${NOTIFICATION_HUB_ENABLED:-true}
+      - NOTIFICATION_HUB_BUFFER_SIZE=${NOTIFICATION_HUB_BUFFER_SIZE:-100}
+      - NOTIFICATION_HUB_HEARTBEAT_INTERVAL=${NOTIFICATION_HUB_HEARTBEAT_INTERVAL:-30s}
+      - NOTIFICATION_HUB_MAX_CLIENTS=${NOTIFICATION_HUB_MAX_CLIENTS:-1000}
       # Debug logging
       - DEBUG_LOG_PATH=${DEBUG_LOG_PATH:-/app/.cursor/debug.log}
     depends_on:
@@ -566,3 +576,6 @@ volumes:
 networks:
   egrul-network:
     driver: bridge
+  egrul-cluster-network:
+    external: true
+    name: egrul_egrul-cluster-network

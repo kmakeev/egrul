@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { useAuthStore } from "@/store/auth-store";
 import { LogOut, Search, BarChart3, Bookmark, Settings } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { NotificationDropdown } from "@/components/notifications/notification-dropdown";
 
 const navItems = [
   { href: "/search", label: "Поиск", icon: Search },
@@ -55,6 +56,7 @@ export function Header() {
               <span className="text-sm text-muted-foreground">
                 {user?.firstName} {user?.lastName}
               </span>
+              <NotificationDropdown />
               <Button variant="ghost" size="sm" onClick={logout}>
                 <LogOut className="h-4 w-4 mr-2" />
                 Выход

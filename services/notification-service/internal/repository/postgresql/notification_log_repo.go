@@ -40,9 +40,10 @@ func (r *NotificationLogRepository) Save(ctx context.Context, notification *mode
 
 	query := fmt.Sprintf(`
 		INSERT INTO %s.notification_log (
-			id, subscription_id, change_event_id, user_email, channel,
-			status, sent_at, error_message, created_at
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+			id, subscription_id, change_event_id, entity_type, entity_id, entity_name,
+			change_type, field_name, old_value, new_value, detected_at,
+			channel, recipient, status, sent_at, error_message, created_at
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
 	`, r.schema)
 
 	var sentAt sql.NullTime
@@ -59,8 +60,16 @@ func (r *NotificationLogRepository) Save(ctx context.Context, notification *mode
 		notification.ID,
 		notification.SubscriptionID,
 		notification.ChangeEvent.ChangeID,
-		notification.UserEmail,
+		notification.ChangeEvent.EntityType,
+		notification.ChangeEvent.EntityID,
+		notification.ChangeEvent.EntityName,
+		string(notification.ChangeEvent.ChangeType),
+		notification.ChangeEvent.FieldName,
+		notification.ChangeEvent.OldValue,
+		notification.ChangeEvent.NewValue,
+		notification.ChangeEvent.DetectedAt,
 		notification.Channel,
+		notification.UserEmail,
 		string(notification.Status),
 		sentAt,
 		errorMessage,
@@ -85,7 +94,7 @@ func (r *NotificationLogRepository) Save(ctx context.Context, notification *mode
 func (r *NotificationLogRepository) GetBySubscription(ctx context.Context, subscriptionID string, limit, offset int) ([]*model.Notification, error) {
 	query := fmt.Sprintf(`
 		SELECT
-			id, subscription_id, change_event_id, user_email, channel,
+			id, subscription_id, change_event_id, recipient, channel,
 			status, sent_at, error_message, created_at
 		FROM %s.notification_log
 		WHERE subscription_id = $1
@@ -149,7 +158,7 @@ func (r *NotificationLogRepository) GetBySubscription(ctx context.Context, subsc
 func (r *NotificationLogRepository) GetByChangeEvent(ctx context.Context, changeEventID string) ([]*model.Notification, error) {
 	query := fmt.Sprintf(`
 		SELECT
-			id, subscription_id, change_event_id, user_email, channel,
+			id, subscription_id, change_event_id, recipient, channel,
 			status, sent_at, error_message, created_at
 		FROM %s.notification_log
 		WHERE change_event_id = $1

@@ -23,6 +23,7 @@ import (
 	"github.com/egrul-system/services/api-gateway/internal/config"
 	"github.com/egrul-system/services/api-gateway/internal/graph"
 	"github.com/egrul-system/services/api-gateway/internal/middleware"
+	"github.com/egrul-system/services/api-gateway/internal/notifications"
 	"github.com/egrul-system/services/api-gateway/internal/repository/clickhouse"
 	pgrepo "github.com/egrul-system/services/api-gateway/internal/repository/postgresql"
 	"github.com/egrul-system/services/api-gateway/internal/service"
@@ -171,6 +172,22 @@ func main() {
 	// Инициализация GraphQL резолвера
 	resolver := graph.NewResolver(companyService, entrepreneurService, statsService, searchService, subscriptionRepo, favoriteRepo, userRepo, jwtManager, redisCache, logger)
 
+	// Создание и запуск Notification Hub (если включен)
+	var notificationHub *notifications.Hub
+	if cfg.NotificationHub.Enabled {
+		notificationHub = notifications.NewHub(
+			pgDB,
+			cfg.PostgreSQL.Schema,
+			cfg.Kafka,
+			cfg.NotificationHub,
+			logger,
+		)
+		go notificationHub.Run(context.Background())
+		logger.Info("Notification Hub started")
+	} else {
+		logger.Info("Notification Hub disabled")
+	}
+
 	// Создание роутера
 	r := chi.NewRouter()
 
@@ -180,7 +197,7 @@ func main() {
 	r.Use(middleware.Logger(logger))
 	r.Use(middleware.Recovery(logger))
 	r.Use(chimiddleware.Compress(5))
-	r.Use(middleware.Timeout(30 * time.Second))
+	// Timeout middleware удален - конфликтует с long-lived SSE connections
 
 	// CORS
 	r.Use(cors.Handler(cors.Options{
@@ -221,7 +238,27 @@ func main() {
 		r.Get("/search", restSearchHandler(searchService))
 	})
 
+	// Notification endpoints
+	if cfg.NotificationHub.Enabled && notificationHub != nil {
+		r.Group(func(r chi.Router) {
+			r.Use(jwtManager.Middleware)
+			r.Get("/notifications/stream", notificationHub.ServeSSE)
+			r.Get("/notifications/history", notificationHub.ServeHistory)
+			r.Post("/notifications/{id}/read", notificationHub.MarkAsRead)
+			r.Post("/notifications/read-all", notificationHub.MarkAllAsRead)
+			// Debug endpoint (опционально)
+			if cfg.Log.Level == "debug" {
+				r.Get("/notifications/stats", notificationHub.StatsHandler)
+			}
+		})
+		logger.Info("Notification endpoints registered with JWT authentication")
+	}
+
 	// Создание HTTP сервера
+	logger.Info("HTTP Server Timeouts",
+		zap.Duration("read_timeout", cfg.Server.ReadTimeout),
+		zap.Duration("write_timeout", cfg.Server.WriteTimeout),
+	)
 	srv := &http.Server{
 		Addr:         cfg.Server.Addr(),
 		Handler:      r,

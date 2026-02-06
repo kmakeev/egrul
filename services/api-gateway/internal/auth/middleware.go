@@ -50,13 +50,13 @@ func (m *JWTManager) Middleware(next http.Handler) http.Handler {
 }
 
 // GetUserIDFromContext извлекает UserID из контекста
-func GetUserIDFromContext(ctx context.Context) (string, bool) {
-	userID, ok := ctx.Value(UserIDKey).(string)
-	return userID, ok
+func GetUserIDFromContext(ctx context.Context) string {
+	userID, _ := ctx.Value(UserIDKey).(string)
+	return userID
 }
 
 // GetEmailFromContext извлекает Email из контекста
-func GetEmailFromContext(ctx context.Context) (string, bool) {
-	email, ok := ctx.Value(EmailKey).(string)
-	return email, ok
+func GetEmailFromContext(ctx context.Context) string {
+	email, _ := ctx.Value(EmailKey).(string)
+	return email
 }
