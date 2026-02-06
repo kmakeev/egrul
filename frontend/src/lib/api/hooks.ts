@@ -282,6 +282,7 @@ export function useSearchCompaniesQuery<
     "queryKey" | "queryFn"
   >
 ) {
+  const queryKey: ["search-companies", typeof variables] = ["search-companies", variables];
 
   return useQuery({
     ...(options as UseQueryOptions<
@@ -355,6 +356,7 @@ export function useSearchEntrepreneursQuery<
     "queryKey" | "queryFn"
   >
 ) {
+  const queryKey: ["search-entrepreneurs", typeof variables] = ["search-entrepreneurs", variables];
 
   return useQuery({
     ...(options as UseQueryOptions<
