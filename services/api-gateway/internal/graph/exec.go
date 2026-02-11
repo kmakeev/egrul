@@ -247,6 +247,10 @@ func (h *ManualHandler) execute(ctx context.Context, req *GraphQLRequest) (*Grap
 		h.resolver.Logger.Info("→ Routing to handleSearchQuery")
 		return h.handleSearchQuery(ctx, req)
 	}
+	if strings.Contains(query, "dashboardStatistics") {
+		h.resolver.Logger.Info("→ Routing to handleDashboardStatisticsQuery")
+		return h.handleDashboardStatisticsQuery(ctx, req)
+	}
 	if strings.Contains(query, "statistics") {
 		h.resolver.Logger.Info("→ Routing to handleStatisticsQuery")
 		return h.handleStatisticsQuery(ctx, req)
@@ -924,6 +928,69 @@ func (h *ManualHandler) handleStatisticsQuery(ctx context.Context, req *GraphQLR
 	}
 
 	return &GraphQLResponse{Data: map[string]interface{}{"statistics": stats}}, nil
+}
+
+func (h *ManualHandler) handleDashboardStatisticsQuery(ctx context.Context, req *GraphQLRequest) (*GraphQLResponse, error) {
+	var filter *model.StatsFilter
+	var dateFrom, dateTo *string
+	var entityType *model.EntityType
+
+	if filterVar, ok := req.Variables["filter"].(map[string]interface{}); ok {
+		filter = parseStatsFilter(filterVar)
+	}
+
+	if dateFromVar, ok := req.Variables["dateFrom"].(string); ok {
+		dateFrom = &dateFromVar
+	}
+
+	if dateToVar, ok := req.Variables["dateTo"].(string); ok {
+		dateTo = &dateToVar
+	}
+
+	if entityTypeVar, ok := req.Variables["entityType"].(string); ok {
+		et := model.EntityType(entityTypeVar)
+		entityType = &et
+	}
+
+	responseData := make(map[string]interface{})
+
+	// Проверяем запрашивается ли statistics в том же query
+	query := req.Query
+	if strings.Contains(query, "statistics") && !strings.Contains(query, "dashboardStatistics") {
+		// Только statistics, не наш кейс
+	} else if strings.Contains(query, "statistics") && strings.Contains(query, "dashboardStatistics") {
+		// Оба поля запрошены - возвращаем оба
+		stats, err := h.resolver.Query().Statistics(ctx, filter)
+		if err != nil {
+			return &GraphQLResponse{Errors: []GraphQLError{{Message: err.Error()}}}, nil
+		}
+		responseData["statistics"] = stats
+	}
+
+	dashboard, err := h.resolver.Query().DashboardStatistics(ctx, filter)
+	if err != nil {
+		return &GraphQLResponse{Errors: []GraphQLError{{Message: err.Error()}}}, nil
+	}
+
+	// Получаем данные для вложенных полей
+	registrations, err := h.resolver.DashboardStatistics().RegistrationsByMonth(ctx, dashboard, dateFrom, dateTo, entityType, filter)
+	if err != nil {
+		return &GraphQLResponse{Errors: []GraphQLError{{Message: err.Error()}}}, nil
+	}
+
+	heatmap, err := h.resolver.DashboardStatistics().RegionHeatmap(ctx, dashboard)
+	if err != nil {
+		return &GraphQLResponse{Errors: []GraphQLError{{Message: err.Error()}}}, nil
+	}
+
+	dashboardResult := map[string]interface{}{
+		"registrationsByMonth": registrations,
+		"regionHeatmap":        heatmap,
+	}
+
+	responseData["dashboardStatistics"] = dashboardResult
+
+	return &GraphQLResponse{Data: responseData}, nil
 }
 
 // Вспомогательные функции парсинга

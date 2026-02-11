@@ -114,6 +114,11 @@ func (r *queryResolver) Statistics(ctx context.Context, filter *model.StatsFilte
 	return r.StatisticsService.GetStatistics(ctx, filter)
 }
 
+// DashboardStatistics is the resolver for the dashboardStatistics field.
+func (r *queryResolver) DashboardStatistics(ctx context.Context, filter *model.StatsFilter) (*model.DashboardStatistics, error) {
+	return r.StatisticsService.GetDashboardStatistics(ctx, filter)
+}
+
 // EntityHistory is the resolver for the entityHistory field.
 func (r *queryResolver) EntityHistory(ctx context.Context, entityType model.EntityType, entityID string, limit *int, offset *int) ([]*model.HistoryRecord, error) {
 	r.Logger.Info("EntityHistory resolver called - DIRECT QUERY", 

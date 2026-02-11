@@ -20,6 +20,7 @@ type QueryResolver interface {
 	SearchEntrepreneurs(ctx context.Context, query string, limit *int, offset *int) ([]*model.Entrepreneur, error)
 	Search(ctx context.Context, query string, limit *int) (*model.SearchResult, error)
 	Statistics(ctx context.Context, filter *model.StatsFilter) (*model.Statistics, error)
+	DashboardStatistics(ctx context.Context, filter *model.StatsFilter) (*model.DashboardStatistics, error)
 	EntityHistory(ctx context.Context, entityType model.EntityType, entityID string, limit *int, offset *int) ([]*model.HistoryRecord, error)
 	EntityHistoryCount(ctx context.Context, entityType model.EntityType, entityID string) (int, error)
 	CompanyFounders(ctx context.Context, ogrn string, limit *int, offset *int) ([]*model.Founder, error)
@@ -48,6 +49,12 @@ type StatisticsResolver interface {
 	ByActivity(ctx context.Context, obj *model.Statistics, limit *int) ([]*model.ActivityStatistics, error)
 }
 
+// DashboardStatisticsResolver interface for DashboardStatistics field resolvers
+type DashboardStatisticsResolver interface {
+	RegistrationsByMonth(ctx context.Context, obj *model.DashboardStatistics, dateFrom, dateTo *string, entityType *model.EntityType, filter *model.StatsFilter) ([]*model.TimeSeriesPoint, error)
+	RegionHeatmap(ctx context.Context, obj *model.DashboardStatistics) ([]*model.RegionStatistics, error)
+}
+
 // MutationResolver interface for Mutation resolvers
 type MutationResolver interface {
 	CreateSubscription(ctx context.Context, input model.CreateSubscriptionInput) (*model.EntitySubscription, error)
@@ -66,6 +73,7 @@ type ResolverRoot interface {
 	Company() CompanyResolver
 	Entrepreneur() EntrepreneurResolver
 	Statistics() StatisticsResolver
+	DashboardStatistics() DashboardStatisticsResolver
 	Mutation() MutationResolver
 }
 

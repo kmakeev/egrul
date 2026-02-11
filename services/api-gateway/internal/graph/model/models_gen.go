@@ -55,6 +55,18 @@ type User struct {
 	LastLoginAt   *time.Time `json:"lastLoginAt,omitempty"`
 }
 
+// Точка временного ряда (регистрации/ликвидации)
+type TimeSeriesPoint struct {
+	Month              string `json:"month"`
+	RegistrationsCount int    `json:"registrationsCount"`
+	TerminationsCount  int    `json:"terminationsCount"`
+	NetGrowth          int    `json:"netGrowth"`
+}
+
+// Расширенная статистика для дашборда
+type DashboardStatistics struct {
+}
+
 // Поле для сортировки предпринимателей
 type EntrepreneurSortField string
 

@@ -1,0 +1,35 @@
+query GetDashboardStatistics($filter: StatsFilter, $dateFrom: Date, $dateTo: Date) {
+  # Основная статистика для KPI карточек
+  statistics(filter: $filter) {
+    totalCompanies
+    totalEntrepreneurs
+    activeCompanies
+    activeEntrepreneurs
+    liquidatedCompanies
+    liquidatedEntrepreneurs
+    registeredToday
+    registeredThisMonth
+    registeredThisYear
+  }
+
+  # Расширенная статистика для дашборда
+  dashboardStatistics(filter: $filter) {
+    # Временной ряд регистраций/ликвидаций
+    registrationsByMonth(dateFrom: $dateFrom, dateTo: $dateTo) {
+      month
+      registrationsCount
+      terminationsCount
+      netGrowth
+    }
+
+    # Статистика по всем регионам для тепловой карты
+    regionHeatmap {
+      regionCode
+      regionName
+      companiesCount
+      entrepreneursCount
+      activeCount
+      liquidatedCount
+    }
+  }
+}

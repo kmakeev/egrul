@@ -564,10 +564,38 @@ cluster-reset: ## Полное пересоздание БД кластера (�
 	@docker exec egrul-clickhouse-01 clickhouse-client --user egrul_import --password 123 --query "\
 		CREATE DATABASE IF NOT EXISTS egrul ON CLUSTER egrul_cluster ENGINE = Atomic" 2>&1 | tail -1
 	@echo "$(GREEN)✅ База данных создана на всех нодах$(NC)"
-	@echo "$(CYAN)📊 Применение миграции 011...$(NC)"
+	@echo "$(CYAN)📊 Применение миграции 011 (основные таблицы)...$(NC)"
 	@cat infrastructure/migrations/clickhouse/cluster/011_distributed_cluster.sql | \
 		docker exec -i egrul-clickhouse-01 clickhouse-client --user egrul_import --password 123 --multiquery 2>&1 | tail -20
-	@echo "$(GREEN)✅ Миграция применена, таблицы созданы$(NC)"
+	@echo "$(GREEN)✅ Миграция 011 применена$(NC)"
+	@echo "$(CYAN)📊 Применение миграции 012 (change tracking)...$(NC)"
+	@cat infrastructure/migrations/clickhouse/cluster/012_change_tracking.sql | \
+		docker exec -i egrul-clickhouse-01 clickhouse-client --user egrul_import --password 123 --multiquery 2>&1 | tail -20
+	@echo "$(GREEN)✅ Миграция 012 применена$(NC)"
+	@echo "$(CYAN)📊 Применение миграции 013 (MV с правильной логикой статусов)...$(NC)"
+	@cat infrastructure/migrations/clickhouse/cluster/013_update_mv_status_logic.sql | \
+		docker exec -i egrul-clickhouse-01 clickhouse-client --user egrul_import --password 123 --multiquery 2>&1 | tail -20
+	@echo "$(GREEN)✅ Миграция 013 применена$(NC)"
+	@echo "$(CYAN)📊 Применение миграции 014 (исправление MV ликвидаций)...$(NC)"
+	@cat infrastructure/migrations/clickhouse/cluster/014_fix_terminations_mv.sql | \
+		docker exec -i egrul-clickhouse-01 clickhouse-client --user egrul_import --password 123 --multiquery 2>&1 | tail -20
+	@echo "$(GREEN)✅ Миграция 014 применена$(NC)"
+	@echo "$(CYAN)📊 Применение миграции 015 (исправление партиционирования MV)...$(NC)"
+	@cat infrastructure/migrations/clickhouse/cluster/015_fix_mv_partitioning.sql | \
+		docker exec -i egrul-clickhouse-01 clickhouse-client --user egrul_import --password 123 --multiquery 2>&1 | tail -20
+	@echo "$(GREEN)✅ Миграция 015 применена$(NC)"
+	@echo "$(CYAN)📊 Применение миграции 016 (исправление NULL в region)...$(NC)"
+	@cat infrastructure/migrations/clickhouse/cluster/016_fix_mv_null_region.sql | \
+		docker exec -i egrul-clickhouse-01 clickhouse-client --user egrul_import --password 123 --multiquery 2>&1 | tail -20
+	@echo "$(GREEN)✅ Миграция 016 применена$(NC)"
+	@echo "$(CYAN)📊 Применение миграции 017 (ReplicatedAggregatingMergeTree)...$(NC)"
+	@cat infrastructure/migrations/clickhouse/cluster/017_replicated_aggregating.sql | \
+		docker exec -i egrul-clickhouse-01 clickhouse-client --user egrul_import --password 123 --multiquery 2>&1 | tail -20
+	@echo "$(GREEN)✅ Миграция 017 применена$(NC)"
+	@echo "$(CYAN)📊 Применение миграции 018 (исправление логики MV ликвидаций)...$(NC)"
+	@cat infrastructure/migrations/clickhouse/cluster/018_fix_terminations_mv_logic.sql | \
+		docker exec -i egrul-clickhouse-01 clickhouse-client --user egrul_import --password 123 --multiquery 2>&1 | tail -20
+	@echo "$(GREEN)✅ Миграция 018 применена, все таблицы созданы$(NC)"
 	@echo "$(CYAN)🔍 Проверка кластера...$(NC)"
 	@make cluster-verify
 
@@ -586,9 +614,35 @@ cluster-truncate: ## Очистить все таблицы кластера
 		TRUNCATE TABLE IF EXISTS egrul.import_log_local ON CLUSTER egrul_cluster;"
 	@echo "$(GREEN)✅ Таблицы очищены на всех нодах$(NC)"
 
-cluster-import: ## Импорт данных в кластер (использует make import)
+cluster-import: ## Импорт данных в кластер (использует make import + заполняет MV)
 	@echo "$(CYAN)📥 Импорт данных в кластер...$(NC)"
 	@CLICKHOUSE_HOST=localhost CLICKHOUSE_PORT=8123 make import
+	@echo "$(CYAN)📊 Заполнение Materialized Views...$(NC)"
+	@make cluster-fill-mv
+	@echo "$(GREEN)✅ Импорт и заполнение MV завершены$(NC)"
+
+cluster-fill-mv: ## Заполнение Materialized Views данными из основных таблиц
+	@echo "$(CYAN)📊 Очистка старых агрегатов...$(NC)"
+	@docker exec egrul-clickhouse-01 clickhouse-client --user egrul_import --password 123 --query "TRUNCATE TABLE egrul.stats_companies_by_region_local ON CLUSTER egrul_cluster"
+	@docker exec egrul-clickhouse-01 clickhouse-client --user egrul_import --password 123 --query "TRUNCATE TABLE egrul.stats_entrepreneurs_by_region_local ON CLUSTER egrul_cluster"
+	@docker exec egrul-clickhouse-01 clickhouse-client --user egrul_import --password 123 --query "TRUNCATE TABLE egrul.stats_registrations_by_month_local ON CLUSTER egrul_cluster"
+	@docker exec egrul-clickhouse-01 clickhouse-client --user egrul_import --password 123 --query "TRUNCATE TABLE egrul.stats_terminations_by_month_local ON CLUSTER egrul_cluster"
+	@echo "$(CYAN)📊 Заполнение stats_companies_by_region (через Distributed)...$(NC)"
+	@docker exec egrul-clickhouse-01 clickhouse-client --user egrul_import --password 123 --query "SET max_partitions_per_insert_block = 1000; INSERT INTO egrul.stats_companies_by_region SELECT region_code, coalesce(any(region), '') as region, multiIf(status_code IN ('113', '114', '115', '116', '117'), 'bankrupt', termination_date IS NOT NULL OR status_code IN ('101', '105', '106', '107', '113', '114', '115', '116', '117', '701', '702', '801', '802'), 'liquidated', 'active') as status, countState() as count, now64(3) as updated_at FROM egrul.companies GROUP BY region_code, status"
+	@echo "$(GREEN)✅ stats_companies_by_region заполнена$(NC)"
+	@echo "$(CYAN)📊 Заполнение stats_entrepreneurs_by_region (через Distributed)...$(NC)"
+	@docker exec egrul-clickhouse-01 clickhouse-client --user egrul_import --password 123 --query "INSERT INTO egrul.stats_entrepreneurs_by_region SELECT region_code, coalesce(any(region), '') as region, if(termination_date IS NULL AND status_code IS NULL, 'active', 'liquidated') as status, countState() as count, now64(3) as updated_at FROM egrul.entrepreneurs GROUP BY region_code, status"
+	@echo "$(GREEN)✅ stats_entrepreneurs_by_region заполнена$(NC)"
+	@echo "$(CYAN)📊 Заполнение stats_registrations_by_month (компании через Distributed)...$(NC)"
+	@docker exec egrul-clickhouse-01 clickhouse-client --user egrul_import --password 123 --query "SET max_partitions_per_insert_block = 1000; INSERT INTO egrul.stats_registrations_by_month SELECT 'company' as entity_type, toStartOfMonth(registration_date) as registration_month, countState() as count, now64(3) as updated_at FROM egrul.companies WHERE registration_date IS NOT NULL GROUP BY registration_month"
+	@echo "$(CYAN)📊 Заполнение stats_registrations_by_month (ИП через Distributed)...$(NC)"
+	@docker exec egrul-clickhouse-01 clickhouse-client --user egrul_import --password 123 --query "SET max_partitions_per_insert_block = 1000; INSERT INTO egrul.stats_registrations_by_month SELECT 'entrepreneur' as entity_type, toStartOfMonth(registration_date) as registration_month, countState() as count, now64(3) as updated_at FROM egrul.entrepreneurs WHERE registration_date IS NOT NULL GROUP BY registration_month"
+	@echo "$(GREEN)✅ stats_registrations_by_month заполнена$(NC)"
+	@echo "$(CYAN)📊 Заполнение stats_terminations_by_month (компании через Distributed)...$(NC)"
+	@docker exec egrul-clickhouse-01 clickhouse-client --user egrul_import --password 123 --query "SET max_partitions_per_insert_block = 1000; INSERT INTO egrul.stats_terminations_by_month SELECT 'company' as entity_type, toStartOfMonth(COALESCE(termination_date, multiIf(status_code IN ('101', '105', '106', '107', '113', '114', '115', '116', '117', '701', '702', '801', '802'), extract_date, NULL))) as termination_month, countState() as count, now64(3) as updated_at FROM egrul.companies WHERE termination_date IS NOT NULL OR status_code IN ('101', '105', '106', '107', '113', '114', '115', '116', '117', '701', '702', '801', '802') GROUP BY termination_month"
+	@echo "$(CYAN)📊 Заполнение stats_terminations_by_month (ИП через Distributed)...$(NC)"
+	@docker exec egrul-clickhouse-01 clickhouse-client --user egrul_import --password 123 --query "SET max_partitions_per_insert_block = 1000; INSERT INTO egrul.stats_terminations_by_month SELECT 'entrepreneur' as entity_type, toStartOfMonth(termination_date) as termination_month, countState() as count, now64(3) as updated_at FROM egrul.entrepreneurs WHERE termination_date IS NOT NULL GROUP BY termination_month"
+	@echo "$(GREEN)✅ stats_terminations_by_month заполнена$(NC)"
 
 cluster-import-okved: ## Импорт только дополнительных ОКВЭД в кластер
 	@echo "$(CYAN)📊 Импорт дополнительных ОКВЭД в кластер...$(NC)"

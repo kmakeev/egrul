@@ -893,13 +893,11 @@ main() {
 
     # Проверяем подключение
     check_connection || exit 1
-    
-    # Устанавливаем более высокие лимиты памяти для сессии
-    local session_memory_limit="${HISTORY_MAX_MEMORY:-2000000000}"
-    log_info "Установка лимитов памяти для сессии: $(($session_memory_limit / 1024 / 1024)) МБ"
-    
-    clickhouse_query "SET max_memory_usage = $session_memory_limit" || log_warning "Не удалось установить max_memory_usage"
-    
+
+    # Лимиты памяти устанавливаются для каждого запроса через SETTINGS
+    # (см. строки 420, 646 - там используется SETTINGS max_memory_usage=...)
+    log_info "Лимиты памяти будут применены для каждого запроса через параметр SETTINGS"
+
     # Очищаем таблицу истории перед импортом (для MVP - полная перезагрузка)
     log_info "Очистка таблицы истории изменений..."
     clickhouse_query "TRUNCATE TABLE ${CLICKHOUSE_DATABASE}.company_history"

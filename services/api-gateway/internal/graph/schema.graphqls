@@ -448,6 +448,27 @@ type Statistics {
   byActivity(limit: Int): [ActivityStatistics!]!
 }
 
+"""
+Точка временного ряда (регистрации/ликвидации)
+"""
+type TimeSeriesPoint {
+  month: Date!
+  registrationsCount: Int!
+  terminationsCount: Int!
+  netGrowth: Int!
+}
+
+"""
+Расширенная статистика для дашборда
+"""
+type DashboardStatistics {
+  # Временные ряды
+  registrationsByMonth(dateFrom: Date, dateTo: Date, entityType: EntityType): [TimeSeriesPoint!]!
+
+  # Региональная статистика для тепловой карты (ВСЕ регионы, не только топ-20)
+  regionHeatmap: [RegionStatistics!]!
+}
+
 # ==============================================================================
 # Типы для пагинации и соединений
 # ==============================================================================
@@ -647,7 +668,10 @@ type Query {
   
   # Статистика
   statistics(filter: StatsFilter): Statistics!
-  
+
+  # Расширенная статистика для дашборда
+  dashboardStatistics(filter: StatsFilter): DashboardStatistics!
+
   # История изменений сущности
   entityHistory(
     entityType: EntityType!
