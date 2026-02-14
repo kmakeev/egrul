@@ -1,0 +1,77 @@
+{
+  "title": "Notification Service Dashboard",
+  "uid": "notification-service",
+  "tags": ["notification", "email", "kafka", "egrul"],
+  "refresh": "10s",
+  "time": {"from": "now-1h", "to": "now"},
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Service Status",
+      "gridPos": {"h": 4, "w": 6, "x": 0, "y": 0},
+      "targets": [{"expr": "up{job=\"notification-service\"}", "refId": "A"}],
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {"steps": [{"color": "red", "value": null}, {"color": "green", "value": 1}]},
+          "mappings": [{"type": "value", "options": {"0": {"text": "DOWN"}, "1": {"text": "UP"}}}]
+        }
+      },
+      "options": {"colorMode": "background"}
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "SMTP Errors",
+      "gridPos": {"h": 4, "w": 6, "x": 6, "y": 0},
+      "targets": [{"expr": "rate(egrul_smtp_errors_total[5m])", "refId": "A"}],
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"unit": "ops", "thresholds": {"steps": [{"color": "green", "value": null}, {"color": "red", "value": 1}]}}},
+      "options": {"colorMode": "value", "graphMode": "area"}
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Memory Usage",
+      "gridPos": {"h": 4, "w": 6, "x": 12, "y": 0},
+      "targets": [{"expr": "process_resident_memory_bytes{job=\"notification-service\"}", "refId": "A"}],
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"unit": "bytes", "thresholds": {"steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 500000000}, {"color": "red", "value": 1000000000}]}}},
+      "options": {"colorMode": "value", "graphMode": "area"}
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Goroutines",
+      "gridPos": {"h": 4, "w": 6, "x": 18, "y": 0},
+      "targets": [{"expr": "go_goroutines{job=\"notification-service\"}", "refId": "A"}],
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"unit": "short", "thresholds": {"steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 1000}, {"color": "red", "value": 5000}]}}},
+      "options": {"colorMode": "value", "graphMode": "area"}
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "SMTP Errors Rate",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 4},
+      "targets": [{"expr": "rate(egrul_smtp_errors_total[5m])", "legendFormat": "SMTP Errors/s", "refId": "A"}],
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"unit": "ops", "color": {"mode": "palette-classic"}}},
+      "options": {"legend": {"displayMode": "table", "placement": "bottom", "calcs": ["mean", "max"]}}
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Resource Usage",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 4},
+      "targets": [
+        {"expr": "process_resident_memory_bytes{job=\"notification-service\"}", "legendFormat": "Memory", "refId": "A"},
+        {"expr": "rate(process_cpu_seconds_total{job=\"notification-service\"}[5m])", "legendFormat": "CPU", "refId": "B"}
+      ],
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"unit": "bytes"}},
+      "options": {"legend": {"displayMode": "table", "placement": "bottom", "calcs": ["mean", "max"]}}
+    }
+  ]
+}

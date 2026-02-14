@@ -80,11 +80,11 @@ up: ## Запуск всей системы (кластер + сервисы)
 	@make cluster-ps
 	@$(DOCKER_COMPOSE) ps api-gateway frontend search-service
 
-down: ## Остановка всей системы
-	@echo "$(YELLOW)🛑 Остановка системы...$(NC)"
-	@$(DOCKER_COMPOSE) --profile full down
+down: ## Остановка всей системы (все профили)
+	@echo "$(YELLOW)🛑 Остановка всей системы...$(NC)"
+	@$(DOCKER_COMPOSE) --profile full --profile monitoring --profile tools down
 	@$(DOCKER_COMPOSE) -f docker-compose.cluster.yml --profile cluster down
-	@echo "$(GREEN)✅ Система остановлена$(NC)"
+	@echo "$(GREEN)✅ Система полностью остановлена$(NC)"
 
 dev: up ## Запуск в режиме разработки
 	@echo "$(CYAN)🔧 Запуск сервисов разработки...$(NC)"
@@ -760,10 +760,11 @@ monitoring-up: ## Запуск Prometheus + Grafana + cAdvisor + Loki + Promtail
 	@echo "  - Prometheus targets: http://localhost:9090/targets"
 	@echo "  - Grafana Explore:    http://localhost:3001/explore (выберите Loki)"
 
-monitoring-down: ## Остановка мониторинга
+monitoring-down: ## Остановка только сервисов мониторинга
 	@echo "$(CYAN)🛑 Остановка мониторинга...$(NC)"
-	@$(DOCKER_COMPOSE) -f docker-compose.yml -f docker-compose.cluster.yml --profile monitoring down
+	@$(DOCKER_COMPOSE) stop prometheus grafana cadvisor loki promtail
 	@echo "$(GREEN)✅ Мониторинг остановлен$(NC)"
+	@echo "$(YELLOW)Контейнеры остановлены, но не удалены. Для полного удаления используйте: make down$(NC)"
 
 prometheus-reload: ## Перезагрузка конфигурации Prometheus
 	@echo "$(CYAN)🔄 Перезагрузка Prometheus...$(NC)"

@@ -1,0 +1,130 @@
+{
+  "title": "ClickHouse Cluster Dashboard",
+  "uid": "clickhouse-cluster",
+  "tags": ["clickhouse", "cluster", "database", "egrul"],
+  "refresh": "30s",
+  "time": {"from": "now-6h", "to": "now"},
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Cluster Nodes UP",
+      "gridPos": {"h": 4, "w": 6, "x": 0, "y": 0},
+      "targets": [{"expr": "count(up{job=\"clickhouse-cluster\"} == 1)", "refId": "A"}],
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {"steps": [{"color": "red", "value": null}, {"color": "yellow", "value": 4}, {"color": "green", "value": 6}]},
+          "mappings": []
+        }
+      },
+      "options": {"colorMode": "background", "textMode": "value_and_name"}
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Keeper Nodes UP",
+      "gridPos": {"h": 4, "w": 6, "x": 6, "y": 0},
+      "targets": [{"expr": "count(up{job=\"clickhouse-keeper\"} == 1)", "refId": "A"}],
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {"steps": [{"color": "red", "value": null}, {"color": "yellow", "value": 2}, {"color": "green", "value": 3}]},
+          "mappings": []
+        }
+      },
+      "options": {"colorMode": "background"}
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Total Queries/s",
+      "gridPos": {"h": 4, "w": 6, "x": 12, "y": 0},
+      "targets": [{"expr": "sum(rate(ClickHouseProfileEvents_Query[5m]))", "refId": "A"}],
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"unit": "ops"}},
+      "options": {"colorMode": "value", "graphMode": "area"}
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Total Inserts/s",
+      "gridPos": {"h": 4, "w": 6, "x": 18, "y": 0},
+      "targets": [{"expr": "sum(rate(ClickHouseProfileEvents_InsertQuery[5m]))", "refId": "A"}],
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"unit": "ops"}},
+      "options": {"colorMode": "value", "graphMode": "area"}
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Query Rate by Node",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 4},
+      "targets": [{"expr": "rate(ClickHouseProfileEvents_Query[5m])", "legendFormat": "{{instance}}", "refId": "A"}],
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"unit": "ops"}},
+      "options": {"legend": {"displayMode": "table", "placement": "bottom", "calcs": ["mean", "max"]}}
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Memory Usage by Node",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 4},
+      "targets": [{"expr": "ClickHouseMetrics_MemoryTracking", "legendFormat": "{{instance}}", "refId": "A"}],
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"unit": "bytes"}},
+      "options": {"legend": {"displayMode": "table", "placement": "bottom", "calcs": ["mean", "max"]}}
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "Replication Queue",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 12},
+      "targets": [{"expr": "ClickHouseMetrics_ReplicatedFetchesInQueue", "legendFormat": "{{instance}}", "refId": "A"}],
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"unit": "short", "color": {"mode": "palette-classic"}}},
+      "options": {"legend": {"displayMode": "table", "placement": "bottom", "calcs": ["mean", "max"]}}
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "Disk Usage by Node",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 12},
+      "targets": [{"expr": "ClickHouseAsyncMetrics_FilesystemMainPathUsedBytes", "legendFormat": "{{instance}}", "refId": "A"}],
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"unit": "bytes"}},
+      "options": {"legend": {"displayMode": "table", "placement": "bottom", "calcs": ["last"]}}
+    },
+    {
+      "id": 9,
+      "type": "table",
+      "title": "Cluster Nodes Status",
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 20},
+      "targets": [
+        {"expr": "up{job=\"clickhouse-cluster\"}", "format": "table", "instant": true, "refId": "A"},
+        {"expr": "ClickHouseMetrics_MemoryTracking", "format": "table", "instant": true, "refId": "B"},
+        {"expr": "rate(ClickHouseProfileEvents_Query[5m])", "format": "table", "instant": true, "refId": "C"}
+      ],
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "transformations": [
+        {"id": "joinByField", "options": {"byField": "instance", "mode": "outer"}},
+        {"id": "organize", "options": {
+          "excludeByName": {"Time": true, "Time 1": true, "Time 2": true, "Time 3": true, "job": true, "cluster": true, "component": true},
+          "renameByName": {"instance": "Node", "Value #A": "Status", "Value #B": "Memory (bytes)", "Value #C": "Queries/s"}
+        }}
+      ],
+      "options": {"showHeader": true},
+      "fieldConfig": {
+        "overrides": [
+          {
+            "matcher": {"id": "byName", "options": "Status"},
+            "properties": [
+              {"id": "mappings", "value": [{"type": "value", "options": {"0": {"text": "DOWN", "color": "red"}, "1": {"text": "UP", "color": "green"}}}]},
+              {"id": "custom.cellOptions", "value": {"type": "color-background"}}
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}
