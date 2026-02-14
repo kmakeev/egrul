@@ -2,13 +2,16 @@
 # Multi-stage build для оптимизации размера образа
 
 # Stage 1: Builder
-FROM golang:1.22-alpine AS builder
+FROM golang:1.23-alpine AS builder
 
 # Установка необходимых пакетов
 RUN apk add --no-cache git ca-certificates tzdata
 
 # Рабочая директория
 WORKDIR /build
+
+# Копируем shared модуль
+COPY services/shared/ /shared/
 
 # Копируем весь сервис
 COPY services/notification-service/ ./

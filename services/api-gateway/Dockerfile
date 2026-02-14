@@ -6,7 +6,10 @@ RUN apk add --no-cache git ca-certificates tzdata
 
 WORKDIR /app
 
-# Копируем все исходные файлы
+# Копируем shared модуль (для локальной зависимости)
+COPY services/shared/ /shared/
+
+# Копируем все исходные файлы api-gateway
 COPY services/api-gateway/ .
 
 # Генерируем go.sum и скачиваем зависимости

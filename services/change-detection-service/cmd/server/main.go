@@ -20,6 +20,10 @@ import (
 	"github.com/go-chi/chi/v5"
 	chMiddleware "github.com/go-chi/chi/v5/middleware"
 	"go.uber.org/zap"
+
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+	sharedLogging "github.com/egrul-system/services/shared/pkg/observability/logging"
+	sharedMetrics "github.com/egrul-system/services/shared/pkg/observability/metrics"
 )
 
 func main() {
@@ -31,7 +35,11 @@ func main() {
 	}
 
 	// Инициализация logger
-	logger, err := initLogger(cfg.Log)
+	logger, err := sharedLogging.NewLogger(sharedLogging.Config{
+		Level:       cfg.Log.Level,
+		Format:      "json",
+		ServiceName: "change-detection",
+	})
 	if err != nil {
 		fmt.Printf("Failed to init logger: %v\n", err)
 		os.Exit(1)
@@ -42,6 +50,17 @@ func main() {
 		zap.String("version", "1.0.0"),
 		zap.Int("port", cfg.Server.Port),
 	)
+
+	// Prometheus metrics server на отдельном порту
+	go func() {
+		metricsRouter := chi.NewRouter()
+		metricsRouter.Handle("/metrics", promhttp.Handler())
+		metricsAddr := ":9092"
+		logger.Info("Starting metrics server", zap.String("addr", metricsAddr))
+		if err := http.ListenAndServe(metricsAddr, metricsRouter); err != nil {
+			logger.Fatal("Failed to start metrics server", zap.Error(err))
+		}
+	}()
 
 	// Подключение к ClickHouse
 	conn, err := connectClickHouse(cfg.ClickHouse, logger)
@@ -89,9 +108,10 @@ func main() {
 	r := chi.NewRouter()
 
 	// Middleware
+	r.Use(sharedMetrics.HTTPMiddleware("change-detection"))
 	r.Use(chMiddleware.RequestID)
 	r.Use(chMiddleware.RealIP)
-	r.Use(middleware.Logger(logger))
+	r.Use(sharedLogging.HTTPMiddleware(logger))
 	r.Use(middleware.Recovery(logger))
 	r.Use(middleware.CORS())
 	r.Use(chMiddleware.Timeout(60 * time.Second))
@@ -137,33 +157,6 @@ func main() {
 	}
 
 	logger.Info("Server stopped gracefully")
-}
-
-// initLogger инициализирует zap logger
-func initLogger(cfg config.LogConfig) (*zap.Logger, error) {
-	var zapCfg zap.Config
-
-	if cfg.Level == "debug" {
-		zapCfg = zap.NewDevelopmentConfig()
-	} else {
-		zapCfg = zap.NewProductionConfig()
-	}
-
-	// Парсим уровень логирования
-	level, err := zap.ParseAtomicLevel(cfg.Level)
-	if err != nil {
-		return nil, fmt.Errorf("invalid log level: %w", err)
-	}
-	zapCfg.Level = level
-
-	// Формат логов
-	if cfg.Format == "console" {
-		zapCfg.Encoding = "console"
-	} else {
-		zapCfg.Encoding = "json"
-	}
-
-	return zapCfg.Build()
 }
 
 // connectClickHouse создает подключение к ClickHouse

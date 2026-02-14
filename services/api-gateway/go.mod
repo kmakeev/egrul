@@ -7,12 +7,14 @@ toolchain go1.22.12
 require (
 	github.com/99designs/gqlgen v0.17.56
 	github.com/ClickHouse/clickhouse-go/v2 v2.30.0
+	github.com/egrul-system/services/shared v0.0.0
 	github.com/elastic/go-elasticsearch/v8 v8.19.1
 	github.com/go-chi/chi/v5 v5.1.0
 	github.com/go-chi/cors v1.2.1
 	github.com/golang-jwt/jwt/v5 v5.3.0
 	github.com/google/uuid v1.6.0
 	github.com/lib/pq v1.10.9
+	github.com/prometheus/client_golang v1.19.0
 	github.com/redis/go-redis/v9 v9.6.1
 	github.com/spf13/viper v1.19.0
 	github.com/stretchr/testify v1.9.0
@@ -71,3 +73,5 @@ require (
 	gopkg.in/ini.v1 v1.67.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
+
+replace github.com/egrul-system/services/shared => ../shared

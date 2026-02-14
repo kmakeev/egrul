@@ -17,6 +17,11 @@ import (
 	"github.com/egrul/notification-service/internal/service"
 	_ "github.com/lib/pq"
 	"go.uber.org/zap"
+
+	"net/http"
+	"github.com/go-chi/chi/v5"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+	sharedLogging "github.com/egrul-system/services/shared/pkg/observability/logging"
 )
 
 func main() {
@@ -28,7 +33,11 @@ func main() {
 	}
 
 	// Инициализация logger
-	logger, err := initLogger(cfg.Log)
+	logger, err := sharedLogging.NewLogger(sharedLogging.Config{
+		Level:       cfg.Log.Level,
+		Format:      "json",
+		ServiceName: "notification",
+	})
 	if err != nil {
 		fmt.Printf("Failed to init logger: %v\n", err)
 		os.Exit(1)
@@ -39,6 +48,17 @@ func main() {
 		zap.String("version", "1.0.0"),
 		zap.Int("port", cfg.Server.Port),
 	)
+
+	// Prometheus metrics server на отдельном порту
+	go func() {
+		metricsRouter := chi.NewRouter()
+		metricsRouter.Handle("/metrics", promhttp.Handler())
+		metricsAddr := ":9093"
+		logger.Info("Starting metrics server", zap.String("addr", metricsAddr))
+		if err := http.ListenAndServe(metricsAddr, metricsRouter); err != nil {
+			logger.Fatal("Failed to start metrics server", zap.Error(err))
+		}
+	}()
 
 	// Подключение к PostgreSQL
 	db, err := connectPostgreSQL(cfg.PostgreSQL, logger)
@@ -136,32 +156,6 @@ func main() {
 }
 
 // initLogger инициализирует zap logger
-func initLogger(cfg config.LogConfig) (*zap.Logger, error) {
-	var zapCfg zap.Config
-
-	if cfg.Level == "debug" {
-		zapCfg = zap.NewDevelopmentConfig()
-	} else {
-		zapCfg = zap.NewProductionConfig()
-	}
-
-	// Парсим уровень логирования
-	level, err := zap.ParseAtomicLevel(cfg.Level)
-	if err != nil {
-		return nil, fmt.Errorf("invalid log level: %w", err)
-	}
-	zapCfg.Level = level
-
-	// Формат логов
-	if cfg.Format == "console" {
-		zapCfg.Encoding = "console"
-	} else {
-		zapCfg.Encoding = "json"
-	}
-
-	return zapCfg.Build()
-}
-
 // connectPostgreSQL создает подключение к PostgreSQL
 func connectPostgreSQL(cfg config.PostgreSQLConfig, logger *zap.Logger) (*sql.DB, error) {
 	db, err := sql.Open("postgres", cfg.GetDSN())

@@ -741,3 +741,77 @@ docker-full-clean: docker-clean-networks ## Полная очистка с уд�
 	@docker compose down -v
 	@echo "$(GREEN)✅ Полная очистка завершена$(NC)"
 
+# ====================================================================================
+# Мониторинг и Observability
+# ====================================================================================
+
+monitoring-up: ## Запуск Prometheus + Grafana + cAdvisor + Loki + Promtail
+	@echo "$(CYAN)📊 Запуск системы мониторинга...$(NC)"
+	@$(DOCKER_COMPOSE) -f docker-compose.yml -f docker-compose.cluster.yml --profile monitoring up -d prometheus grafana cadvisor loki promtail
+	@echo "$(GREEN)✅ Мониторинг запущен!$(NC)"
+	@echo ""
+	@echo "Доступные сервисы:"
+	@echo "  - Prometheus:  http://localhost:9090"
+	@echo "  - Grafana:     http://localhost:3001 (логин: admin/admin)"
+	@echo "  - cAdvisor:    http://localhost:8085"
+	@echo "  - Loki:        http://localhost:3100"
+	@echo ""
+	@echo "Проверьте:"
+	@echo "  - Prometheus targets: http://localhost:9090/targets"
+	@echo "  - Grafana Explore:    http://localhost:3001/explore (выберите Loki)"
+
+monitoring-down: ## Остановка мониторинга
+	@echo "$(CYAN)🛑 Остановка мониторинга...$(NC)"
+	@$(DOCKER_COMPOSE) -f docker-compose.yml -f docker-compose.cluster.yml --profile monitoring down
+	@echo "$(GREEN)✅ Мониторинг остановлен$(NC)"
+
+prometheus-reload: ## Перезагрузка конфигурации Prometheus
+	@echo "$(CYAN)🔄 Перезагрузка Prometheus...$(NC)"
+	@curl -X POST http://localhost:9090/-/reload 2>/dev/null && \
+		echo "$(GREEN)✅ Prometheus перезагружен$(NC)" || \
+		echo "$(RED)❌ Ошибка перезагрузки. Prometheus запущен?$(NC)"
+
+prometheus-check: ## Проверка конфигурации Prometheus
+	@echo "$(CYAN)🔍 Проверка конфигурации Prometheus...$(NC)"
+	@$(DOCKER_COMPOSE) -f docker-compose.yml -f docker-compose.cluster.yml exec prometheus promtool check config /etc/prometheus/prometheus.yml
+
+prometheus-rules-check: ## Проверка alert rules
+	@echo "$(CYAN)🔍 Проверка alert rules...$(NC)"
+	@$(DOCKER_COMPOSE) -f docker-compose.yml -f docker-compose.cluster.yml exec prometheus promtool check rules /etc/prometheus/rules/alerts.yml
+
+grafana-open: ## Открыть Grafana UI в браузере
+	@open http://localhost:3001 2>/dev/null || xdg-open http://localhost:3001 2>/dev/null || \
+		echo "Grafana UI: http://localhost:3001 (логин: admin/admin)"
+
+prometheus-open: ## Открыть Prometheus UI в браузере
+	@open http://localhost:9090 2>/dev/null || xdg-open http://localhost:9090 2>/dev/null || \
+		echo "Prometheus UI: http://localhost:9090"
+
+monitoring-status: ## Проверка статуса мониторинга
+	@echo "$(CYAN)📊 Статус мониторинга:$(NC)"
+	@echo ""
+	@$(DOCKER_COMPOSE) -f docker-compose.yml -f docker-compose.cluster.yml ps prometheus grafana cadvisor loki promtail 2>/dev/null || \
+		echo "$(YELLOW)Мониторинг не запущен. Запустите: make monitoring-up$(NC)"
+
+monitoring-logs: ## Просмотр логов мониторинга
+	@echo "$(CYAN)📄 Логи мониторинга (Ctrl+C для выхода):$(NC)"
+	@$(DOCKER_COMPOSE) -f docker-compose.yml -f docker-compose.cluster.yml logs -f prometheus grafana loki promtail
+
+loki-logs: ## Просмотр логов Loki
+	@echo "$(CYAN)📄 Логи Loki (Ctrl+C для выхода):$(NC)"
+	@$(DOCKER_COMPOSE) -f docker-compose.yml -f docker-compose.cluster.yml logs -f loki
+
+promtail-logs: ## Просмотр логов Promtail
+	@echo "$(CYAN)📄 Логи Promtail (Ctrl+C для выхода):$(NC)"
+	@$(DOCKER_COMPOSE) -f docker-compose.yml -f docker-compose.cluster.yml logs -f promtail
+
+loki-query: ## Запрос логов через Loki API (использование: make loki-query QUERY='{service="api-gateway"}')
+	@echo "$(CYAN)🔍 Запрос логов через Loki...$(NC)"
+	@curl -G -s "http://localhost:3100/loki/api/v1/query_range" \
+		--data-urlencode 'query=$(or $(QUERY),{service=~".+"})' \
+		--data-urlencode 'limit=100' | jq -r '.data.result[].values[][1]' | head -20
+
+loki-labels: ## Показать доступные labels в Loki
+	@echo "$(CYAN)🏷️  Доступные labels:$(NC)"
+	@curl -s http://localhost:3100/loki/api/v1/labels | jq -r '.data[]'
+

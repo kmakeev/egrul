@@ -404,10 +404,9 @@ services:
     image: prom/prometheus:v2.48.0
     container_name: egrul-prometheus
     hostname: prometheus
-    # Конфигурация будет создана позже в infrastructure/monitoring/prometheus/
-    # volumes:
-    #   - ./infrastructure/monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
     volumes:
+      - ./infrastructure/monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./infrastructure/monitoring/prometheus/rules:/etc/prometheus/rules:ro
       - prometheus_data:/prometheus
     ports:
       - "9090:9090"   # Web UI

@@ -1,0 +1,83 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    cluster: 'egrul-production'
+    environment: 'production'
+
+# Правила алертинга
+rule_files:
+  - '/etc/prometheus/rules/*.yml'
+
+# Targets для сбора метрик
+scrape_configs:
+  # ClickHouse Cluster (6 nodes)
+  - job_name: 'clickhouse-cluster'
+    static_configs:
+      - targets:
+          - 'clickhouse-01:9363'
+          - 'clickhouse-02:9364'
+          - 'clickhouse-03:9365'
+          - 'clickhouse-04:9366'
+          - 'clickhouse-05:9367'
+          - 'clickhouse-06:9368'
+        labels:
+          component: 'clickhouse'
+          cluster: 'egrul-cluster'
+
+  # ClickHouse Keeper (3 nodes)
+  - job_name: 'clickhouse-keeper'
+    static_configs:
+      - targets:
+          - 'keeper-01:9641'
+          - 'keeper-02:9642'
+          - 'keeper-03:9643'
+        labels:
+          component: 'keeper'
+          cluster: 'egrul-cluster'
+
+  # API Gateway
+  - job_name: 'api-gateway'
+    static_configs:
+      - targets: ['api-gateway:9090']
+        labels:
+          service: 'api-gateway'
+          component: 'backend'
+
+  # Search Service
+  - job_name: 'search-service'
+    static_configs:
+      - targets: ['search-service:9091']
+        labels:
+          service: 'search-service'
+          component: 'backend'
+
+  # Change Detection Service
+  - job_name: 'change-detection-service'
+    static_configs:
+      - targets: ['change-detection-service:9092']
+        labels:
+          service: 'change-detection'
+          component: 'backend'
+
+  # Notification Service
+  - job_name: 'notification-service'
+    static_configs:
+      - targets: ['notification-service:9093']
+        labels:
+          service: 'notification'
+          component: 'backend'
+
+  # cAdvisor (Docker метрики)
+  - job_name: 'cadvisor'
+    static_configs:
+      - targets: ['cadvisor:8080']
+        labels:
+          component: 'infrastructure'
+
+  # Prometheus self-monitoring
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+        labels:
+          component: 'monitoring'

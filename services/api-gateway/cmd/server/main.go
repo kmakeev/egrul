@@ -28,7 +28,10 @@ import (
 	pgrepo "github.com/egrul-system/services/api-gateway/internal/repository/postgresql"
 	"github.com/egrul-system/services/api-gateway/internal/service"
 	"go.uber.org/zap"
-	"go.uber.org/zap/zapcore"
+
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+	sharedLogging "github.com/egrul-system/services/shared/pkg/observability/logging"
+	sharedMetrics "github.com/egrul-system/services/shared/pkg/observability/metrics"
 )
 
 // Version информация о версии (устанавливается при сборке)
@@ -43,7 +46,11 @@ func main() {
 	}
 
 	// Инициализация логгера
-	logger, err := initLogger(cfg.Log)
+	logger, err := sharedLogging.NewLogger(sharedLogging.Config{
+		Level:       cfg.Log.Level,
+		Format:      cfg.Log.Format,
+		ServiceName: "api-gateway",
+	})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to init logger: %v\n", err)
 		os.Exit(1)
@@ -55,6 +62,17 @@ func main() {
 		zap.String("host", cfg.Server.Host),
 		zap.Int("port", cfg.Server.Port),
 	)
+
+	// Prometheus metrics server на отдельном порту
+	go func() {
+		metricsRouter := chi.NewRouter()
+		metricsRouter.Handle("/metrics", promhttp.Handler())
+		metricsAddr := ":9090"
+		logger.Info("Starting metrics server", zap.String("addr", metricsAddr))
+		if err := http.ListenAndServe(metricsAddr, metricsRouter); err != nil {
+			logger.Fatal("Failed to start metrics server", zap.Error(err))
+		}
+	}()
 
 	// Инициализация JWT Manager
 	jwtManager := auth.NewJWTManager(cfg.Auth.JWTSecretKey, cfg.Auth.JWTTokenDuration)
@@ -192,9 +210,11 @@ func main() {
 	r := chi.NewRouter()
 
 	// Middleware
+	// Prometheus metrics middleware (должен быть ПЕРВЫМ)
+	r.Use(sharedMetrics.HTTPMiddleware("api-gateway"))
 	r.Use(chimiddleware.RequestID)
 	r.Use(chimiddleware.RealIP)
-	r.Use(middleware.Logger(logger))
+	r.Use(sharedLogging.HTTPMiddleware(logger))
 	r.Use(middleware.Recovery(logger))
 	r.Use(chimiddleware.Compress(5))
 	// Timeout middleware удален - конфликтует с long-lived SSE connections
@@ -292,24 +312,6 @@ func main() {
 	}
 
 	logger.Info("Server stopped")
-}
-
-func initLogger(cfg config.LogConfig) (*zap.Logger, error) {
-	var level zapcore.Level
-	if err := level.UnmarshalText([]byte(cfg.Level)); err != nil {
-		level = zapcore.InfoLevel
-	}
-
-	var zapCfg zap.Config
-	if cfg.Format == "json" {
-		zapCfg = zap.NewProductionConfig()
-	} else {
-		zapCfg = zap.NewDevelopmentConfig()
-		zapCfg.EncoderConfig.EncodeLevel = zapcore.CapitalColorLevelEncoder
-	}
-	zapCfg.Level = zap.NewAtomicLevelAt(level)
-
-	return zapCfg.Build()
 }
 
 func healthHandler(chClient *clickhouse.Client) http.HandlerFunc {

@@ -1,0 +1,40 @@
+apiVersion: 1
+
+datasources:
+  # Prometheus - метрики
+  - name: Prometheus
+    type: prometheus
+    uid: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    editable: true
+    jsonData:
+      timeInterval: "15s"
+      queryTimeout: "60s"
+      httpMethod: POST
+
+  # Loki - логирование
+  - name: Loki
+    type: loki
+    uid: loki
+    access: proxy
+    url: http://loki:3100
+    editable: true
+    jsonData:
+      maxLines: 1000
+
+  # ClickHouse - существующий datasource
+  - name: ClickHouse
+    type: grafana-clickhouse-datasource
+    access: proxy
+    url: http://clickhouse-01:8123
+    database: egrul
+    editable: true
+    jsonData:
+      server: clickhouse-01
+      port: 9000
+      username: egrul_app
+      protocol: http
+    secureJsonData:
+      password: test

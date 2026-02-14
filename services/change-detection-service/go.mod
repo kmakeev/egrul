@@ -4,8 +4,10 @@ go 1.22
 
 require (
 	github.com/ClickHouse/clickhouse-go/v2 v2.20.0
+	github.com/egrul-system/services/shared v0.0.0
 	github.com/go-chi/chi/v5 v5.0.12
 	github.com/google/uuid v1.6.0
+	github.com/prometheus/client_golang v1.19.0
 	github.com/segmentio/kafka-go v0.4.47
 	github.com/spf13/viper v1.18.2
 	go.uber.org/zap v1.27.0
@@ -43,3 +45,5 @@ require (
 	gopkg.in/ini.v1 v1.67.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
+
+replace github.com/egrul-system/services/shared => ../shared

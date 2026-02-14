@@ -1,0 +1,147 @@
+groups:
+  - name: service_availability
+    interval: 30s
+    rules:
+      # Service Down
+      - alert: ServiceDown
+        expr: up{job=~"api-gateway|search-service|change-detection-service|notification-service"} == 0
+        for: 5m
+        labels:
+          severity: critical
+          component: backend
+        annotations:
+          summary: "Service {{ $labels.job }} is down"
+          description: "{{ $labels.job }} on {{ $labels.instance }} has been down for more than 5 minutes."
+
+      # ClickHouse Node Down
+      - alert: ClickHouseNodeDown
+        expr: up{job="clickhouse-cluster"} == 0
+        for: 3m
+        labels:
+          severity: critical
+          component: database
+        annotations:
+          summary: "ClickHouse node {{ $labels.instance }} is down"
+          description: "ClickHouse node {{ $labels.instance }} has been down for more than 3 minutes."
+
+      # ClickHouse Keeper Down
+      - alert: ClickHouseKeeperDown
+        expr: up{job="clickhouse-keeper"} == 0
+        for: 3m
+        labels:
+          severity: critical
+          component: coordination
+        annotations:
+          summary: "ClickHouse Keeper {{ $labels.instance }} is down"
+          description: "Keeper node {{ $labels.instance }} has been down for more than 3 minutes. Cluster coordination may be affected."
+
+  - name: performance
+    interval: 30s
+    rules:
+      # High Error Rate
+      - alert: HighErrorRate
+        expr: |
+          sum(rate(http_requests_total{status=~"5.."}[5m])) by (service)
+          /
+          sum(rate(http_requests_total[5m])) by (service)
+          > 0.05
+        for: 5m
+        labels:
+          severity: warning
+          component: backend
+        annotations:
+          summary: "High error rate on {{ $labels.service }}"
+          description: "{{ $labels.service }} has error rate > 5% for the last 5 minutes (current: {{ $value | humanizePercentage }})."
+
+      # High Latency P95
+      - alert: HighLatencyP95
+        expr: |
+          histogram_quantile(0.95,
+            sum(rate(http_request_duration_seconds_bucket[5m])) by (service, le)
+          ) > 1
+        for: 5m
+        labels:
+          severity: warning
+          component: backend
+        annotations:
+          summary: "High latency P95 on {{ $labels.service }}"
+          description: "{{ $labels.service }} P95 latency is {{ $value | humanizeDuration }} (threshold: 1s)."
+
+      # High Latency P99
+      - alert: HighLatencyP99
+        expr: |
+          histogram_quantile(0.99,
+            sum(rate(http_request_duration_seconds_bucket[5m])) by (service, le)
+          ) > 3
+        for: 5m
+        labels:
+          severity: critical
+          component: backend
+        annotations:
+          summary: "Very high latency P99 on {{ $labels.service }}"
+          description: "{{ $labels.service }} P99 latency is {{ $value | humanizeDuration }} (threshold: 3s)."
+
+  - name: resources
+    interval: 30s
+    rules:
+      # High Memory Usage
+      - alert: HighMemoryUsage
+        expr: |
+          (container_memory_usage_bytes / container_spec_memory_limit_bytes) > 0.9
+        for: 10m
+        labels:
+          severity: warning
+          component: infrastructure
+        annotations:
+          summary: "High memory usage on {{ $labels.name }}"
+          description: "Container {{ $labels.name }} is using {{ $value | humanizePercentage }} of memory limit."
+
+  - name: clickhouse
+    interval: 30s
+    rules:
+      # ClickHouse Query Errors
+      - alert: ClickHouseQueryErrors
+        expr: rate(ClickHouseMetrics_QueryFailed[5m]) > 10
+        for: 5m
+        labels:
+          severity: warning
+          component: database
+        annotations:
+          summary: "High query error rate on ClickHouse"
+          description: "ClickHouse query error rate: {{ $value | humanize }} per second."
+
+      # ClickHouse Replication Lag
+      - alert: ClickHouseReplicationLag
+        expr: ClickHouseMetrics_ReplicasMaxAbsoluteDelay > 300
+        for: 10m
+        labels:
+          severity: warning
+          component: database
+        annotations:
+          summary: "High replication lag on ClickHouse"
+          description: "ClickHouse replication lag is {{ $value }} seconds (threshold: 300s)."
+
+  - name: business_metrics
+    interval: 1m
+    rules:
+      # SMTP Errors Spike
+      - alert: SMTPErrorsSpike
+        expr: rate(egrul_smtp_errors_total[5m]) > 1
+        for: 5m
+        labels:
+          severity: warning
+          component: notification
+        annotations:
+          summary: "High SMTP error rate"
+          description: "SMTP error rate: {{ $value | humanize }} per second."
+
+      # Kafka Consumer Lag High
+      - alert: KafkaConsumerLagHigh
+        expr: egrul_kafka_consumer_lag > 1000
+        for: 10m
+        labels:
+          severity: warning
+          component: messaging
+        annotations:
+          summary: "High Kafka consumer lag on {{ $labels.topic }}"
+          description: "Kafka consumer lag on {{ $labels.topic }} partition {{ $labels.partition }}: {{ $value }} messages."
