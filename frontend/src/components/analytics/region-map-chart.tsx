@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useEffect } from "react";
+import { useMemo, useRef, useEffect, useState } from "react";
 import ReactECharts from "echarts-for-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -35,19 +35,23 @@ export function RegionMapChart({
 
   // Ref для доступа к ECharts instance
   const chartRef = useRef<any>(null);
+  // Ref для отслеживания предыдущего выбранного региона
+  const prevSelectedRegionRef = useRef<string | undefined>(undefined);
+  // Счетчик для принудительной перерисовки при сбросе фильтра
+  const [resetCounter, setResetCounter] = useState(0);
 
-  // Сбрасываем выделение региона когда фильтр очищается
+  // Отслеживаем сброс фильтра и увеличиваем счетчик для перерисовки
   useEffect(() => {
-    if (!selectedRegionCode && chartRef.current) {
-      const instance = chartRef.current.getEchartsInstance();
-      if (instance) {
-        // Снимаем выделение со всех регионов
-        instance.dispatchAction({
-          type: 'unselect',
-          seriesIndex: 0,
-        });
-      }
+    // Проверяем: был ли регион выбран ранее, но сейчас сброшен
+    const wasReset = !selectedRegionCode && prevSelectedRegionRef.current;
+
+    if (wasReset) {
+      // Увеличиваем счетчик - это изменит key и пересоздаст компонент
+      setResetCounter((prev) => prev + 1);
     }
+
+    // Сохраняем текущее значение для следующего сравнения
+    prevSelectedRegionRef.current = selectedRegionCode;
   }, [selectedRegionCode]);
 
   const chartOption = useMemo(() => {
@@ -143,6 +147,7 @@ export function RegionMapChart({
         map: "russia",
         roam: true,
         scaleLimit: { min: 0.5, max: 5 },
+        selectedMode: 'single', // Позволяет выделять только один регион за раз
         // nameProperty не указываем - ECharts автоматически использует feature.id из GeoJSON
         emphasis: {
           label: { show: true, color: "#fff" },
@@ -238,6 +243,7 @@ export function RegionMapChart({
       </CardHeader>
       <CardContent>
         <ReactECharts
+          key={`map-${resetCounter}`}
           ref={chartRef}
           echarts={echarts}
           option={chartOption}
