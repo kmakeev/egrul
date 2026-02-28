@@ -1,8 +1,31 @@
-.PHONY: help setup dev build test test-coverage clean docker-up docker-down docker-logs \
-        parser-build parser-run parser-test \
-        services-build services-run services-test services-test-local services-test-coverage services-generate \
-        frontend-dev frontend-build frontend-test \
-        db-migrate db-seed lint format
+.PHONY: help setup dev build test test-coverage clean \
+        up down \
+        docker-up docker-up-full docker-up-tools docker-up-monitoring docker-up-dev docker-up-prod \
+        docker-down docker-logs docker-build docker-clean \
+        docker-clean-networks docker-full-clean \
+        parser-build parser-run parser-test parser-check \
+        services-build services-run-api services-run-search \
+        services-test services-test-local services-test-coverage services-generate \
+        frontend-dev frontend-build frontend-test frontend-install \
+        db-migrate db-reset db-shell db-seed \
+        init-db seed-data install-deps update-deps lint format \
+        ch-shell ch-stats ch-truncate ch-reset \
+        import import-basic import-docker import-egrul import-egrip okved-extra \
+        pipeline pipeline-basic \
+        cluster-up cluster-up-full cluster-down cluster-restart cluster-verify cluster-test \
+        cluster-reset cluster-truncate cluster-import cluster-import-okved cluster-fill-mv \
+        cluster-detect-changes cluster-optimize cluster-optimize-force cluster-optimize-stats \
+        cluster-frontend cluster-backup cluster-restore cluster-logs cluster-ps \
+        notifications-up notifications-down notifications-logs notifications-test dev-notifications \
+        es-create-indices es-delete-indices es-reindex \
+        es-sync-initial es-sync-incremental es-sync-daemon es-sync-stop \
+        es-stats es-search-test es-health \
+        kafka-topics kafka-create-topic kafka-console \
+        minio-console minio-upload \
+        adminer redisinsight screenshots \
+        monitoring-up monitoring-down monitoring-status monitoring-logs \
+        prometheus-reload prometheus-check prometheus-rules-check prometheus-open grafana-open \
+        loki-logs promtail-logs loki-query loki-labels
 
 # Переменные
 DOCKER_COMPOSE = docker compose
@@ -270,8 +293,7 @@ ch-stats: ## Показать статистику ClickHouse кластера
 
 ch-truncate: cluster-truncate ## Очистить все таблицы ClickHouse кластера (алиас)
 
-ch-reset: cluster-reset ## Полное пересоздание таблиц ClickHouse кластера (алиас)
-	@make ch-migrate
+ch-reset: cluster-reset ## Пересоздание БД ClickHouse кластера (алиас для cluster-reset; миграции 011-018 применяются автоматически)
 	@echo "$(GREEN)✅ Таблицы пересозданы$(NC)"
 
 # ==================== Импорт данных ====================
@@ -360,7 +382,7 @@ docker-up-prod: ## Production mode
 
 minio-console: ## Открыть MinIO Console
 	@echo "$(CYAN)📦 Открытие MinIO Console...$(NC)"
-	@open http://localhost:9001 || xdg-open http://localhost:9001 || echo "Откройте http://localhost:9001 в браузере"
+	@open http://localhost:9011 || xdg-open http://localhost:9011 || echo "Откройте http://localhost:9011 в браузере"
 
 minio-upload: ## Загрузить файлы в MinIO (OUTPUT=./output)
 	@echo "$(CYAN)📤 Загрузка файлов в MinIO...$(NC)"
@@ -485,6 +507,27 @@ es-search-test: ## Тестовый поиск в Elasticsearch (QUERY=текс�
 es-health: ## Проверка состояния Elasticsearch
 	@echo "$(CYAN)❤️  Проверка Elasticsearch:$(NC)"
 	@curl -s "http://localhost:9200/_cluster/health?pretty"
+
+# ==================== Screenshots ====================
+
+screenshots: ## Скриншоты всех основных страниц через Docker (требует: make up)
+	@echo "$(CYAN)📸 Создание скриншотов системы...$(NC)"
+	@if ! curl -sf http://localhost:3000 > /dev/null 2>&1; then \
+		echo "$(RED)❌ Frontend недоступен. Запустите сначала: make up$(NC)"; \
+		exit 1; \
+	fi
+	@mkdir -p docs/screenshots
+	@docker run --rm \
+		-e FRONTEND_URL=http://host.docker.internal:3000 \
+		-e API_URL=http://host.docker.internal:8080 \
+		-e OUTPUT_DIR=/screenshots \
+		-e PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
+		-e PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 \
+		-v "$(PWD)/scripts/screenshots.mjs:/scripts/screenshots.mjs:ro" \
+		-v "$(PWD)/docs/screenshots:/screenshots" \
+		mcr.microsoft.com/playwright:v1.50.0-noble \
+		bash -c "cd /tmp && npm init -y --silent 2>/dev/null && PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 npm install playwright@1.50.0 --silent 2>/dev/null && cp /scripts/screenshots.mjs . && node screenshots.mjs"
+	@echo "$(GREEN)✅ Скриншоты сохранены в docs/screenshots/$(NC)"
 
 # ==================== UI Tools ====================
 

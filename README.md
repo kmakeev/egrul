@@ -67,6 +67,20 @@ UI Tools: Adminer (PostgreSQL) | RedisInsight (Redis) | MinIO Console | MailHog 
 Monitoring: Grafana + ClickHouse datasource
 ```
 
+## 🖼️ Интерфейс системы
+
+| Главная страница | Поиск по реестрам |
+|:---:|:---:|
+| ![Главная](docs/screenshots/01-home.png) | ![Поиск](docs/screenshots/04-search-results.png) |
+
+| Карточка компании | Аналитический дашборд |
+|:---:|:---:|
+| ![Карточка компании](docs/screenshots/05-company-detail.png) | ![Аналитика](docs/screenshots/07-analytics.png) |
+
+| Отслеживание изменений | GraphQL Playground |
+|:---:|:---:|
+| ![Watchlist](docs/screenshots/08-watchlist.png) | ![GraphQL](docs/screenshots/09-graphql-playground.png) |
+
 ## 📁 Структура проекта
 
 ```
@@ -219,7 +233,7 @@ make docker-down
 **ClickHouse Cluster** (обязательно):
 - 6 нод ClickHouse: 3 шарда × 2 реплики
 - 3 ноды ClickHouse Keeper (Raft-based координация)
-- Шардирование по region_code (регионы РФ)
+- Шардирование по хэшу ОГРН/ОГРНИП (обеспечивает корректную дедупликацию ReplacingMergeTree)
 - Асинхронная репликация (RF=2)
 - Distributed таблицы поверх локальных
 
@@ -262,6 +276,7 @@ make services-test     # Тесты сервисов
 # Frontend (Next.js)
 make frontend-dev      # Режим разработки
 make frontend-build    # Сборка
+make screenshots       # Снять скриншоты основных страниц (требует: make up)
 
 # ClickHouse Cluster (single-node отключен)
 make cluster-up        # Запуск кластера
@@ -341,11 +356,11 @@ cp .env.production .env
 #### ClickHouse
 | Переменная | Описание | По умолчанию |
 |------------|----------|--------------|
-| `CLICKHOUSE_HOST` | Хост ClickHouse | `clickhouse` |
+| `CLICKHOUSE_HOST` | Хост ClickHouse (node-01 кластера) | `clickhouse-01` |
 | `CLICKHOUSE_HTTP_PORT` | HTTP порт | `8123` |
 | `CLICKHOUSE_NATIVE_PORT` | Native TCP порт | `9000` |
-| `CLICKHOUSE_USER` | Пользователь | `admin` |
-| `CLICKHOUSE_PASSWORD` | Пароль | `admin` |
+| `CLICKHOUSE_USER` | Пользователь | `egrul_app` |
+| `CLICKHOUSE_PASSWORD` | Пароль | `test` |
 | `CLICKHOUSE_MEMORY_LIMIT` | Лимит памяти | `16G` |
 
 #### Kafka & Zookeeper (profile: full)
@@ -361,8 +376,8 @@ cp .env.production .env
 |------------|----------|--------------|
 | `MINIO_ROOT_USER` | Пользователь | `minioadmin` |
 | `MINIO_ROOT_PASSWORD` | Пароль | `minioadmin` |
-| `MINIO_API_PORT` | API порт | `9000` |
-| `MINIO_CONSOLE_PORT` | Console порт | `9001` |
+| `MINIO_API_PORT` | API порт | `9010` |
+| `MINIO_CONSOLE_PORT` | Console порт | `9011` |
 
 #### API & Frontend
 | Переменная | Описание | По умолчанию |
@@ -401,8 +416,8 @@ cp .env.production .env
 | Elasticsearch | 9200 | http://localhost:9200 |
 | Redis | 6379 | - |
 | Kafka | 29092 | localhost:29092 |
-| MinIO API | 9002 | http://localhost:9002 |
-| MinIO Console | 9001 | http://localhost:9001 |
+| MinIO API | 9010 | http://localhost:9010 |
+| MinIO Console | 9011 | http://localhost:9011 |
 | Adminer | 8090 | http://localhost:8090 |
 | RedisInsight | 8091 | http://localhost:8091 |
 | Grafana | 3001 | http://localhost:3001 |
@@ -431,7 +446,7 @@ make redisinsight
 ### MinIO Console (S3 Storage UI)
 ```bash
 make minio-console
-# Или откройте: http://localhost:9001
+# Или откройте: http://localhost:9011
 ```
 - Пользователь: `minioadmin`
 - Пароль: из `.env` (`MINIO_ROOT_PASSWORD`)
@@ -443,7 +458,7 @@ Buckets:
 
 ### Grafana (Monitoring)
 ```bash
-make docker-up-monitoring
+make monitoring-up
 # Откройте: http://localhost:3001
 ```
 - Пользователь: `admin`
@@ -558,9 +573,9 @@ make docker-up-dev
 
 ```bash
 # ClickHouse
-make ch-shell           # Консоль ClickHouse
-make ch-stats           # Статистика
-make ch-migrate         # Применить миграции
+make ch-shell           # Консоль ClickHouse (node-01)
+make ch-stats           # Статистика кластера
+make cluster-reset      # Пересоздать БД и применить миграции 011-018
 
 # PostgreSQL
 make init-db            # Инициализировать метаданные
@@ -606,6 +621,32 @@ tail -f .cursor/debug.log
 # Подключение Delve debugger
 dlv connect localhost:2345
 ```
+
+### Скриншоты системы
+
+```bash
+# Снять скриншоты всех основных страниц (требует запущенной системы)
+make screenshots
+```
+
+Команда автоматически:
+- Запускает headless Chromium через Docker (локальный Node.js не нужен)
+- Авторизуется через GraphQL API и восстанавливает сессию
+- Делает 9 скриншотов в `docs/screenshots/` с правильными таймаутами для загрузки данных
+
+Результаты сохраняются в `docs/screenshots/`:
+
+| Файл | Страница |
+|------|----------|
+| `01-home.png` | Главная страница |
+| `02-login.png` | Страница входа |
+| `03-search-empty.png` | Поиск (пустой) |
+| `04-search-results.png` | Результаты поиска |
+| `05-company-detail.png` | Карточка компании |
+| `06-entrepreneur-detail.png` | Карточка ИП |
+| `07-analytics.png` | Аналитический дашборд |
+| `08-watchlist.png` | Отслеживание изменений |
+| `09-graphql-playground.png` | GraphQL Playground |
 
 ## 🧪 Тестирование
 
@@ -683,14 +724,14 @@ curl http://localhost:9200/_cluster/health
 ### Backup
 
 ```bash
-# ClickHouse backup
-docker compose exec clickhouse clickhouse-backup create
+# ClickHouse кластер — backup в MinIO
+make cluster-backup
+
+# Восстановление из backup
+make cluster-restore BACKUP_NAME=backup_YYYYMMDD_HHMMSS
 
 # PostgreSQL backup
 docker compose exec postgres pg_dump -U postgres egrul > backup.sql
-
-# MinIO backup (buckets)
-docker compose exec minio mc mirror egrul/ /backups/
 ```
 
 ### Scaling
@@ -805,9 +846,14 @@ make ch-reset     # Пересоздать БД
   - Email уведомления через SMTP
   - End-to-end тестирование
 
+- **[MANAGEMENT.md](docs/MANAGEMENT.md)** - Управление системой: запуск, остановка, профили Docker Compose
 - **[ARCHITECTURE.md](docs/ARCHITECTURE.md)** - Подробная архитектура системы
 - **[API.md](docs/API.md)** - Документация GraphQL/REST API
-- **[CLICKHOUSE.md](docs/CLICKHOUSE.md)** - ClickHouse схема и запросы
+- **[CLICKHOUSE.md](docs/CLICKHOUSE.md)** - ClickHouse кластер: схема, движки, запросы
+- **[DATA_LIFECYCLE.md](docs/DATA_LIFECYCLE.md)** - Стратегии хранения данных и жизненный цикл версий
+- **[CLUSTER_MIGRATION_SHARDING.md](docs/CLUSTER_MIGRATION_SHARDING.md)** - Миграция шардирования с region_code на хэш ОГРН
+- **[ANALYTICS_DASHBOARD.md](docs/ANALYTICS_DASHBOARD.md)** - Аналитический дашборд: KPI, карты, графики
+- **[TESTING_PLAN.md](docs/TESTING_PLAN.md)** - План тестирования системы подписок
 - **[CLAUDE.md](CLAUDE.md)** - Инструкции для Claude Code (AI помощник)
 
 ### Быстрые ссылки
